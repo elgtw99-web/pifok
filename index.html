@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>依洛嘉送驗系統 · 流程原型</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.7.0/tabler-icons.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <style>
   :root{
     --bg:#E8E6E0; --surface:#FFFFFF; --ink:#1A1A1C; --muted:#6E6E73; --faint:#A0A09A;
@@ -148,6 +149,14 @@
   .ztog button{ border:0; background:transparent; color:var(--muted); font-size:14px; font-weight:600;
     padding:7px 16px; border-radius:8px; cursor:pointer; font-family:inherit; }
   .ztog button.on{ background:var(--surface); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.10); }
+  .modeseg{ display:flex; gap:8px; }
+  .modeseg button{ flex:1; height:44px; border:1px solid var(--line2); background:var(--surface); color:var(--muted);
+    border-radius:11px; font-size:13px; font-weight:600; cursor:pointer; font-family:inherit;
+    display:flex; align-items:center; justify-content:center; gap:5px; }
+  .modeseg button.on{ border-color:var(--accent); background:var(--accent-tint); color:var(--accent); }
+  .modeseg button i{ font-size:17px; }
+  .uparea{ border:1.5px dashed var(--line2); border-radius:14px; padding:24px; text-align:center; }
+  textarea.fld{ height:auto; padding:10px 13px; resize:none; }
 </style>
 </head>
 <body>
@@ -161,11 +170,12 @@ const CUST = '晶寶企業行';
 const ADDR = '台南市佳里區佳興里宅興二街600號 · 洪莉晴 收';
 const FACTORY = 'E.L.G International Trading（依洛嘉）· 台南市佳里區佳興里宅興二街600號';
 let view='entry', role='customer', custTab='submit', elgTab='receive', dataPid=null, editingProfile=false;
-let dataTests={fang:true, chang:true, wen:false};
 let me={ nameCh:'', nameEn:'', addrCh:'', addrEn:'', phone:'', filled:false };
 const SAMPLE_ME={ nameCh:'晶寶企業行', nameEn:'Jingbao Co., Ltd.', addrCh:'高雄市大寮區琉球里巷尾路89之1號', addrEn:'No.89-1, Xiangwei Rd., Daliao Dist., Kaohsiung', phone:'07-1234567' };
 const custName = p => p.mine ? (me.nameCh||'（未填寫廠商名）') : p.cust;
-let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back';
+const CINFO = { '芊奕田生技':'台南市安平區建平一街56號', '夏芮蒂生技':'花蓮市中美路71-12號1樓' };
+const custAddr = p => p.mine ? (me.addrCh||'') : (CINFO[p.cust]||'');
+let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='';
 let staff=[
   {name:'洪莉晴', email:'admin@eloga.com', role:'主要管理者'},
   {name:'前臺收件', email:'desk@eloga.com', role:'前臺'}
@@ -188,7 +198,7 @@ let products=[
   {id:'p8',cust:CUST,name:'保濕精華',en:'Hydra Serum',spec:'50ml',qty:'3瓶',status:'verified',batch:'5/28',charge:5000},
   {id:'p9',cust:CUST,name:'修護面霜',en:'Repair Cream',spec:'50g',qty:'2瓶',status:'completed',batch:'5/20',charge:10000,drive:'https://drive.google.com'}
 ];
-products.forEach(p=>{ if(p.cust===CUST) p.mine=true; });
+products.forEach(p=>{ if(p.cust===CUST) p.mine=true; if(!p.t) p.t={fang:true,chang:true,wen:false}; });
 
 const SM={ pending:['待寄送','n'], shipped:['已寄送','i'], received:['已接收','i'],
   invoiced:['待匯款','w'], reported:['查帳中','w'], verified:['送驗中','s'], completed:['已完成 PIF','s'] };
@@ -206,6 +216,7 @@ function render(){
   if(view==='customer-profile'){ app.innerHTML=customerProfile(); return; }
   if(view==='eloga-accounts'){ app.innerHTML=elogaAccounts(); return; }
   if(view==='board'){ app.innerHTML=boardScreen(); return; }
+  if(view==='add-items'){ app.innerHTML=addItemsScreen(); return; }
   app.innerHTML = role==='customer'? custApp() : elgApp();
 }
 function entryScreen(){
@@ -303,7 +314,7 @@ function custSubmit(){
       <span><span class="nm">依洛嘉 PIF 共用清單</span><br><span class="sub">可共用 12 項</span></span></span>
       <i class="ti ti-chevron-right faint" style="font-size:20px"></i></div>`;
 
-  h += `<div class="row sect mt"><span>尚未寄送樣品</span><span class="muted" style="font-size:13px;font-weight:600">+ 新增計劃產品</span></div>`;
+  h += `<div class="row sect mt"><span>尚未寄送樣品</span><span class="muted" style="font-size:13px;font-weight:600;cursor:pointer" onclick="A.openAddItems('customer')">+ 新增計劃產品</span></div>`;
   if(pend.length){
     h += `<div class="stack">`+ pend.map(p=>`
       <div class="selrow ${p.shipSel?'on':''}" onclick="A.toggleShip('${p.id}')">
@@ -435,13 +446,14 @@ function elgData(){
   const pool=products.filter(p=>['received','invoiced','reported','verified'].includes(p.status));
   if(!pool.length) return `<div class="empty"><i class="ti ti-file-off"></i>沒有可編輯的送驗資料</div>`;
   if(!dataPid || !pool.find(p=>p.id===dataPid)) dataPid=pool[0].id;
-  const p=byId(dataPid);
+  const p=byId(dataPid); p.t=p.t||{fang:true,chang:true,wen:false};
   const prices={fang:350,chang:200,wen:350};
-  const sum=Object.keys(dataTests).reduce((s,k)=>s+(dataTests[k]?prices[k]:0),0);
+  const sum=Object.keys(prices).reduce((s,k)=>s+(p.t[k]?prices[k]:0),0);
   const trow=(k,label,price)=>`
-    <div class="selrow ${dataTests[k]?'on':''}" onclick="A.toggleTest('${k}')">
+    <div class="selrow ${p.t[k]?'on':''}" onclick="A.toggleTest('${k}')">
       <span class="ck"><i class="ti ti-check"></i></span>
       <span style="flex:1" class="nm">${label}</span><span class="muted">${money(price)}</span></div>`;
+  const exportable=products.filter(x=>['received','invoiced','reported','verified','completed'].includes(x.status)).length;
   return `
     <div class="note" style="margin-bottom:14px"><i class="ti ti-eye-off"></i>內部頁面，檢驗項目與金額不對客戶顯示。</div>
     <label class="lbl">選擇產品</label>
@@ -451,7 +463,7 @@ function elgData(){
     <div class="card" style="margin-top:14px;background:var(--n-bg);border:0">
       <div class="sub" style="margin:0 0 6px">送驗廠商（帶入客戶廠商資料 → Excel 公司資料欄）</div>
       <div class="nm" style="font-size:15px">${custName(p)}${(p.mine&&me.nameEn)?` / ${me.nameEn}`:''}</div>
-      <div class="sub">${p.mine?(me.addrCh||'—'):'—'}</div>
+      <div class="sub">${custAddr(p)||'—'}</div>
       <div class="sub" style="margin-top:6px">工廠：${FACTORY}</div>
     </div>
     <div style="display:flex;gap:12px;margin-top:14px">
@@ -467,8 +479,10 @@ function elgData(){
     <div class="row" style="margin-top:13px"><span class="muted" style="font-size:14px">本筆送驗成本</span>
       <span style="font-size:20px;font-weight:700">${money(sum)}</span></div>
     <div class="faint" style="font-size:12px;margin-top:6px">此為送驗成本，與對客戶請款（5000／10000）分開。</div>
-    <button class="btn" style="margin-top:16px" onclick="A.toast('已產生送驗清單 Excel（示意）')">
-      <i class="ti ti-file-spreadsheet"></i> 產生送驗清單 Excel</button>`;
+    <button class="btn btn--ghost" style="margin-top:16px" onclick="A.openAddItems('eloga')"><i class="ti ti-plus"></i> 新增品項（手動／辨識）</button>
+    <button class="btn" style="margin-top:10px" onclick="A.exportSongyan()">
+      <i class="ti ti-file-spreadsheet"></i> 產生送驗清單 Excel（${exportable} 筆）</button>
+    <div class="faint" style="font-size:12px;margin-top:8px;text-align:center">匯出已接收以後的所有品項，依客戶合併、自動加總。</div>`;
 }
 function elgInvoice(){
   const recv=P('received');
@@ -522,6 +536,78 @@ function elgPif(){
       </div>`).join('')+`</div>`
     : `<div class="empty" style="padding:24px"><i class="ti ti-clipboard-check"></i>目前沒有可完成的 PIF</div>`;
   return h;
+}
+
+/* ---------- input methods ---------- */
+function parseLines(text){
+  return (text||'').split(/\n+/).map(s=>s.trim()).filter(Boolean)
+    .filter(l=>!/^(客戶|您好|你好|哈囉|嗨|謝謝|感謝|麻煩|再麻煩|拜託|hi|hello|thanks|thank)/i.test(l))
+    .map(l=>{
+      let qty='', spec='', name=l;
+      const qm=l.match(/(\d+)\s*(支|瓶|片|顆|盒|包|罐|組|入|條)/);
+      if(qm){ qty=qm[0]; name=name.replace(qm[0],''); }
+      const sm=l.match(/(\d+(?:\.\d+)?\s*(?:ml|g|kg|cc|毫升|公克|克)\s*\/?\s*(?:瓶|片|支|顆|包|盒)?)/i);
+      if(sm){ spec=sm[0].trim(); name=name.replace(sm[0],''); }
+      name=name.replace(/[，,：:。.、\-x×*]+/g,' ').replace(/\s+/g,' ').trim();
+      return { name:name||l, en:'', spec:spec, qty:qty };
+    });
+}
+const dval=(id,def)=>{ const e=document.getElementById(id); return e? e.value : def; };
+function syncDrafts(){ drafts=drafts.map((d,i)=>({ name:dval('d_n_'+i,d.name), en:d.en, spec:dval('d_s_'+i,d.spec), qty:dval('d_q_'+i,d.qty) })); }
+
+function addItemsScreen(){
+  const seg=(id,ic,lbl)=>`<button class="${addMode===id?'on':''}" onclick="A.setAddMode('${id}')"><i class="ti ti-${ic}"></i> ${lbl}</button>`;
+  let h=`<div class="hd"><div><h1>新增品項</h1><p>${addTarget==='eloga'?'依洛嘉自建':'拍照／貼文字／手動'}</p></div>
+      <button class="iconbtn" onclick="A.closeAddItems()" title="關閉"><i class="ti ti-x"></i></button></div>
+    <div class="screen">`;
+  if(addTarget==='eloga'){
+    h+=`<label class="lbl">歸屬客戶</label>
+      <select class="fld" style="margin-bottom:14px" onchange="A.setAddCust(this.value)">
+        ${customers.map(c=>`<option ${c.name===addCust?'selected':''}>${c.name}</option>`).join('')}</select>`;
+  }
+  h+=`<div class="modeseg">${seg('photo','camera','截圖辨識')}${seg('text','clipboard-text','貼文字')}${seg('manual','pencil','手動')}</div>`;
+  h+=`<div style="margin-top:14px">${ addMode==='photo'?photoMode() : addMode==='text'?textMode() : manualMode() }</div>`;
+  if(drafts.length){
+    h+=`<div class="sect mt">待確認（${drafts.length}）</div><div class="stack">`+ drafts.map((d,i)=>`
+      <div class="card">
+        <div style="display:flex;gap:8px;align-items:center">
+          <input class="fld" id="d_n_${i}" value="${d.name}" style="flex:1;font-weight:600">
+          <button class="iconbtn" onclick="A.rmDraft(${i})" title="移除"><i class="ti ti-trash"></i></button>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input class="fld" id="d_s_${i}" value="${d.spec}" placeholder="型號規格" style="flex:1">
+          <input class="fld" id="d_q_${i}" value="${d.qty}" placeholder="數量" style="flex:1">
+        </div>
+      </div>`).join('')+`</div>
+      <button class="btn" style="margin-top:14px" onclick="A.commitDrafts()"><i class="ti ti-plus"></i> 全部加入（${drafts.length}）</button>`;
+  }
+  h+=`</div>`;
+  return h;
+}
+function photoMode(){
+  return `<div class="uparea">
+      <i class="ti ti-camera" style="font-size:34px;color:var(--faint)"></i>
+      <p style="margin:8px 0 0;font-size:14px" class="muted">上傳截圖或拍照，自動辨識品名</p>
+      <label class="btn btn--ghost btn--sm" style="margin-top:12px;width:auto;display:inline-flex">
+        <i class="ti ti-upload"></i> 選擇圖片
+        <input type="file" accept="image/*" style="display:none" onchange="A.photoRecognized(this)">
+      </label>
+    </div>
+    <div class="faint" style="font-size:12px;margin-top:8px;text-align:center">原型示意：正式版接 OCR 自動帶入品名，可一次多筆。</div>`;
+}
+function textMode(){
+  return `<label class="lbl">貼上聊天記錄或品名清單</label>
+    <textarea id="pastebox" class="fld" style="height:120px;line-height:1.6" placeholder="例：&#10;玫瑰臉部精油 100ml 4瓶&#10;舒緩夜語精油 100ml 4瓶&#10;再麻煩你了 謝謝"></textarea>
+    <button class="btn btn--sm" style="margin-top:10px" onclick="A.recognizeText()"><i class="ti ti-wand"></i> 辨識並拆成多行</button>`;
+}
+function manualMode(){
+  return `<label class="lbl">中文品名</label><input id="mi_n" class="fld" placeholder="品名" style="margin-bottom:10px">
+    <label class="lbl">英文名</label><input id="mi_e" class="fld" placeholder="English name" style="margin-bottom:10px">
+    <div style="display:flex;gap:10px">
+      <div style="flex:1"><label class="lbl">型號規格</label><input id="mi_s" class="fld" placeholder="100ml/瓶"></div>
+      <div style="flex:1"><label class="lbl">數量</label><input id="mi_q" class="fld" placeholder="4瓶"></div>
+    </div>
+    <button class="btn btn--sm" style="margin-top:12px" onclick="A.addManual()"><i class="ti ti-plus"></i> 加入這一筆</button>`;
 }
 
 /* ---------- accounts ---------- */
@@ -580,6 +666,27 @@ const A = {
   backEntry(){ view='entry'; render(); },
   loginEloga(){ role='eloga'; zone = elgRole==='前臺'?'front':'back'; const a=ELG_TABS[elgRole]||['receive']; elgTab=a[0]; view='app'; render(); A.toast('以「'+elgRole+'」身分登入'); },
   setZone(z){ zone=z; if(view==='eloga-accounts') view='app'; render(); },
+  openAddItems(target){ addTarget=target; addMode='text'; drafts=[]; addCust=(customers[0]&&customers[0].name)||''; view='add-items'; render(); },
+  closeAddItems(){ drafts=[]; view='app'; if(addTarget==='eloga') elgTab='data'; else custTab='submit'; render(); },
+  setAddMode(m){ syncDrafts(); addMode=m; render(); },
+  setAddCust(v){ addCust=v; },
+  recognizeText(){ syncDrafts(); const got=parseLines(dval('pastebox','')); if(!got.length){ A.toast('沒有辨識到品名'); return; } drafts=drafts.concat(got); render(); A.toast('辨識出 '+got.length+' 筆，請確認'); },
+  photoRecognized(){ syncDrafts(); drafts.push({name:'（截圖辨識品名，請確認）',en:'',spec:'',qty:''}); render(); A.toast('已辨識 1 筆（示意），請確認'); },
+  addManual(){ const g=id=>((document.getElementById(id)||{}).value||'').trim(); const n=g('mi_n'); if(!n){ A.toast('請填品名'); return; } syncDrafts(); drafts.push({name:n,en:g('mi_e'),spec:g('mi_s'),qty:g('mi_q')}); render(); A.toast('已加入待確認'); },
+  rmDraft(i){ syncDrafts(); drafts.splice(i,1); render(); },
+  commitDrafts(){
+    syncDrafts(); if(!drafts.length){ A.toast('沒有可加入的品項'); return; }
+    let uid=Date.now();
+    drafts.forEach(d=>{
+      const base={id:'n'+(uid++),name:d.name,en:d.en||'',spec:d.spec||'',qty:d.qty||'',t:{fang:true,chang:true,wen:false}};
+      if(addTarget==='eloga') Object.assign(base,{cust:addCust,status:'received',batch:'今日',invSel:true,feeSel:5000});
+      else Object.assign(base,{mine:true,status:'pending',shipSel:true});
+      products.push(base);
+    });
+    const n=drafts.length; drafts=[]; view='app';
+    if(addTarget==='eloga') elgTab='data'; else custTab='submit';
+    render(); A.toast('已加入 '+n+' 筆');
+  },
   pickElgRole(r){ elgRole=r; render(); },
   openBoard(){ view='board'; render(); },
   approveCust(i){ customers[i].status='已啟用'; render(); A.toast('已審核通過：'+customers[i].name); },
@@ -617,8 +724,67 @@ const A = {
   },
   setCustTab(t){ custTab=t; render(); },
   setElgTab(t){ elgTab=t; render(); },
-  pickData(id){ dataPid=id; dataTests={fang:true,chang:true,wen:false}; render(); },
-  toggleTest(k){ dataTests[k]=!dataTests[k]; render(); },
+  pickData(id){ dataPid=id; render(); },
+  toggleTest(k){ const p=byId(dataPid); if(p){ p.t=p.t||{fang:true,chang:true,wen:false}; p.t[k]=!p.t[k]; } render(); },
+  async exportSongyan(){
+    if(typeof ExcelJS==='undefined'){ A.toast('Excel 函式庫載入中，請稍候再按'); return; }
+    const list=products.filter(p=>['received','invoiced','reported','verified','completed'].includes(p.status))
+                       .slice().sort((a,b)=>custName(a).localeCompare(custName(b),'zh-Hant'));
+    if(!list.length){ A.toast('沒有可匯出的送驗品項'); return; }
+    const FN='E.L.G INTERNATIONAL TRADING CO., LTD.';
+    const FA='No. 600, Zhaixing 2nd St., Jiaxing Vil., Jiali Dist., Tainan City 722013, Taiwan (R.O.C.)';
+    const thin={style:'thin'}, BD={top:thin,left:thin,right:thin,bottom:thin};
+    const wb=new ExcelJS.Workbook(), ws=wb.addWorksheet('Sheet1');
+    [7.3,40.9,60.7,17.4,10.4,11.1,11.1,11.1,54.1,9.0].forEach((w,i)=>ws.getColumn(i+1).width=w);
+    const heads=['序号','样品名称','英文名稱','型号规格','数量','防腐效能測驗\n$350','常规9项\n$200','穩定性測試\n$350','公司資料'];
+    const hr=ws.getRow(1);
+    heads.forEach((t,i)=>{ const c=hr.getCell(i+1); c.value=t;
+      c.font={name:i===8?'新細明體':'仿宋',size:i===8?11:14};
+      c.alignment={horizontal:'center',vertical:'middle',wrapText:true}; });
+    hr.height=64.5;
+    let r=2;
+    list.forEach((p,idx)=>{
+      const t=p.t||{}, row=ws.getRow(r);
+      row.getCell(1).value=idx+1; row.getCell(2).value=p.name; row.getCell(3).value=p.en||'';
+      row.getCell(4).value=p.spec; row.getCell(5).value=p.qty;
+      row.getCell(6).value=t.fang?'V':null; row.getCell(7).value=t.chang?'V':null; row.getCell(8).value=t.wen?'V':null;
+      const amt=(t.fang?350:0)+(t.chang?200:0)+(t.wen?350:0);
+      row.getCell(10).value={formula:`IF(F${r}="V",350,0)+IF(G${r}="V",200,0)+IF(H${r}="V",350,0)`,result:amt};
+      row.getCell(1).font={name:'新細明體',size:11}; row.getCell(1).alignment={horizontal:'center',vertical:'middle'};
+      row.getCell(2).font={name:'新細明體',size:12}; row.getCell(2).alignment={vertical:'middle'};
+      row.getCell(3).font={name:'新細明體',size:11}; row.getCell(3).alignment={vertical:'middle'};
+      [4,5,6,7,8,10].forEach(c=>{ row.getCell(c).font={name:'新細明體',size:11}; row.getCell(c).alignment={horizontal:'center',vertical:'middle'}; });
+      row.height=16.5; r++;
+    });
+    const last=r-1;
+    let s=2;
+    for(let i=2;i<=last+1;i++){
+      const cur=i<=last?custName(list[i-2]):null, prev=custName(list[s-2]);
+      if(cur!==prev){
+        const e=i-1, pp=list[s-2], ic=ws.getCell(`I${s}`);
+        ic.value=`公司名称：${custName(pp)}\n公司地址：${custAddr(pp)}\n工厂名称：${FN}\n工厂地址：${FA}`;
+        ic.font={name:'新細明體',size:11}; ic.alignment={vertical:'middle',wrapText:true};
+        if(e>s) ws.mergeCells(`I${s}:I${e}`);
+        const n=e-s+1; if(n*16.5<66) ws.getRow(s).height=66-16.5*(n-1);
+        s=i;
+      }
+    }
+    const tr=last+1, cnt=k=>list.filter(p=>(p.t||{})[k]).length;
+    ws.getCell(`F${tr}`).value={formula:`COUNTIF(F2:F${last},"V")*350`,result:cnt('fang')*350};
+    ws.getCell(`G${tr}`).value={formula:`COUNTIF(G2:G${last},"V")*200`,result:cnt('chang')*200};
+    ws.getCell(`H${tr}`).value={formula:`COUNTIF(H2:H${last},"V")*350`,result:cnt('wen')*350};
+    const grand=cnt('fang')*350+cnt('chang')*200+cnt('wen')*350;
+    ws.getCell(`I${tr}`).value={formula:`"共"&SUM(J2:J${last})&"元"`,result:`共${grand}元`};
+    [6,7,8].forEach(c=>{ const cell=ws.getRow(tr).getCell(c); cell.font={name:'新細明體',size:11}; cell.alignment={horizontal:'center',vertical:'middle'}; });
+    ws.getCell(`I${tr}`).font={name:'新細明體',size:11}; ws.getCell(`I${tr}`).alignment={vertical:'middle',wrapText:true};
+    for(let row=1;row<=tr;row++) for(let col=1;col<=10;col++) ws.getRow(row).getCell(col).border=BD;
+    ws.views=[{state:'frozen',ySplit:1}];
+    const buf=await wb.xlsx.writeBuffer();
+    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+    const url=URL.createObjectURL(blob), a=document.createElement('a');
+    a.href=url; a.download='送驗清單.xlsx'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    A.toast('已匯出送驗清單 Excel（'+list.length+' 筆）');
+  },
   toggleShip(id){ const p=byId(id); p.shipSel=!p.shipSel; render(); },
   toggleInv(id){ const p=byId(id); p.invSel=!p.invSel; render(); },
   setFee(id,v){ byId(id).feeSel=v; render(); },
