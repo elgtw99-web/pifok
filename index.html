@@ -144,6 +144,10 @@
   .linebtn{ background:#06C755; }
   .iconbtn{ background:transparent;border:0;color:var(--faint);cursor:pointer;padding:0;display:flex;font-family:inherit; }
   .iconbtn i{ font-size:22px; }
+  .ztog{ display:inline-flex; gap:3px; background:var(--n-bg); border-radius:11px; padding:3px; }
+  .ztog button{ border:0; background:transparent; color:var(--muted); font-size:14px; font-weight:600;
+    padding:7px 16px; border-radius:8px; cursor:pointer; font-family:inherit; }
+  .ztog button.on{ background:var(--surface); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.10); }
 </style>
 </head>
 <body>
@@ -161,7 +165,7 @@ let dataTests={fang:true, chang:true, wen:false};
 let me={ nameCh:'', nameEn:'', addrCh:'', addrEn:'', phone:'', filled:false };
 const SAMPLE_ME={ nameCh:'晶寶企業行', nameEn:'Jingbao Co., Ltd.', addrCh:'高雄市大寮區琉球里巷尾路89之1號', addrEn:'No.89-1, Xiangwei Rd., Daliao Dist., Kaohsiung', phone:'07-1234567' };
 const custName = p => p.mine ? (me.nameCh||'（未填寫廠商名）') : p.cust;
-let acctTab='staff', addOpen=false, elgRole='主要管理者';
+let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back';
 let staff=[
   {name:'洪莉晴', email:'admin@eloga.com', role:'主要管理者'},
   {name:'前臺收件', email:'desk@eloga.com', role:'前臺'}
@@ -171,7 +175,7 @@ let customers=[
   {name:'芊奕田生技', email:'chianyi@line.me', login:'LINE', status:'已啟用'},
   {name:'夏芮蒂生技', email:'sharidy@gmail.com', login:'Google', status:'待審核'}
 ];
-const ELG_TABS={ '主要管理者':['receive','data','invoice','pif','board'], '管理':['receive','data','invoice','pif'], '前臺':['receive','board'] };
+const ELG_TABS={ '主要管理者':['receive','data','invoice','pif'], '管理':['receive','data','invoice','pif'], '前臺':['receive'] };
 
 let products=[
   {id:'p1',cust:CUST,name:'玫瑰臉部精油',en:'Rose Facial Oil',spec:'100ml/瓶',qty:'4瓶',status:'pending',shipSel:true},
@@ -364,14 +368,21 @@ function custPif(){
 }
 
 /* ===================== ELOGA ===================== */
+function elgHeader(){
+  const z=(id,lbl)=>`<button class="${zone===id?'on':''}" onclick="A.setZone('${id}')">${lbl}</button>`;
+  const gear = (zone==='back' && elgRole==='主要管理者') ? `<button class="iconbtn" onclick="A.openAccounts()" title="帳號管理"><i class="ti ti-settings"></i></button>` : '';
+  return `<div class="hd">
+    <div><div class="ztog">${z('back','後臺')}${z('front','前臺')}</div><p style="margin:7px 0 0;font-size:12px" class="muted">${elgRole}</p></div>
+    <div style="display:flex;align-items:center;gap:12px">${gear}<button class="iconbtn" onclick="A.logout()" title="登出"><i class="ti ti-logout"></i></button></div>
+  </div>`;
+}
 function elgApp(){
+  if(zone==='front') return elgHeader() + `<div class="screen">${boardBody()}</div>`;
   const allowed=ELG_TABS[elgRole]||ELG_TABS['主要管理者'];
   if(!allowed.includes(elgTab)) elgTab=allowed[0];
-  const gear = elgRole==='主要管理者' ? `<button class="iconbtn" onclick="A.openAccounts()" title="帳號管理"><i class="ti ti-settings"></i></button>` : '';
-  const right=`<div style="display:flex;align-items:center;gap:14px">${gear}<button class="iconbtn" onclick="A.logout()" title="登出"><i class="ti ti-logout"></i></button></div>`;
-  const TI={ receive:['package-import','收件'], data:['file-spreadsheet','送驗資料'], invoice:['receipt-2','請款'], pif:['clipboard-check','完成 PIF'], board:['clipboard-list','看板'] };
+  const TI={ receive:['package-import','收件'], data:['file-spreadsheet','送驗資料'], invoice:['receipt-2','請款'], pif:['clipboard-check','完成 PIF'] };
   const tabs=allowed.map(id=>tab(elgTab,id,TI[id][0],TI[id][1],'A.setElgTab')).join('');
-  return header('依洛嘉 後臺', elgRole+' · 收件 洪莉晴', right) +
+  return elgHeader() +
     `<div class="screen">${elgScreen()}</div>` +
     `<div class="tabbar">${tabs}</div>`;
 }
@@ -567,7 +578,8 @@ const A = {
   setRole(r){ role=r; render(); },
   goLogin(side){ view = side==='eloga'?'eloga-login':'customer-login'; render(); },
   backEntry(){ view='entry'; render(); },
-  loginEloga(){ role='eloga'; const a=ELG_TABS[elgRole]||['receive']; elgTab=a[0]; view='app'; render(); A.toast('以「'+elgRole+'」身分登入'); },
+  loginEloga(){ role='eloga'; zone = elgRole==='前臺'?'front':'back'; const a=ELG_TABS[elgRole]||['receive']; elgTab=a[0]; view='app'; render(); A.toast('以「'+elgRole+'」身分登入'); },
+  setZone(z){ zone=z; if(view==='eloga-accounts') view='app'; render(); },
   pickElgRole(r){ elgRole=r; render(); },
   openBoard(){ view='board'; render(); },
   approveCust(i){ customers[i].status='已啟用'; render(); A.toast('已審核通過：'+customers[i].name); },
