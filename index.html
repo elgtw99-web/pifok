@@ -6,6 +6,7 @@
 <title>依洛嘉送驗系統 · 流程原型</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.7.0/tabler-icons.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js"></script>
 <style>
   :root{
     --bg:#E8E6E0; --surface:#FFFFFF; --ink:#1A1A1C; --muted:#6E6E73; --faint:#A0A09A;
@@ -169,6 +170,7 @@
 <script>
 const CUST = '晶寶企業行';
 const ADDR = '台南市佳里區佳興里宅興二街600號 · 洪莉晴 收';
+const ELG_TEL = '06-7228888';
 const FACTORY = 'E.L.G International Trading（依洛嘉）· 台南市佳里區佳興里宅興二街600號';
 let view='entry', role='customer', custTab='submit', elgTab='receive', dataPid=null, editingProfile=false;
 let me={ nameCh:'', nameEn:'', addrCh:'', addrEn:'', phone:'', filled:false };
@@ -176,7 +178,28 @@ const SAMPLE_ME={ nameCh:'晶寶企業行', nameEn:'Jingbao Co., Ltd.', addrCh:'
 const custName = p => p.mine ? (me.nameCh||'（未填寫廠商名）') : p.cust;
 const CINFO = { '芊奕田生技':'台南市安平區建平一街56號', '夏芮蒂生技':'花蓮市中美路71-12號1樓' };
 const custAddr = p => p.mine ? (me.addrCh||'') : (CINFO[p.cust]||'');
-let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='', wipeOpen=false;
+function inferType(name){
+  const s=name||'';
+  if(/精油|護髮油|卸妝油|唇膏|護唇|膏|膠囊/.test(s)) return '油劑';
+  if(/面膜|眼膜|頸膜|胸膜|腹膜|私密處膜|膜/.test(s)) return '面膜';
+  if(/精華|乳|霜|露|凝膠|安瓶|卸妝|潔顏|去角質|水/.test(s)) return '液劑霜劑';
+  return '其他';
+}
+function defTests(type){
+  if(type==='油劑') return {fang:false,chang:false,wen:true};     // 油劑：默認安定性（穩定性測試）
+  if(type==='面膜') return {fang:false,chang:true,wen:false};      // 面膜：微生物（常规9项）
+  if(type==='液劑霜劑') return {fang:true,chang:true,wen:false};   // 其他液劑霜劑：防腐＋常规
+  return {fang:false,chang:true,wen:false};
+}
+let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='', wipeOpen=false, ocrBusy=false;
+let sharedPIF=[
+  {name:'玻尿酸保濕精華', type:'液劑霜劑'},
+  {name:'金盞花舒緩面膜', type:'面膜'},
+  {name:'B5修護乳液', type:'液劑霜劑'},
+  {name:'積雪草修護安瓶', type:'液劑霜劑'},
+  {name:'摩洛哥護髮油', type:'油劑'},
+  {name:'神經醯胺保濕霜', type:'液劑霜劑'}
+];
 let staff=[
   {name:'洪莉晴', email:'admin@eloga.com', role:'主要管理者'},
   {name:'前臺收件', email:'desk@eloga.com', role:'前臺'}
@@ -199,7 +222,7 @@ let products=[
   {id:'p8',cust:CUST,name:'保濕精華',en:'Hydra Serum',spec:'50ml',qty:'3瓶',status:'verified',batch:'5/28',charge:5000},
   {id:'p9',cust:CUST,name:'修護面霜',en:'Repair Cream',spec:'50g',qty:'2瓶',status:'completed',batch:'5/20',charge:10000,drive:'https://drive.google.com'}
 ];
-products.forEach(p=>{ if(p.cust===CUST) p.mine=true; if(!p.t) p.t={fang:true,chang:true,wen:false}; });
+products.forEach(p=>{ if(p.cust===CUST) p.mine=true; if(!p.type) p.type=inferType(p.name); if(!p.t) p.t=defTests(p.type); });
 
 const SM={ pending:['待寄送','n'], shipped:['已寄送','i'], received:['已接收','i'],
   invoiced:['待匯款','w'], reported:['查帳中','w'], verified:['送驗中','s'], completed:['已完成 PIF','s'] };
@@ -208,8 +231,22 @@ const byId = id => products.find(p=>p.id===id);
 const money = n => '$'+n.toLocaleString();
 const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 
+/* ---------- persistence ---------- */
+function save(){ try{ localStorage.setItem('elg_state', JSON.stringify({products,customers,staff,me})); }catch(e){} }
+function load(){
+  try{
+    const raw=localStorage.getItem('elg_state'); if(!raw) return;
+    const d=JSON.parse(raw);
+    if(Array.isArray(d.products)){ products.length=0; d.products.forEach(x=>products.push(x)); }
+    if(Array.isArray(d.customers)){ customers.length=0; d.customers.forEach(x=>customers.push(x)); }
+    if(Array.isArray(d.staff)){ staff.length=0; d.staff.forEach(x=>staff.push(x)); }
+    if(d.me) me=d.me;
+  }catch(e){}
+}
+
 /* ---------- shell ---------- */
 function render(){
+  save();
   const app=document.getElementById('app');
   if(view==='entry'){ app.innerHTML=entryScreen(); return; }
   if(view==='eloga-login'){ app.innerHTML=elogaLogin(); return; }
@@ -218,6 +255,7 @@ function render(){
   if(view==='eloga-accounts'){ app.innerHTML=elogaAccounts(); return; }
   if(view==='board'){ app.innerHTML=boardScreen(); return; }
   if(view==='add-items'){ app.innerHTML=addItemsScreen(); return; }
+  if(view==='shared-pif'){ app.innerHTML=sharedPifScreen(); return; }
   app.innerHTML = role==='customer'? custApp() : elgApp();
 }
 function entryScreen(){
@@ -310,9 +348,9 @@ function custSubmit(){
       <span class="l"><i class="ti ti-building-store lead"></i>
       <span><span class="nm">廠商資料 · 已填</span><br><span class="sub">${me.nameCh} · ${me.addrCh||''}</span></span></span>
       <span class="muted" style="font-size:13px;font-weight:600">編輯</span></div>`;
-  h += `<div class="lnk" onclick="A.toast('開啟依洛嘉 PIF 共用清單（示意）')">
+  h += `<div class="lnk" onclick="A.openSharedPIF()">
       <span class="l"><i class="ti ti-files lead"></i>
-      <span><span class="nm">依洛嘉 PIF 共用清單</span><br><span class="sub">可共用 12 項</span></span></span>
+      <span><span class="nm">依洛嘉 PIF 共用清單</span><br><span class="sub">可共用 ${sharedPIF.length} 項</span></span></span>
       <i class="ti ti-chevron-right faint" style="font-size:20px"></i></div>`;
 
   h += `<div class="row sect mt"><span>尚未寄送樣品</span><span class="muted" style="font-size:13px;font-weight:600;cursor:pointer" onclick="A.openAddItems('customer')">+ 新增計劃產品</span></div>`;
@@ -322,7 +360,7 @@ function custSubmit(){
         <span class="ck"><i class="ti ti-check"></i></span>
         <span style="flex:1"><span class="nm">${p.name}</span><br><span class="sub">${p.spec} · ${p.qty}</span></span>
       </div>`).join('') + `</div>`;
-    h += `<div class="addr" style="margin-top:12px"><div class="t">寄送至</div><div class="a">${ADDR}</div></div>`;
+    h += `<div class="addr" style="margin-top:12px"><div class="t">寄送至</div><div class="a">${ADDR}</div><div class="a" style="margin-top:2px">電話 ${ELG_TEL}</div></div>`;
     h += `<button class="btn" style="margin-top:10px" ${n?'':'disabled'} onclick="A.arrange()">
             <i class="ti ti-truck-delivery"></i> 安排寄送（${n}）</button>`;
   } else {
@@ -428,7 +466,7 @@ function boardScreen(){
 function elgReceive(){
   const waiting=P('shipped');
   const recent=P('received');
-  let h = `<div class="addr" style="margin-bottom:16px"><div class="t">收件地址</div><div class="a">${ADDR}</div></div>`;
+  let h = `<div class="addr" style="margin-bottom:16px"><div class="t">收件地址</div><div class="a">${ADDR}</div><div class="a" style="margin-top:2px">電話 ${ELG_TEL}</div></div>`;
   h += `<div class="row sect"><span>待收件</span><span class="pill pill--w">${waiting.length}</span></div>`;
   h += waiting.length ? `<div class="stack">`+ waiting.map(p=>`
       <div class="card" style="border-color:var(--w)"><div class="row">
@@ -471,15 +509,26 @@ function elgData(){
       <div style="flex:1"><label class="lbl">型號規格</label><input class="fld" value="${p.spec}"></div>
       <div style="flex:1"><label class="lbl">數量</label><input class="fld" value="${p.qty}"></div>
     </div>
-    <div class="sect mt" style="margin-bottom:10px">檢驗項目（可複選 · 送驗成本）</div>
+    <div style="display:flex;gap:12px;margin-top:12px">
+      <div style="flex:1"><label class="lbl">產品類型</label>
+        <select class="fld" onchange="A.setType('${p.id}',this.value)">
+          ${['油劑','面膜','液劑霜劑','其他'].map(t=>`<option ${p.type===t?'selected':''}>${t}</option>`).join('')}
+        </select></div>
+      <div style="flex:1"><label class="lbl">樣品量</label>
+        <input class="fld" value="${p.amt||''}" placeholder="如 50g" onchange="A.setAmt('${p.id}',this.value)"></div>
+    </div>
+    <div class="sect mt" style="margin-bottom:6px">檢驗項目（依產品類型自動帶入 · 可調整）</div>
+    <div class="faint" style="font-size:12px;margin:0 0 10px">油劑→安定性、面膜→微生物、液劑霜劑→防腐＋常规</div>
     <div class="stack">
       ${trow('fang','防腐效能測驗',350)}
-      ${trow('chang','常规9项',200)}
-      ${trow('wen','穩定性測試',350)}
+      ${trow('chang','常规9项（微生物）',200)}
+      ${trow('wen','穩定性測試（安定性）',350)}
     </div>
     <div class="row" style="margin-top:13px"><span class="muted" style="font-size:14px">本筆送驗成本</span>
       <span style="font-size:20px;font-weight:700">${money(sum)}</span></div>
     <div class="faint" style="font-size:12px;margin-top:6px">此為送驗成本，與對客戶請款（5000／10000）分開。</div>
+    <label class="lbl" style="margin-top:16px">功能性測試（手寫輸入 · 選填）</label>
+    <textarea class="fld" style="height:64px;line-height:1.5" placeholder="如需功能性測試，描述項目／方法" onchange="A.setFunc('${p.id}',this.value)">${p.func||''}</textarea>
     <button class="btn btn--ghost" style="margin-top:16px" onclick="A.openAddItems('eloga')"><i class="ti ti-plus"></i> 新增品項（手動／辨識）</button>
     <button class="btn" style="margin-top:10px" onclick="A.exportSongyan()">
       <i class="ti ti-file-spreadsheet"></i> 產生送驗清單 Excel（${exportable} 筆）</button>
@@ -536,6 +585,12 @@ function elgPif(){
           <i class="ti ti-circle-check"></i> 標記已完成 PIF</button>
       </div>`).join('')+`</div>`
     : `<div class="empty" style="padding:24px"><i class="ti ti-clipboard-check"></i>目前沒有可完成的 PIF</div>`;
+  const doneAll=products.filter(p=>p.status==='completed');
+  h += `<div class="sect mt">已完成 PIF 明細（含客戶）</div>`;
+  h += doneAll.length ? `<div class="stack">`+ doneAll.map(p=>`
+      <div class="card row"><span><span class="nm" style="font-size:15px">${p.name}</span><br><span class="sub">${custName(p)} · 完成 ${p.batch||''}</span></span>
+      <span class="pill pill--s"><i class="ti ti-circle-check"></i> 已完成</span></div>`).join('')+`</div>`
+    : `<div class="card faint" style="text-align:center;padding:18px">尚無已完成 PIF</div>`;
   return h;
 }
 
@@ -586,15 +641,28 @@ function addItemsScreen(){
   return h;
 }
 function photoMode(){
+  if(ocrBusy) return `<div class="uparea">
+      <i class="ti ti-loader-2" style="font-size:30px;color:var(--accent)"></i>
+      <p style="margin:10px 0 0;font-size:14px" class="muted">辨識中…首次需下載辨識模型，請稍候</p></div>`;
   return `<div class="uparea">
       <i class="ti ti-camera" style="font-size:34px;color:var(--faint)"></i>
-      <p style="margin:8px 0 0;font-size:14px" class="muted">上傳截圖或拍照，自動辨識品名</p>
+      <p style="margin:8px 0 0;font-size:14px" class="muted">上傳截圖或拍照，自動辨識文字帶入品名</p>
       <label class="btn btn--ghost btn--sm" style="margin-top:12px;width:auto;display:inline-flex">
         <i class="ti ti-upload"></i> 選擇圖片
         <input type="file" accept="image/*" style="display:none" onchange="A.photoRecognized(this)">
       </label>
     </div>
-    <div class="faint" style="font-size:12px;margin-top:8px;text-align:center">原型示意：正式版接 OCR 自動帶入品名，可一次多筆。</div>`;
+    <div class="faint" style="font-size:12px;margin-top:8px;text-align:center">以 OCR 辨識圖中文字並拆成多行，請確認後加入。</div>`;
+}
+function sharedPifScreen(){
+  return `<div class="hd"><div><h1>依洛嘉 PIF 共用清單</h1><p>已有 PIF、可共用的產品</p></div>
+      <button class="iconbtn" onclick="A.closeSharedPIF()" title="關閉"><i class="ti ti-x"></i></button></div>
+    <div class="screen">
+      <div class="note" style="margin-bottom:14px"><i class="ti ti-files"></i>這些是依洛嘉已做過 PIF 的產品，點「共用」即可沿用，加入你的計劃清單。</div>
+      <div class="stack">${sharedPIF.map((it,i)=>`
+        <div class="card row"><span><span class="nm" style="font-size:15px">${it.name}</span><br><span class="sub">${it.type} · 已有 PIF</span></span>
+          <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px" onclick="A.sharePIF(${i})">共用</button></div>`).join('')}</div>
+    </div>`;
 }
 function textMode(){
   return `<label class="lbl">貼上聊天記錄或品名清單</label>
@@ -657,19 +725,32 @@ function staffSection(){
   return h;
 }
 function customerSection(){
-  let h = `<div class="note" style="margin:16px 0 12px"><i class="ti ti-user-check"></i>客戶以 Google／LINE 自由註冊，管理者在此審核或停用。</div>`;
-  h += `<div class="stack">`+ customers.map((c,i)=>{
-    const sc = c.status==='已啟用'?'s':(c.status==='待審核'?'w':'n');
+  const pend=customers.filter(c=>c.status==='待審核');
+  const active=customers.filter(c=>c.status==='已啟用');
+  const off=customers.filter(c=>c.status==='已停用');
+  const card=(c)=>{
+    const i=customers.indexOf(c);
+    const sc=c.status==='已啟用'?'s':(c.status==='待審核'?'w':'n');
     let act='';
     if(c.status==='待審核') act=`<div style="display:flex;gap:8px;margin-top:10px">
         <button class="btn btn--ok btn--sm" onclick="A.approveCust(${i})"><i class="ti ti-check"></i> 審核通過</button>
-        <button class="btn btn--ghost btn--sm" onclick="A.disableCust(${i})">停用</button></div>`;
+        <button class="btn btn--ghost btn--sm" onclick="A.disableCust(${i})">拒絕</button></div>`;
     else if(c.status==='已啟用') act=`<button class="btn btn--ghost btn--sm" style="margin-top:10px" onclick="A.disableCust(${i})"><i class="ti ti-ban"></i> 停用</button>`;
     else act=`<button class="btn btn--sm" style="margin-top:10px" onclick="A.enableCust(${i})"><i class="ti ti-rotate"></i> 重新啟用</button>`;
     return `<div class="card"><div class="row"><span class="nm" style="font-size:15px">${c.name}</span>
       <span class="pill pill--${sc}">${c.status}</span></div>
       <div class="sub" style="margin-top:4px">${c.email||'尚未綁定'} · 登入：${c.login}</div>${act}</div>`;
-  }).join('')+`</div>`;
+  };
+  let h=`<div style="display:flex;gap:10px;margin:16px 0 14px">
+      <div class="card" style="flex:1;text-align:center;padding:12px"><div style="font-size:24px;font-weight:700">${active.length}</div><div class="sub">已註冊帳號</div></div>
+      <div class="card" style="flex:1;text-align:center;padding:12px;border-color:var(--w)"><div style="font-size:24px;font-weight:700;color:var(--w)">${pend.length}</div><div class="sub">客戶申請</div></div>
+    </div>
+    <div class="note" style="margin-bottom:12px"><i class="ti ti-user-check"></i>客戶以 Google／LINE 自由註冊，管理者在此審核或停用。</div>`;
+  if(pend.length){ h+=`<div class="sect">客戶申請（待審核）</div><div class="stack">`+pend.map(card).join('')+`</div>`; }
+  const reg=active.concat(off);
+  h+=`<div class="sect mt">已註冊帳號（${reg.length}）· 公司名</div>`;
+  h+= reg.length ? `<div class="stack">`+reg.map(card).join('')+`</div>`
+    : `<div class="card faint" style="text-align:center;padding:18px">尚無已註冊帳號</div>`;
   return h;
 }
 
@@ -692,7 +773,8 @@ const A = {
     syncDrafts(); if(!drafts.length){ A.toast('沒有可加入的品項'); return; }
     let uid=Date.now();
     drafts.forEach(d=>{
-      const base={id:'n'+(uid++),name:d.name,en:d.en||'',spec:d.spec||'',qty:d.qty||'',t:{fang:true,chang:true,wen:false}};
+      const ty=inferType(d.name);
+      const base={id:'n'+(uid++),name:d.name,en:d.en||'',spec:d.spec||'',qty:d.qty||'',amt:'',func:'',type:ty,t:defTests(ty)};
       if(addTarget==='eloga') Object.assign(base,{cust:addCust,status:'received',batch:'今日',invSel:true,feeSel:5000});
       else Object.assign(base,{mine:true,status:'pending',shipSel:true});
       products.push(base);
@@ -728,6 +810,7 @@ const A = {
     if(pw!=='ELG2025'){ A.toast('密碼錯誤'); return; }
     products.length=0; customers.length=0; drafts=[]; dataPid=null;
     me={ nameCh:'', nameEn:'', addrCh:'', addrEn:'', phone:'', filled:false };
+    try{ localStorage.removeItem('elg_state'); }catch(e){}
     wipeOpen=false; render(); A.toast('已清空所有資料');
   },
   closeAccounts(){ view='app'; render(); },
@@ -749,6 +832,27 @@ const A = {
   setElgTab(t){ elgTab=t; render(); },
   pickData(id){ dataPid=id; render(); },
   toggleTest(k){ const p=byId(dataPid); if(p){ p.t=p.t||{fang:true,chang:true,wen:false}; p.t[k]=!p.t[k]; } render(); },
+  setType(id,v){ const p=byId(id); if(p){ p.type=v; p.t=defTests(v); } render(); },
+  setAmt(id,v){ const p=byId(id); if(p) p.amt=v; save(); },
+  setFunc(id,v){ const p=byId(id); if(p) p.func=v; save(); },
+  openSharedPIF(){ view='shared-pif'; render(); },
+  closeSharedPIF(){ view='app'; custTab='submit'; render(); },
+  sharePIF(i){ const it=sharedPIF[i]; if(!it) return;
+    products.push({id:'s'+Date.now(),name:it.name,en:'',spec:'',qty:'',amt:'',func:'',type:it.type,t:defTests(it.type),mine:true,status:'pending',shipSel:true,shared:true});
+    render(); A.toast('已共用至計劃：'+it.name); },
+  async photoRecognized(input){
+    const file=input&&input.files&&input.files[0]; if(!file) return;
+    if(typeof Tesseract==='undefined'){ syncDrafts(); drafts.push({name:'（OCR 未載入，請手動填）',en:'',spec:'',qty:''}); render(); return; }
+    ocrBusy=true; render();
+    try{
+      const res=await Tesseract.recognize(file,'chi_tra+eng');
+      const got=parseLines((res&&res.data&&res.data.text)||'');
+      syncDrafts();
+      if(got.length) drafts=drafts.concat(got); else drafts.push({name:'（未辨識到品名，請手動填）',en:'',spec:'',qty:''});
+      A.toast('辨識完成，'+got.length+' 筆');
+    }catch(e){ syncDrafts(); drafts.push({name:'（辨識失敗，請手動填）',en:'',spec:'',qty:''}); A.toast('辨識失敗，請手動填'); }
+    ocrBusy=false; render();
+  },
   async exportSongyan(){
     if(typeof ExcelJS==='undefined'){ A.toast('Excel 函式庫載入中，請稍候再按'); return; }
     const list=products.filter(p=>['received','invoiced','reported','verified','completed'].includes(p.status))
@@ -846,6 +950,7 @@ const A = {
   }
 };
 window.A=A;
+load();
 render();
 </script>
 </body>
