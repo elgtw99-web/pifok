@@ -161,6 +161,17 @@ let dataTests={fang:true, chang:true, wen:false};
 let me={ nameCh:'', nameEn:'', addrCh:'', addrEn:'', phone:'', filled:false };
 const SAMPLE_ME={ nameCh:'晶寶企業行', nameEn:'Jingbao Co., Ltd.', addrCh:'高雄市大寮區琉球里巷尾路89之1號', addrEn:'No.89-1, Xiangwei Rd., Daliao Dist., Kaohsiung', phone:'07-1234567' };
 const custName = p => p.mine ? (me.nameCh||'（未填寫廠商名）') : p.cust;
+let acctTab='staff', addOpen=false, elgRole='主要管理者';
+let staff=[
+  {name:'洪莉晴', email:'admin@eloga.com', role:'主要管理者'},
+  {name:'前臺收件', email:'desk@eloga.com', role:'前臺'}
+];
+let customers=[
+  {name:'晶寶企業行', email:'jingbao@gmail.com', login:'Google', status:'已啟用'},
+  {name:'芊奕田生技', email:'chianyi@line.me', login:'LINE', status:'已啟用'},
+  {name:'夏芮蒂生技', email:'sharidy@gmail.com', login:'Google', status:'待審核'}
+];
+const ELG_TABS={ '主要管理者':['receive','data','invoice','pif','board'], '管理':['receive','data','invoice','pif'], '前臺':['receive','board'] };
 
 let products=[
   {id:'p1',cust:CUST,name:'玫瑰臉部精油',en:'Rose Facial Oil',spec:'100ml/瓶',qty:'4瓶',status:'pending',shipSel:true},
@@ -189,6 +200,8 @@ function render(){
   if(view==='eloga-login'){ app.innerHTML=elogaLogin(); return; }
   if(view==='customer-login'){ app.innerHTML=customerLogin(); return; }
   if(view==='customer-profile'){ app.innerHTML=customerProfile(); return; }
+  if(view==='eloga-accounts'){ app.innerHTML=elogaAccounts(); return; }
+  if(view==='board'){ app.innerHTML=boardScreen(); return; }
   app.innerHTML = role==='customer'? custApp() : elgApp();
 }
 function entryScreen(){
@@ -206,18 +219,26 @@ function entryScreen(){
       </button>
       <button class="entrycard" onclick="A.goLogin('customer')">
         <span class="ec-ic" style="background:var(--accent-tint);color:var(--accent)"><i class="ti ti-user"></i></span>
-        <span class="ec-t"><span class="nm">客戶</span><span class="sub">Google 或 LINE 登入</span></span>
+        <span class="ec-t"><span class="nm">客戶</span><span class="sub">Google 或 LINE 自由註冊登入</span></span>
+        <i class="ti ti-chevron-right faint" style="font-size:20px"></i>
+      </button>
+      <button class="entrycard" onclick="A.openBoard()">
+        <span class="ec-ic" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-clipboard-list"></i></span>
+        <span class="ec-t"><span class="nm">共同資訊看板</span><span class="sub">送驗中／完成 PIF · 免登入</span></span>
         <i class="ti ti-chevron-right faint" style="font-size:20px"></i>
       </button>
     </div>
   </div>`;
 }
 function elogaLogin(){
+  const chip=r=>`<button class="${elgRole===r?'on':''}" onclick="A.pickElgRole('${r}')">${r}</button>`;
   return `<div class="full">
     <button class="back" onclick="A.backEntry()"><i class="ti ti-arrow-left"></i> 返回</button>
     <div class="logintop"><div class="logo sm">依</div><h2>依洛嘉內部登入</h2><p class="muted">請輸入內部帳號</p></div>
     <label class="lbl">帳號</label><input class="fld" value="eloga.admin" style="margin-bottom:14px">
-    <label class="lbl">密碼</label><input class="fld" type="password" value="demo1234" style="margin-bottom:20px">
+    <label class="lbl">密碼</label><input class="fld" type="password" value="demo1234" style="margin-bottom:14px">
+    <label class="lbl">以身分登入（Demo · 測試權限）</label>
+    <div class="seg" style="margin-bottom:20px">${chip('主要管理者')}${chip('管理')}${chip('前臺')}</div>
     <button class="btn" onclick="A.loginEloga()"><i class="ti ti-login-2"></i> 登入</button>
   </div>`;
 }
@@ -344,21 +365,42 @@ function custPif(){
 
 /* ===================== ELOGA ===================== */
 function elgApp(){
-  const right=`<button class="iconbtn" onclick="A.logout()" title="登出"><i class="ti ti-logout"></i></button>`;
-  return header('依洛嘉 後臺', '管理 · 收件 洪莉晴', right) +
+  const allowed=ELG_TABS[elgRole]||ELG_TABS['主要管理者'];
+  if(!allowed.includes(elgTab)) elgTab=allowed[0];
+  const gear = elgRole==='主要管理者' ? `<button class="iconbtn" onclick="A.openAccounts()" title="帳號管理"><i class="ti ti-settings"></i></button>` : '';
+  const right=`<div style="display:flex;align-items:center;gap:14px">${gear}<button class="iconbtn" onclick="A.logout()" title="登出"><i class="ti ti-logout"></i></button></div>`;
+  const TI={ receive:['package-import','收件'], data:['file-spreadsheet','送驗資料'], invoice:['receipt-2','請款'], pif:['clipboard-check','完成 PIF'], board:['clipboard-list','看板'] };
+  const tabs=allowed.map(id=>tab(elgTab,id,TI[id][0],TI[id][1],'A.setElgTab')).join('');
+  return header('依洛嘉 後臺', elgRole+' · 收件 洪莉晴', right) +
     `<div class="screen">${elgScreen()}</div>` +
-    `<div class="tabbar">
-       ${tab(elgTab,'receive','package-import','收件','A.setElgTab')}
-       ${tab(elgTab,'data','file-spreadsheet','送驗資料','A.setElgTab')}
-       ${tab(elgTab,'invoice','receipt-2','請款','A.setElgTab')}
-       ${tab(elgTab,'pif','clipboard-check','完成 PIF','A.setElgTab')}
-     </div>`;
+    `<div class="tabbar">${tabs}</div>`;
 }
 function elgScreen(){
   if(elgTab==='receive') return elgReceive();
   if(elgTab==='data') return elgData();
   if(elgTab==='invoice') return elgInvoice();
+  if(elgTab==='board') return boardBody();
   return elgPif();
+}
+function boardBody(){
+  const inPif=products.filter(p=>p.status==='verified');
+  const done=products.filter(p=>p.status==='completed');
+  let h=`<div class="row sect"><span>送驗中（PIF 檢驗）</span><span class="pill pill--s">${inPif.length}</span></div>`;
+  h += inPif.length ? `<div class="stack">`+ inPif.map(p=>`
+      <div class="card row"><span class="nm" style="font-size:15px">${p.name}</span><span class="pill pill--s">送驗中</span></div>`).join('')+`</div>`
+    : `<div class="card faint" style="text-align:center;padding:18px">目前沒有送驗中品項</div>`;
+  h += `<div class="row sect mt"><span>已完成 PIF 明細</span><span class="pill pill--s">${done.length}</span></div>`;
+  h += done.length ? `<div class="stack">`+ done.map(p=>`
+      <div class="card row"><span><span class="nm" style="font-size:15px">${p.name}</span><br><span class="sub">完成 ${p.batch||''}</span></span>
+      <span class="pill pill--s"><i class="ti ti-circle-check"></i> 已完成</span></div>`).join('')+`</div>`
+    : `<div class="empty"><i class="ti ti-files-off"></i>尚無已完成 PIF</div>`;
+  h += `<div class="note" style="margin-top:14px"><i class="ti ti-eye"></i>共同資訊看板僅顯示品項與狀態，不揭露所屬客戶。</div>`;
+  return h;
+}
+function boardScreen(){
+  return `<div class="hd"><div><h1>共同資訊看板</h1><p>送驗中與完成 PIF 品項</p></div>
+      <button class="iconbtn" onclick="A.backEntry()" title="關閉"><i class="ti ti-x"></i></button></div>
+    <div class="screen">${boardBody()}</div>`;
 }
 function elgReceive(){
   const waiting=P('shipped');
@@ -471,12 +513,66 @@ function elgPif(){
   return h;
 }
 
+/* ---------- accounts ---------- */
+function elogaAccounts(){
+  const s = acctTab==='staff';
+  let h = `<div class="hd"><div><h1>帳號管理</h1><p>主要管理者 · 建立帳號與權限</p></div>
+      <button class="iconbtn" onclick="A.closeAccounts()" title="關閉"><i class="ti ti-x"></i></button></div>
+    <div class="screen">
+      <div class="seg" style="margin-top:0">
+        <button class="${s?'on':''}" onclick="A.acctTab('staff')">內部帳號</button>
+        <button class="${!s?'on':''}" onclick="A.acctTab('customer')">客戶帳號</button>
+      </div>
+      ${s? staffSection() : customerSection()}
+    </div>`;
+  return h;
+}
+function staffSection(){
+  let h = `<div class="stack" style="margin-top:16px">`+ staff.map(x=>`
+    <div class="card row"><span><span class="nm" style="font-size:15px">${x.name}</span><br><span class="sub">${x.email}</span></span>
+      <span class="pill pill--${x.role==='主要管理者'?'s':'i'}">${x.role}</span></div>`).join('')+`</div>`;
+  if(addOpen){
+    h += `<div class="card" style="margin-top:12px;border-color:var(--accent)">
+      <label class="lbl">姓名</label><input id="s_name" class="fld" placeholder="姓名" style="margin-bottom:10px">
+      <label class="lbl">Email（即帳號）</label><input id="s_mail" class="fld" placeholder="name@eloga.com" style="margin-bottom:10px">
+      <label class="lbl">角色</label>
+      <select id="s_role" class="fld" style="margin-bottom:12px"><option>主要管理者</option><option>前臺</option><option>管理</option></select>
+      <button class="btn btn--sm" onclick="A.addStaff()"><i class="ti ti-user-plus"></i> 建立帳號</button>
+    </div>`;
+  } else {
+    h += `<button class="btn btn--ghost" style="margin-top:14px" onclick="A.openAdd()"><i class="ti ti-plus"></i> 新增內部帳號</button>`;
+  }
+  h += `<div class="note" style="margin-top:14px"><i class="ti ti-shield-lock"></i>主要管理者可建立帳號並分配權限：前臺只能收件，管理可開請款、查帳。</div>`;
+  return h;
+}
+function customerSection(){
+  let h = `<div class="note" style="margin:16px 0 12px"><i class="ti ti-user-check"></i>客戶以 Google／LINE 自由註冊，管理者在此審核或停用。</div>`;
+  h += `<div class="stack">`+ customers.map((c,i)=>{
+    const sc = c.status==='已啟用'?'s':(c.status==='待審核'?'w':'n');
+    let act='';
+    if(c.status==='待審核') act=`<div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn--ok btn--sm" onclick="A.approveCust(${i})"><i class="ti ti-check"></i> 審核通過</button>
+        <button class="btn btn--ghost btn--sm" onclick="A.disableCust(${i})">停用</button></div>`;
+    else if(c.status==='已啟用') act=`<button class="btn btn--ghost btn--sm" style="margin-top:10px" onclick="A.disableCust(${i})"><i class="ti ti-ban"></i> 停用</button>`;
+    else act=`<button class="btn btn--sm" style="margin-top:10px" onclick="A.enableCust(${i})"><i class="ti ti-rotate"></i> 重新啟用</button>`;
+    return `<div class="card"><div class="row"><span class="nm" style="font-size:15px">${c.name}</span>
+      <span class="pill pill--${sc}">${c.status}</span></div>
+      <div class="sub" style="margin-top:4px">${c.email||'尚未綁定'} · 登入：${c.login}</div>${act}</div>`;
+  }).join('')+`</div>`;
+  return h;
+}
+
 /* ---------- actions ---------- */
 const A = {
   setRole(r){ role=r; render(); },
   goLogin(side){ view = side==='eloga'?'eloga-login':'customer-login'; render(); },
   backEntry(){ view='entry'; render(); },
-  loginEloga(){ role='eloga'; elgTab='receive'; view='app'; render(); },
+  loginEloga(){ role='eloga'; const a=ELG_TABS[elgRole]||['receive']; elgTab=a[0]; view='app'; render(); A.toast('以「'+elgRole+'」身分登入'); },
+  pickElgRole(r){ elgRole=r; render(); },
+  openBoard(){ view='board'; render(); },
+  approveCust(i){ customers[i].status='已啟用'; render(); A.toast('已審核通過：'+customers[i].name); },
+  disableCust(i){ customers[i].status='已停用'; render(); A.toast('已停用：'+customers[i].name); },
+  enableCust(i){ customers[i].status='已啟用'; render(); A.toast('已重新啟用：'+customers[i].name); },
   loginCustomer(provider){
     role='customer'; custTab='submit';
     if(!me.nameCh){ Object.assign(me, SAMPLE_ME); }
@@ -491,6 +587,22 @@ const A = {
     me.filled=true; view='app'; custTab='submit'; render(); A.toast('廠商資料已儲存');
   },
   logout(){ view='entry'; render(); },
+  openAccounts(){ view='eloga-accounts'; acctTab='staff'; addOpen=false; render(); },
+  closeAccounts(){ view='app'; render(); },
+  acctTab(t){ acctTab=t; addOpen=false; render(); },
+  openAdd(){ addOpen=true; render(); },
+  addStaff(){
+    const g=id=>((document.getElementById(id)||{}).value||'').trim();
+    const nm=g('s_name'), ml=g('s_mail'), rl=(document.getElementById('s_role')||{}).value||'管理';
+    if(!nm||!ml){ A.toast('請填姓名與 Email'); return; }
+    staff.push({name:nm,email:ml,role:rl}); addOpen=false; render(); A.toast('已建立內部帳號：'+rl);
+  },
+  addCustomer(){
+    const g=id=>((document.getElementById(id)||{}).value||'').trim();
+    const nm=g('c_name'), ml=g('c_mail');
+    if(!nm){ A.toast('請填廠商名稱'); return; }
+    customers.push({name:nm,email:ml,login:'—',status:'邀請中'}); addOpen=false; render(); A.toast('已建立客戶並寄出邀請');
+  },
   setCustTab(t){ custTab=t; render(); },
   setElgTab(t){ elgTab=t; render(); },
   pickData(id){ dataPid=id; dataTests={fang:true,chang:true,wen:false}; render(); },
