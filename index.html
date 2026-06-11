@@ -178,6 +178,7 @@ const SAMPLE_ME={ nameCh:'晶寶企業行', nameEn:'Jingbao Co., Ltd.', addrCh:'
 const custName = p => p.mine ? (me.nameCh||'（未填寫廠商名）') : p.cust;
 const CINFO = { '芊奕田生技':'台南市安平區建平一街56號', '夏芮蒂生技':'花蓮市中美路71-12號1樓' };
 const custAddr = p => p.mine ? (me.addrCh||'') : (CINFO[p.cust]||'');
+const ownedByMe = p => !!me.nameCh && custName(p)===me.nameCh;
 function inferType(name){
   const s=name||'';
   if(/精油|護髮油|卸妝油|唇膏|護唇|膏|膠囊/.test(s)) return '油劑';
@@ -190,6 +191,23 @@ function defTests(type){
   if(type==='面膜') return {fang:false,chang:true,wen:false};      // 面膜：微生物（常规9项）
   if(type==='液劑霜劑') return {fang:true,chang:true,wen:false};   // 其他液劑霜劑：防腐＋常规
   return {fang:false,chang:true,wen:false};
+}
+function cellText(v){
+  if(v===null||v===undefined) return '';
+  if(typeof v==='object'){
+    if(Array.isArray(v.richText)) return v.richText.map(t=>t.text).join('');
+    if(v.text!==undefined) return ''+v.text;
+    if(v.result!==undefined) return ''+v.result;
+    if(v.formula!==undefined) return '';
+    return '';
+  }
+  return ''+v;
+}
+function parseCompany(t){
+  t=t||'';
+  const nm=(t.match(/公司名[称稱]\s*[:：]?\s*([^\n]+)/)||[])[1]||'';
+  const ad=(t.match(/公司地址\s*[:：]?\s*([^\n]+)/)||[])[1]||'';
+  return { cname:nm.trim(), caddr:ad.trim() };
 }
 let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='', wipeOpen=false, ocrBusy=false;
 let sharedPIF=[
@@ -341,8 +359,8 @@ function custScreen(){
   return custPif();
 }
 function custSubmit(){
-  const pend = products.filter(p=>p.mine && p.status==='pending');
-  const prog = products.filter(p=>p.mine && ['shipped','received','invoiced','reported','verified'].includes(p.status));
+  const pend = products.filter(p=>ownedByMe(p) && p.status==='pending');
+  const prog = products.filter(p=>ownedByMe(p) && ['shipped','received','invoiced','reported','verified'].includes(p.status));
   const n = pend.filter(p=>p.shipSel).length;
   let h = `<div class="lnk" onclick="A.editProfile()" style="margin-bottom:10px">
       <span class="l"><i class="ti ti-building-store lead"></i>
@@ -374,7 +392,7 @@ function custSubmit(){
   return h;
 }
 function custBilling(){
-  const inv = products.filter(p=>p.mine && p.status==='invoiced');
+  const inv = products.filter(p=>ownedByMe(p) && p.status==='invoiced');
   const batches=[...new Set(inv.map(p=>p.batch))];
   let h = `<div class="sect">待匯款</div>`;
   if(batches.length){
@@ -392,7 +410,7 @@ function custBilling(){
   } else {
     h += `<div class="card faint" style="text-align:center;padding:22px">目前沒有待匯款的批次</div>`;
   }
-  const recent = products.filter(p=>p.mine && ['reported','verified','completed'].includes(p.status));
+  const recent = products.filter(p=>ownedByMe(p) && ['reported','verified','completed'].includes(p.status));
   h += `<div class="sect mt">近期批次</div>`;
   h += recent.length ? `<div class="stack">`+ recent.map(p=>`
       <div class="card row"><span><span class="nm" style="font-size:15px">${p.name}</span><br><span class="sub">${p.batch||''} 批次 · ${money(p.charge||0)}</span></span>
@@ -401,8 +419,8 @@ function custBilling(){
   return h;
 }
 function custPif(){
-  const done = products.filter(p=>p.mine && p.status==='completed');
-  const wip = products.filter(p=>p.mine && ['shipped','received','invoiced','reported','verified'].includes(p.status)).length;
+  const done = products.filter(p=>ownedByMe(p) && p.status==='completed');
+  const wip = products.filter(p=>ownedByMe(p) && ['shipped','received','invoiced','reported','verified'].includes(p.status)).length;
   let h = `<div class="note" style="margin-bottom:16px"><i class="ti ti-info-circle"></i>
       PIF 檔案存放於 Google 雲端硬碟，系統不提供下載，請至共享資料夾取檔。</div>`;
   h += done.length ? `<div class="stack">`+ done.map(p=>`
@@ -532,7 +550,12 @@ function elgData(){
     <button class="btn btn--ghost" style="margin-top:16px" onclick="A.openAddItems('eloga')"><i class="ti ti-plus"></i> 新增品項（手動／辨識）</button>
     <button class="btn" style="margin-top:10px" onclick="A.exportSongyan()">
       <i class="ti ti-file-spreadsheet"></i> 產生送驗清單 Excel（${exportable} 筆）</button>
-    <div class="faint" style="font-size:12px;margin-top:8px;text-align:center">匯出已接收以後的所有品項，依客戶合併、自動加總。</div>`;
+    <div class="faint" style="font-size:12px;margin-top:8px;text-align:center">匯出已接收以後的所有品項，依客戶合併、自動加總。</div>
+    <label class="btn btn--ghost" style="margin-top:14px;display:flex;cursor:pointer">
+      <i class="ti ti-file-import"></i> 匯入送驗清單 XLSX（回送客戶）
+      <input type="file" accept=".xlsx" style="display:none" onchange="A.importSongyan(this)">
+    </label>
+    <div class="faint" style="font-size:12px;margin-top:8px;text-align:center">依「公司資料」對應客戶名稱，逐筆建立並回送到客戶端。</div>`;
 }
 function elgInvoice(){
   const recv=P('received');
@@ -853,6 +876,39 @@ const A = {
     }catch(e){ syncDrafts(); drafts.push({name:'（辨識失敗，請手動填）',en:'',spec:'',qty:''}); A.toast('辨識失敗，請手動填'); }
     ocrBusy=false; render();
   },
+  async importSongyan(input){
+    const file=input&&input.files&&input.files[0]; if(!file) return;
+    if(typeof ExcelJS==='undefined'){ A.toast('Excel 函式庫未載入'); return; }
+    try{
+      const wb=new ExcelJS.Workbook();
+      await wb.xlsx.load(await file.arrayBuffer());
+      const ws=wb.worksheets[0]; if(!ws){ A.toast('讀不到工作表'); return; }
+      let lastCo='', nP=0, uid=Date.now(); const custSet=new Set();
+      ws.eachRow((row,rn)=>{
+        if(rn===1) return;
+        const name=cellText(row.getCell(2).value).trim();
+        if(!name) return;
+        const en=cellText(row.getCell(3).value).trim();
+        const spec=cellText(row.getCell(4).value).trim();
+        const qty=cellText(row.getCell(5).value).trim();
+        const f=cellText(row.getCell(6).value).trim()==='V';
+        const g=cellText(row.getCell(7).value).trim()==='V';
+        const hh=cellText(row.getCell(8).value).trim()==='V';
+        let co=cellText(row.getCell(9).value).trim(); if(co) lastCo=co; else co=lastCo;
+        const cm=parseCompany(co);
+        if(cm.cname){
+          if(!customers.find(c=>c.name===cm.cname)) customers.push({name:cm.cname,email:'',login:'匯入',status:'已啟用'});
+          if(cm.caddr) CINFO[cm.cname]=cm.caddr;
+          custSet.add(cm.cname);
+        }
+        const ty=inferType(name);
+        products.push({id:'imp'+(uid++),name,en,spec,qty,amt:'',func:'',type:ty,
+          t:{fang:f,chang:g,wen:hh},cust:cm.cname||'（未標客戶）',status:'verified',batch:'匯入'});
+        nP++;
+      });
+      render(); A.toast('已匯入 '+nP+' 筆 · '+custSet.size+' 個客戶，已回送客戶端');
+    }catch(e){ A.toast('匯入失敗：檔案格式不符'); }
+  },
   async exportSongyan(){
     if(typeof ExcelJS==='undefined'){ A.toast('Excel 函式庫載入中，請稍候再按'); return; }
     const list=products.filter(p=>['received','invoiced','reported','verified','completed'].includes(p.status))
@@ -918,7 +974,7 @@ const A = {
   toggleSelClass(){},
 
   arrange(){
-    const sel=products.filter(p=>p.mine && p.status==='pending' && p.shipSel);
+    const sel=products.filter(p=>ownedByMe(p) && p.status==='pending' && p.shipSel);
     if(!sel.length) return;
     sel.forEach(p=>p.status='shipped');
     render(); A.toast(`已安排寄送 ${sel.length} 項，依洛嘉前臺可收件`);
@@ -931,7 +987,7 @@ const A = {
     render(); A.toast(`已開請款單回送客戶（${sel.length} 項）`);
   },
   reportPay(batch){
-    products.filter(p=>p.mine && p.status==='invoiced' && p.batch===batch).forEach(p=>p.status='reported');
+    products.filter(p=>ownedByMe(p) && p.status==='invoiced' && p.batch===batch).forEach(p=>p.status='reported');
     render(); A.toast('已回報匯款，依洛嘉查帳中');
   },
   verify(id){ byId(id).status='verified'; render(); A.toast('查帳確認，產品轉送驗中'); },
