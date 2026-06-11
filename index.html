@@ -157,6 +157,7 @@
   .modeseg button i{ font-size:17px; }
   .uparea{ border:1.5px dashed var(--line2); border-radius:14px; padding:24px; text-align:center; }
   textarea.fld{ height:auto; padding:10px 13px; resize:none; }
+  .btn--danger{ background:#C0392B; }
 </style>
 </head>
 <body>
@@ -175,7 +176,7 @@ const SAMPLE_ME={ nameCh:'晶寶企業行', nameEn:'Jingbao Co., Ltd.', addrCh:'
 const custName = p => p.mine ? (me.nameCh||'（未填寫廠商名）') : p.cust;
 const CINFO = { '芊奕田生技':'台南市安平區建平一街56號', '夏芮蒂生技':'花蓮市中美路71-12號1樓' };
 const custAddr = p => p.mine ? (me.addrCh||'') : (CINFO[p.cust]||'');
-let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='';
+let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='', wipeOpen=false;
 let staff=[
   {name:'洪莉晴', email:'admin@eloga.com', role:'主要管理者'},
   {name:'前臺收件', email:'desk@eloga.com', role:'前臺'}
@@ -621,6 +622,19 @@ function elogaAccounts(){
         <button class="${!s?'on':''}" onclick="A.acctTab('customer')">客戶帳號</button>
       </div>
       ${s? staffSection() : customerSection()}
+      <div style="margin-top:28px;padding-top:16px;border-top:1px solid var(--line)">
+        ${ wipeOpen ? `
+          <div class="card" style="border-color:#C0392B">
+            <p class="nm" style="font-size:15px;color:#C0392B">清空所有資料</p>
+            <p class="sub" style="margin:4px 0 10px">將刪除所有送驗品項、客戶與廠商資料（內部帳號保留），無法復原。請輸入內部密碼確認。</p>
+            <input id="wipe_pw" class="fld" type="password" placeholder="內部密碼" style="margin-bottom:10px">
+            <div style="display:flex;gap:8px">
+              <button class="btn btn--danger btn--sm" onclick="A.doWipe()"><i class="ti ti-trash"></i> 確認清空</button>
+              <button class="btn btn--ghost btn--sm" onclick="A.cancelWipe()">取消</button>
+            </div>
+          </div>`
+        : `<button class="btn btn--ghost btn--sm" style="color:#C0392B;border-color:#E7C3BD" onclick="A.openWipe()"><i class="ti ti-trash"></i> 清空所有資料</button>` }
+      </div>
     </div>`;
   return h;
 }
@@ -706,7 +720,16 @@ const A = {
     me.filled=true; view='app'; custTab='submit'; render(); A.toast('廠商資料已儲存');
   },
   logout(){ view='entry'; render(); },
-  openAccounts(){ view='eloga-accounts'; acctTab='staff'; addOpen=false; render(); },
+  openAccounts(){ view='eloga-accounts'; acctTab='staff'; addOpen=false; wipeOpen=false; render(); },
+  openWipe(){ wipeOpen=true; render(); },
+  cancelWipe(){ wipeOpen=false; render(); },
+  doWipe(){
+    const pw=((document.getElementById('wipe_pw')||{}).value||'').trim();
+    if(pw!=='ELG2025'){ A.toast('密碼錯誤'); return; }
+    products.length=0; customers.length=0; drafts=[]; dataPid=null;
+    me={ nameCh:'', nameEn:'', addrCh:'', addrEn:'', phone:'', filled:false };
+    wipeOpen=false; render(); A.toast('已清空所有資料');
+  },
   closeAccounts(){ view='app'; render(); },
   acctTab(t){ acctTab=t; addOpen=false; render(); },
   openAdd(){ addOpen=true; render(); },
