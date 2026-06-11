@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>依洛嘉送驗系統 · 流程原型</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.7.0/tabler-icons.min.css">
+<style>
+  :root{
+    --bg:#E8E6E0; --surface:#FFFFFF; --ink:#1A1A1C; --muted:#6E6E73; --faint:#A0A09A;
+    --line:#EAE8E3; --line2:#DBD9D2; --accent:#0E7C6B; --accent-tint:#E2F0EC;
+    --i:#1D4ED8; --i-bg:#EAEEFB; --w:#A45A09; --w-bg:#F7EEDC;
+    --s:#15803D; --s-bg:#E7F2EB; --n:#5B5B60; --n-bg:#EFEEEA;
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang TC","Noto Sans TC",Roboto,sans-serif;
+    background:var(--bg); color:var(--ink); line-height:1.5;
+    display:flex; flex-direction:column; align-items:center; min-height:100vh; padding:18px 14px 40px;
+  }
+  .roleseg{
+    display:flex; gap:4px; background:var(--surface); border:1px solid var(--line2);
+    border-radius:13px; padding:4px; width:100%; max-width:390px; margin-bottom:14px;
+  }
+  .roleseg button{
+    flex:1; border:0; background:transparent; color:var(--muted); font-size:15px; font-weight:600;
+    padding:10px; border-radius:9px; cursor:pointer; font-family:inherit;
+  }
+  .roleseg button.on{ background:var(--ink); color:#fff; }
+
+  .phone{
+    width:100%; max-width:390px; height:760px; background:var(--surface);
+    border:1px solid var(--line2); border-radius:30px; overflow:hidden; position:relative;
+    display:flex; flex-direction:column; box-shadow:0 18px 50px -20px rgba(0,0,0,.28);
+  }
+  .hd{
+    padding:18px 20px 14px; border-bottom:1px solid var(--line); display:flex;
+    align-items:center; justify-content:space-between; gap:10px; flex:none;
+  }
+  .hd h1{ margin:0; font-size:19px; font-weight:700; letter-spacing:-.01em; }
+  .hd p{ margin:3px 0 0; font-size:13px; color:var(--muted); }
+  .hd .av{ width:38px;height:38px;border-radius:50%;background:var(--accent-tint);color:var(--accent);
+    display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;flex:none;}
+  .hd .ic{ font-size:23px;color:var(--faint); }
+
+  .screen{ flex:1; overflow-y:auto; padding:18px 20px 24px; }
+  .tabbar{ display:flex; border-top:1px solid var(--line); flex:none; background:var(--surface); }
+  .tabbar button{
+    flex:1; border:0; background:transparent; padding:9px 2px 12px; cursor:pointer; font-family:inherit;
+    color:var(--faint); font-size:11px; font-weight:600; display:flex; flex-direction:column; align-items:center; gap:3px;
+  }
+  .tabbar button i{ font-size:21px; }
+  .tabbar button.on{ color:var(--ink); }
+
+  .sect{ font-size:15px; font-weight:700; margin:0 0 10px; }
+  .sect.mt{ margin-top:22px; }
+  .muted{ color:var(--muted); } .faint{ color:var(--faint); }
+  .card{ border:1px solid var(--line2); border-radius:14px; padding:15px; }
+  .card+.card{ margin-top:10px; }
+  .row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .stack{ display:flex; flex-direction:column; gap:10px; }
+  .nm{ font-size:16px; font-weight:600; }
+  .sub{ font-size:13px; color:var(--muted); margin-top:3px; }
+
+  .pill{ font-size:12px; font-weight:600; padding:4px 11px; border-radius:9px; white-space:nowrap; }
+  .pill--n{ background:var(--n-bg); color:var(--n); }
+  .pill--i{ background:var(--i-bg); color:var(--i); }
+  .pill--w{ background:var(--w-bg); color:var(--w); }
+  .pill--s{ background:var(--s-bg); color:var(--s); }
+
+  .btn{ width:100%; border:0; background:var(--ink); color:#fff; font-size:16px; font-weight:600;
+    height:50px; border-radius:13px; cursor:pointer; font-family:inherit;
+    display:flex; align-items:center; justify-content:center; gap:8px; }
+  .btn i{ font-size:20px; }
+  .btn:disabled{ opacity:.4; cursor:default; }
+  .btn--sm{ height:44px; font-size:15px; }
+  .btn--ghost{ background:var(--surface); color:var(--ink); border:1px solid var(--line2); }
+  .btn--ok{ background:var(--accent); }
+
+  .lnk{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:14px 15px;
+    border:1px solid var(--line2); border-radius:14px; cursor:pointer; }
+  .lnk .l{ display:flex; align-items:center; gap:12px; }
+  .lnk i.lead{ font-size:23px; color:var(--accent); }
+
+  .selrow{ display:flex; align-items:center; gap:12px; padding:13px 14px; border:1px solid var(--line2);
+    border-radius:13px; cursor:pointer; }
+  .selrow.on{ border-color:var(--accent); background:var(--accent-tint); }
+  .ck{ width:22px;height:22px;border-radius:7px;border:2px solid var(--line2);flex:none;
+    display:flex;align-items:center;justify-content:center;color:#fff; }
+  .ck i{ font-size:15px; opacity:0; }
+  .selrow.on .ck{ background:var(--accent); border-color:var(--accent); }
+  .selrow.on .ck i{ opacity:1; }
+
+  .seg{ display:flex; gap:8px; margin-top:10px; }
+  .seg button{ flex:1; height:42px; border:1px solid var(--line2); background:var(--surface); color:var(--ink);
+    border-radius:11px; font-size:15px; font-weight:600; cursor:pointer; font-family:inherit; }
+  .seg button.on{ border-color:var(--accent); background:var(--accent-tint); color:var(--accent); }
+
+  .total{ display:flex; align-items:baseline; justify-content:space-between; margin-top:14px;
+    padding-top:13px; border-top:1px solid var(--line); }
+  .total .amt{ font-size:24px; font-weight:700; }
+
+  .note{ display:flex; gap:8px; align-items:flex-start; background:var(--n-bg); border-radius:12px;
+    padding:11px 14px; font-size:13px; color:var(--muted); }
+  .note i{ font-size:18px; margin-top:1px; }
+
+  input.fld{ width:100%; height:44px; border:1px solid var(--line2); border-radius:11px; padding:0 13px;
+    font-size:15px; font-family:inherit; color:var(--ink); background:var(--surface); }
+  input.fld::placeholder{ color:var(--faint); }
+  label.lbl{ display:block; font-size:13px; font-weight:600; color:var(--muted); margin:0 0 6px; }
+  select.fld{ width:100%; height:46px; border:1px solid var(--line2); border-radius:12px; padding:0 12px;
+    font-size:15px; font-family:inherit; background:var(--surface); color:var(--ink); }
+
+  .addr{ background:var(--n-bg); border-radius:12px; padding:11px 14px; }
+  .addr .t{ font-size:12px; color:var(--muted); } .addr .a{ font-size:13px; margin-top:2px; }
+
+  .empty{ text-align:center; color:var(--faint); padding:48px 16px; font-size:14px; }
+  .empty i{ font-size:34px; display:block; margin-bottom:10px; }
+
+  .toast{ position:absolute; left:16px; right:16px; bottom:78px; background:var(--ink); color:#fff;
+    padding:13px 16px; border-radius:13px; font-size:14px; text-align:center; opacity:0;
+    transform:translateY(8px); transition:.25s; pointer-events:none; }
+  .toast.show{ opacity:1; transform:translateY(0); }
+  .miniline{ display:flex; justify-content:space-between; font-size:14px; padding:5px 0; }
+
+  #app{ flex:1; display:flex; flex-direction:column; min-height:0; }
+  .full{ flex:1; padding:28px 24px; display:flex; flex-direction:column; overflow-y:auto; }
+  .brand{ text-align:center; margin-top:36px; }
+  .logo{ width:64px;height:64px;border-radius:18px;background:var(--ink);color:#fff;font-size:28px;font-weight:700;
+    display:flex;align-items:center;justify-content:center;margin:0 auto 16px; }
+  .logo.sm{ width:52px;height:52px;font-size:22px;border-radius:15px;margin-bottom:14px; }
+  .brand h1{ margin:0;font-size:23px;font-weight:700;letter-spacing:-.01em; }
+  .brand p{ margin:6px 0 0; }
+  .entrycard{ display:flex;align-items:center;gap:14px;width:100%;text-align:left;background:var(--surface);
+    border:1px solid var(--line2);border-radius:16px;padding:16px;cursor:pointer;font-family:inherit; }
+  .ec-ic{ width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:24px;flex:none; }
+  .ec-t{ flex:1;display:flex;flex-direction:column; } .ec-t .sub{ margin-top:2px; }
+  .back{ background:transparent;border:0;color:var(--muted);font-size:15px;font-weight:600;font-family:inherit;
+    display:flex;align-items:center;gap:6px;cursor:pointer;padding:0;margin-bottom:8px; }
+  .back i{ font-size:19px; }
+  .logintop{ text-align:center;margin:22px 0 26px; } .logintop h2{ margin:0;font-size:21px;font-weight:700; }
+  .logintop p{ margin:4px 0 0; }
+  .linebtn{ background:#06C755; }
+  .iconbtn{ background:transparent;border:0;color:var(--faint);cursor:pointer;padding:0;display:flex;font-family:inherit; }
+  .iconbtn i{ font-size:22px; }
+</style>
+</head>
+<body>
+  <div class="phone">
+    <div id="app"></div>
+    <div class="toast" id="toast"></div>
+  </div>
+
+<script>
+const CUST = '晶寶企業行';
+const ADDR = '台南市佳里區佳興里宅興二街600號 · 洪莉晴 收';
+const FACTORY = 'E.L.G International Trading（依洛嘉）· 台南市佳里區佳興里宅興二街600號';
+let view='entry', role='customer', custTab='submit', elgTab='receive', dataPid=null, editingProfile=false;
+let dataTests={fang:true, chang:true, wen:false};
+let me={ nameCh:'', nameEn:'', addrCh:'', addrEn:'', phone:'', filled:false };
+const SAMPLE_ME={ nameCh:'晶寶企業行', nameEn:'Jingbao Co., Ltd.', addrCh:'高雄市大寮區琉球里巷尾路89之1號', addrEn:'No.89-1, Xiangwei Rd., Daliao Dist., Kaohsiung', phone:'07-1234567' };
+const custName = p => p.mine ? (me.nameCh||'（未填寫廠商名）') : p.cust;
+
+let products=[
+  {id:'p1',cust:CUST,name:'玫瑰臉部精油',en:'Rose Facial Oil',spec:'100ml/瓶',qty:'4瓶',status:'pending',shipSel:true},
+  {id:'p2',cust:CUST,name:'舒緩夜語精油',en:'Calming Night Oil',spec:'100ml/瓶',qty:'4瓶',status:'pending',shipSel:true},
+  {id:'p3',cust:CUST,name:'B5 賦活保濕安瓶',en:'B5 Revita Ampoule',spec:'30ml',qty:'5瓶',status:'shipped'},
+  {id:'p4',cust:CUST,name:'蘆薈清爽去角質凝膠',en:'Aloe Peeling Gel',spec:'100g/瓶',qty:'3瓶',status:'received',batch:'6/11',invSel:true,feeSel:5000},
+  {id:'p5',cust:'芊奕田生技',name:'永恆之肌天絲面膜',en:'Eternal Tencel Mask',spec:'25ml×5',qty:'2盒',status:'received',batch:'6/11',invSel:true,feeSel:10000},
+  {id:'p6',cust:CUST,name:'深層卸妝棉',en:'Deep Cleansing Pad',spec:'80片',qty:'4盒',status:'invoiced',batch:'6/05',charge:5000},
+  {id:'p7',cust:CUST,name:'淨白安瓶',en:'Brightening Ampoule',spec:'30ml',qty:'5瓶',status:'reported',batch:'6/05',charge:10000},
+  {id:'p8',cust:CUST,name:'保濕精華',en:'Hydra Serum',spec:'50ml',qty:'3瓶',status:'verified',batch:'5/28',charge:5000},
+  {id:'p9',cust:CUST,name:'修護面霜',en:'Repair Cream',spec:'50g',qty:'2瓶',status:'completed',batch:'5/20',charge:10000,drive:'https://drive.google.com'}
+];
+products.forEach(p=>{ if(p.cust===CUST) p.mine=true; });
+
+const SM={ pending:['待寄送','n'], shipped:['已寄送','i'], received:['已接收','i'],
+  invoiced:['待匯款','w'], reported:['查帳中','w'], verified:['送驗中','s'], completed:['已完成 PIF','s'] };
+const pill = s => `<span class="pill pill--${SM[s][1]}">${SM[s][0]}</span>`;
+const byId = id => products.find(p=>p.id===id);
+const money = n => '$'+n.toLocaleString();
+const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
+
+/* ---------- shell ---------- */
+function render(){
+  const app=document.getElementById('app');
+  if(view==='entry'){ app.innerHTML=entryScreen(); return; }
+  if(view==='eloga-login'){ app.innerHTML=elogaLogin(); return; }
+  if(view==='customer-login'){ app.innerHTML=customerLogin(); return; }
+  if(view==='customer-profile'){ app.innerHTML=customerProfile(); return; }
+  app.innerHTML = role==='customer'? custApp() : elgApp();
+}
+function entryScreen(){
+  return `<div class="full">
+    <div class="brand">
+      <div class="logo">依</div>
+      <h1>依洛嘉送驗系統</h1>
+      <p class="muted">請選擇登入身分</p>
+    </div>
+    <div class="stack" style="margin-top:28px">
+      <button class="entrycard" onclick="A.goLogin('eloga')">
+        <span class="ec-ic" style="background:var(--n-bg);color:var(--ink)"><i class="ti ti-building-warehouse"></i></span>
+        <span class="ec-t"><span class="nm">依洛嘉內部</span><span class="sub">帳號登入</span></span>
+        <i class="ti ti-chevron-right faint" style="font-size:20px"></i>
+      </button>
+      <button class="entrycard" onclick="A.goLogin('customer')">
+        <span class="ec-ic" style="background:var(--accent-tint);color:var(--accent)"><i class="ti ti-user"></i></span>
+        <span class="ec-t"><span class="nm">客戶</span><span class="sub">Google 或 LINE 登入</span></span>
+        <i class="ti ti-chevron-right faint" style="font-size:20px"></i>
+      </button>
+    </div>
+  </div>`;
+}
+function elogaLogin(){
+  return `<div class="full">
+    <button class="back" onclick="A.backEntry()"><i class="ti ti-arrow-left"></i> 返回</button>
+    <div class="logintop"><div class="logo sm">依</div><h2>依洛嘉內部登入</h2><p class="muted">請輸入內部帳號</p></div>
+    <label class="lbl">帳號</label><input class="fld" value="eloga.admin" style="margin-bottom:14px">
+    <label class="lbl">密碼</label><input class="fld" type="password" value="demo1234" style="margin-bottom:20px">
+    <button class="btn" onclick="A.loginEloga()"><i class="ti ti-login-2"></i> 登入</button>
+  </div>`;
+}
+function customerLogin(){
+  return `<div class="full">
+    <button class="back" onclick="A.backEntry()"><i class="ti ti-arrow-left"></i> 返回</button>
+    <div class="logintop"><div class="logo sm" style="background:var(--accent-tint);color:var(--accent)"><i class="ti ti-user"></i></div>
+      <h2>客戶登入</h2><p class="muted">選擇你慣用的帳號登入</p></div>
+    <button class="btn btn--ghost" style="margin-bottom:12px" onclick="A.loginCustomer('Google')"><i class="ti ti-brand-google" style="color:#4285F4"></i> 使用 Google 登入</button>
+    <button class="btn linebtn" onclick="A.loginCustomer('LINE')"><i class="ti ti-brand-line"></i> 使用 LINE 登入</button>
+    <div class="note" style="margin-top:18px"><i class="ti ti-info-circle"></i>用 LINE 登入的話，取 PIF 檔案前需留一個 Gmail，才能收到雲端硬碟資料夾分享。</div>
+  </div>`;
+}
+function customerProfile(){
+  return `<div class="full">
+    <button class="back" onclick="A.profileBack()"><i class="ti ti-arrow-left"></i> 返回</button>
+    <div class="logintop" style="margin:14px 0 20px"><h2>填寫廠商資料</h2><p class="muted">這份資料會帶入送驗清單的「送驗廠商」欄位</p></div>
+    <label class="lbl">公司名稱（中文）</label><input id="m_nch" class="fld" value="${me.nameCh}" placeholder="例：晶寶企業行" style="margin-bottom:12px">
+    <label class="lbl">公司名稱（英文）</label><input id="m_nen" class="fld" value="${me.nameEn}" placeholder="Company name" style="margin-bottom:12px">
+    <label class="lbl">公司地址（中文）</label><input id="m_ach" class="fld" value="${me.addrCh}" placeholder="中文地址" style="margin-bottom:12px">
+    <label class="lbl">公司地址（英文）</label><input id="m_aen" class="fld" value="${me.addrEn}" placeholder="Address in English" style="margin-bottom:12px">
+    <label class="lbl">聯絡電話</label><input id="m_tel" class="fld" value="${me.phone}" placeholder="例：07-1234567" style="margin-bottom:16px">
+    <div class="note" style="margin-bottom:18px"><i class="ti ti-building-factory-2"></i>工廠固定為 ${FACTORY}，由系統自動帶入、不需填寫。</div>
+    <button class="btn" onclick="A.saveProfile()"><i class="ti ti-device-floppy"></i> 儲存並進入</button>
+  </div>`;
+}
+const header = (t,s,right) =>
+  `<div class="hd"><div><h1>${t}</h1>${s?`<p>${s}</p>`:''}</div>${right||''}</div>`;
+const tab = (cur,id,ic,label,fn) =>
+  `<button class="${cur===id?'on':''}" onclick="${fn}('${id}')"><i class="ti ti-${ic}"></i>${label}</button>`;
+
+/* ===================== CUSTOMER ===================== */
+function custApp(){
+  const right=`<div style="display:flex;align-items:center;gap:12px"><button class="iconbtn" onclick="A.logout()" title="登出"><i class="ti ti-logout"></i></button><div class="av">${(me.nameCh||'客')[0]}</div></div>`;
+  return header('依洛嘉送驗', me.nameCh||'客戶', right) +
+    `<div class="screen">${custScreen()}</div>` +
+    `<div class="tabbar">
+       ${tab(custTab,'submit','clipboard-plus','送驗','A.setCustTab')}
+       ${tab(custTab,'billing','receipt','帳務','A.setCustTab')}
+       ${tab(custTab,'pif','files','已完成 PIF','A.setCustTab')}
+     </div>`;
+}
+function custScreen(){
+  if(custTab==='submit') return custSubmit();
+  if(custTab==='billing') return custBilling();
+  return custPif();
+}
+function custSubmit(){
+  const pend = products.filter(p=>p.mine && p.status==='pending');
+  const prog = products.filter(p=>p.mine && ['shipped','received','invoiced','reported','verified'].includes(p.status));
+  const n = pend.filter(p=>p.shipSel).length;
+  let h = `<div class="lnk" onclick="A.editProfile()" style="margin-bottom:10px">
+      <span class="l"><i class="ti ti-building-store lead"></i>
+      <span><span class="nm">廠商資料 · 已填</span><br><span class="sub">${me.nameCh} · ${me.addrCh||''}</span></span></span>
+      <span class="muted" style="font-size:13px;font-weight:600">編輯</span></div>`;
+  h += `<div class="lnk" onclick="A.toast('開啟依洛嘉 PIF 共用清單（示意）')">
+      <span class="l"><i class="ti ti-files lead"></i>
+      <span><span class="nm">依洛嘉 PIF 共用清單</span><br><span class="sub">可共用 12 項</span></span></span>
+      <i class="ti ti-chevron-right faint" style="font-size:20px"></i></div>`;
+
+  h += `<div class="row sect mt"><span>尚未寄送樣品</span><span class="muted" style="font-size:13px;font-weight:600">+ 新增計劃產品</span></div>`;
+  if(pend.length){
+    h += `<div class="stack">`+ pend.map(p=>`
+      <div class="selrow ${p.shipSel?'on':''}" onclick="A.toggleShip('${p.id}')">
+        <span class="ck"><i class="ti ti-check"></i></span>
+        <span style="flex:1"><span class="nm">${p.name}</span><br><span class="sub">${p.spec} · ${p.qty}</span></span>
+      </div>`).join('') + `</div>`;
+    h += `<div class="addr" style="margin-top:12px"><div class="t">寄送至</div><div class="a">${ADDR}</div></div>`;
+    h += `<button class="btn" style="margin-top:10px" ${n?'':'disabled'} onclick="A.arrange()">
+            <i class="ti ti-truck-delivery"></i> 安排寄送（${n}）</button>`;
+  } else {
+    h += `<div class="card faint" style="text-align:center;padding:22px">已全部安排寄送</div>`;
+  }
+
+  h += `<div class="sect mt">進行中</div>`;
+  h += prog.length ? `<div class="stack">`+ prog.map(p=>`
+      <div class="card row"><span class="nm" style="font-size:15px">${p.name}</span>${pill(p.status)}</div>`).join('')+`</div>`
+    : `<div class="empty"><i class="ti ti-progress"></i>還沒有進行中的樣品</div>`;
+  return h;
+}
+function custBilling(){
+  const inv = products.filter(p=>p.mine && p.status==='invoiced');
+  const batches=[...new Set(inv.map(p=>p.batch))];
+  let h = `<div class="sect">待匯款</div>`;
+  if(batches.length){
+    h += batches.map(b=>{
+      const items=inv.filter(p=>p.batch===b);
+      const tot=items.reduce((s,p)=>s+p.charge,0);
+      return `<div class="card" style="border-color:var(--w)">
+        <div class="row"><span class="nm">${b} 收到整批</span><span class="pill pill--w">待匯款</span></div>
+        <div class="sub" style="margin-bottom:8px">${items.length} 項樣品</div>
+        ${items.map(p=>`<div class="miniline"><span>${p.name}</span><span>${money(p.charge)}</span></div>`).join('')}
+        <div class="total"><span class="muted">整批合計</span><span class="amt">${money(tot)}</span></div>
+        <button class="btn" style="margin-top:12px" onclick="A.reportPay('${b}')"><i class="ti ti-check"></i> 整批回報已匯款</button>
+      </div>`;
+    }).join('');
+  } else {
+    h += `<div class="card faint" style="text-align:center;padding:22px">目前沒有待匯款的批次</div>`;
+  }
+  const recent = products.filter(p=>p.mine && ['reported','verified','completed'].includes(p.status));
+  h += `<div class="sect mt">近期批次</div>`;
+  h += recent.length ? `<div class="stack">`+ recent.map(p=>`
+      <div class="card row"><span><span class="nm" style="font-size:15px">${p.name}</span><br><span class="sub">${p.batch||''} 批次 · ${money(p.charge||0)}</span></span>
+      ${pill(p.status==='completed'?'verified':p.status)}</div>`).join('')+`</div>`
+    : `<div class="empty"><i class="ti ti-history"></i>尚無紀錄</div>`;
+  return h;
+}
+function custPif(){
+  const done = products.filter(p=>p.mine && p.status==='completed');
+  const wip = products.filter(p=>p.mine && ['shipped','received','invoiced','reported','verified'].includes(p.status)).length;
+  let h = `<div class="note" style="margin-bottom:16px"><i class="ti ti-info-circle"></i>
+      PIF 檔案存放於 Google 雲端硬碟，系統不提供下載，請至共享資料夾取檔。</div>`;
+  h += done.length ? `<div class="stack">`+ done.map(p=>`
+      <div class="card">
+        <div class="row"><span class="nm">${p.name}</span><span class="pill pill--s"><i class="ti ti-circle-check"></i> 已完成 PIF</span></div>
+        <div class="sub">完成 ${p.batch||''}</div>
+        <button class="btn btn--ghost btn--sm" style="margin-top:12px" onclick="A.openDrive('${p.id}')">
+          <i class="ti ti-cloud"></i> 在 Google 雲端硬碟開啟 <i class="ti ti-external-link" style="font-size:16px"></i></button>
+      </div>`).join('')+`</div>`
+    : `<div class="empty"><i class="ti ti-files-off"></i>還沒有已完成的 PIF</div>`;
+  if(wip) h += `<div class="note" style="margin-top:14px"><i class="ti ti-progress"></i>送驗中 ${wip} 項，完成後會自動出現在這裡。</div>`;
+  return h;
+}
+
+/* ===================== ELOGA ===================== */
+function elgApp(){
+  const right=`<button class="iconbtn" onclick="A.logout()" title="登出"><i class="ti ti-logout"></i></button>`;
+  return header('依洛嘉 後臺', '管理 · 收件 洪莉晴', right) +
+    `<div class="screen">${elgScreen()}</div>` +
+    `<div class="tabbar">
+       ${tab(elgTab,'receive','package-import','收件','A.setElgTab')}
+       ${tab(elgTab,'data','file-spreadsheet','送驗資料','A.setElgTab')}
+       ${tab(elgTab,'invoice','receipt-2','請款','A.setElgTab')}
+       ${tab(elgTab,'pif','clipboard-check','完成 PIF','A.setElgTab')}
+     </div>`;
+}
+function elgScreen(){
+  if(elgTab==='receive') return elgReceive();
+  if(elgTab==='data') return elgData();
+  if(elgTab==='invoice') return elgInvoice();
+  return elgPif();
+}
+function elgReceive(){
+  const waiting=P('shipped');
+  const recent=P('received');
+  let h = `<div class="addr" style="margin-bottom:16px"><div class="t">收件地址</div><div class="a">${ADDR}</div></div>`;
+  h += `<div class="row sect"><span>待收件</span><span class="pill pill--w">${waiting.length}</span></div>`;
+  h += waiting.length ? `<div class="stack">`+ waiting.map(p=>`
+      <div class="card" style="border-color:var(--w)"><div class="row">
+        <span><span class="nm">${p.name}</span><br><span class="sub">${custName(p)} · ${p.qty}</span></span>
+        <button class="btn btn--ok btn--sm" style="width:auto;padding:0 16px" onclick="A.receive('${p.id}')">接收</button>
+      </div></div>`).join('')+`</div>`
+    : `<div class="card faint" style="text-align:center;padding:20px">沒有待收件樣品</div>`;
+  h += `<div class="row sect mt"><span>已接收</span><span class="pill pill--s">${recent.length}</span></div>`;
+  h += recent.length ? `<div class="stack">`+ recent.map(p=>`
+      <div class="card row"><span><span class="nm" style="font-size:15px">${p.name}</span><br><span class="sub">${custName(p)}</span></span>
+      <span class="pill pill--s"><i class="ti ti-check"></i> 已接收</span></div>`).join('')+`</div>`
+    : `<div class="empty" style="padding:24px"><i class="ti ti-inbox"></i>尚未接收</div>`;
+  return h;
+}
+function elgData(){
+  const pool=products.filter(p=>['received','invoiced','reported','verified'].includes(p.status));
+  if(!pool.length) return `<div class="empty"><i class="ti ti-file-off"></i>沒有可編輯的送驗資料</div>`;
+  if(!dataPid || !pool.find(p=>p.id===dataPid)) dataPid=pool[0].id;
+  const p=byId(dataPid);
+  const prices={fang:350,chang:200,wen:350};
+  const sum=Object.keys(dataTests).reduce((s,k)=>s+(dataTests[k]?prices[k]:0),0);
+  const trow=(k,label,price)=>`
+    <div class="selrow ${dataTests[k]?'on':''}" onclick="A.toggleTest('${k}')">
+      <span class="ck"><i class="ti ti-check"></i></span>
+      <span style="flex:1" class="nm">${label}</span><span class="muted">${money(price)}</span></div>`;
+  return `
+    <div class="note" style="margin-bottom:14px"><i class="ti ti-eye-off"></i>內部頁面，檢驗項目與金額不對客戶顯示。</div>
+    <label class="lbl">選擇產品</label>
+    <select class="fld" onchange="A.pickData(this.value)">
+      ${pool.map(x=>`<option value="${x.id}" ${x.id===dataPid?'selected':''}>${custName(x)} · ${x.name}</option>`).join('')}
+    </select>
+    <div class="card" style="margin-top:14px;background:var(--n-bg);border:0">
+      <div class="sub" style="margin:0 0 6px">送驗廠商（帶入客戶廠商資料 → Excel 公司資料欄）</div>
+      <div class="nm" style="font-size:15px">${custName(p)}${(p.mine&&me.nameEn)?` / ${me.nameEn}`:''}</div>
+      <div class="sub">${p.mine?(me.addrCh||'—'):'—'}</div>
+      <div class="sub" style="margin-top:6px">工廠：${FACTORY}</div>
+    </div>
+    <div style="display:flex;gap:12px;margin-top:14px">
+      <div style="flex:1"><label class="lbl">型號規格</label><input class="fld" value="${p.spec}"></div>
+      <div style="flex:1"><label class="lbl">數量</label><input class="fld" value="${p.qty}"></div>
+    </div>
+    <div class="sect mt" style="margin-bottom:10px">檢驗項目（可複選 · 送驗成本）</div>
+    <div class="stack">
+      ${trow('fang','防腐效能測驗',350)}
+      ${trow('chang','常规9项',200)}
+      ${trow('wen','穩定性測試',350)}
+    </div>
+    <div class="row" style="margin-top:13px"><span class="muted" style="font-size:14px">本筆送驗成本</span>
+      <span style="font-size:20px;font-weight:700">${money(sum)}</span></div>
+    <div class="faint" style="font-size:12px;margin-top:6px">此為送驗成本，與對客戶請款（5000／10000）分開。</div>
+    <button class="btn" style="margin-top:16px" onclick="A.toast('已產生送驗清單 Excel（示意）')">
+      <i class="ti ti-file-spreadsheet"></i> 產生送驗清單 Excel</button>`;
+}
+function elgInvoice(){
+  const recv=P('received');
+  if(!recv.length) return `<div class="empty"><i class="ti ti-receipt-off"></i>目前沒有待請款的已接收樣品</div>`;
+  const batches=[...new Set(recv.map(p=>p.batch))];
+  const total=recv.filter(p=>p.invSel).reduce((s,p)=>s+p.feeSel,0);
+  let h=`<div class="note" style="margin-bottom:14px"><i class="ti ti-eye-off"></i>為每項挑檢驗費，客戶只會看到加總後的應匯金額。</div>`;
+  h += batches.map(b=>`
+    <div class="sect" style="margin-bottom:10px">${b} 收到整批</div>
+    <div class="stack">${recv.filter(p=>p.batch===b).map(p=>`
+      <div class="card">
+        <div class="selrow ${p.invSel?'on':''}" style="border:0;padding:0" onclick="A.toggleInv('${p.id}')">
+          <span class="ck"><i class="ti ti-check"></i></span>
+          <span style="flex:1"><span class="nm">${p.name}</span><br><span class="sub">${custName(p)}</span></span>
+        </div>
+        <div class="seg">
+          <button class="${p.feeSel===5000?'on':''}" onclick="A.setFee('${p.id}',5000)">$5,000</button>
+          <button class="${p.feeSel===10000?'on':''}" onclick="A.setFee('${p.id}',10000)">$10,000</button>
+        </div>
+      </div>`).join('')}</div>`).join('');
+  h += `<div class="total"><span class="muted">整批合計</span><span class="amt">${money(total)}</span></div>
+    <button class="btn" style="margin-top:14px" ${total?'':'disabled'} onclick="A.issueInvoice()">
+      <i class="ti ti-send"></i> 開請款單並回送客戶</button>`;
+  return h;
+}
+function elgPif(){
+  const toCheck=P('reported');
+  const wait=products.filter(p=>['received','invoiced','reported','verified'].includes(p.status));
+  const toDone=P('verified');
+  let h=`<div class="row sect"><span>查帳</span><span class="pill pill--w">${toCheck.length}</span></div>`;
+  h += toCheck.length ? `<div class="stack">`+ toCheck.map(p=>`
+      <div class="card" style="border-color:var(--w)"><div class="row">
+        <span><span class="nm">${p.name}</span><br><span class="sub">${custName(p)} · 已回報匯款 · ${money(p.charge)}</span></span></div>
+        <button class="btn btn--sm" style="margin-top:10px" onclick="A.verify('${p.id}')"><i class="ti ti-checkbook"></i> 查帳確認（轉送驗中）</button>
+      </div>`).join('')+`</div>`
+    : `<div class="card faint" style="text-align:center;padding:18px">沒有待查帳項目</div>`;
+
+  h += `<div class="row sect mt"><span>等待完成 PIF</span><span class="pill pill--n">${wait.length}</span></div>`;
+  h += `<div class="stack">`+ wait.map(p=>`
+      <div class="card row"><span><span class="nm" style="font-size:15px">${p.name}</span><br><span class="sub">${custName(p)}</span></span>
+      ${pill(p.status)}</div>`).join('')+`</div>`;
+
+  h += `<div class="sect mt">完成 PIF</div>`;
+  h += toDone.length ? `<div class="stack">`+ toDone.map(p=>`
+      <div class="card">
+        <div class="row"><span class="nm">${p.name}</span><span class="pill pill--s">送驗中</span></div>
+        <label class="lbl" style="margin-top:12px">Google 雲端硬碟資料夾連結</label>
+        <input class="fld" id="dl_${p.id}" placeholder="貼上共享資料夾連結">
+        <button class="btn btn--ok btn--sm" style="margin-top:10px" onclick="A.complete('${p.id}')">
+          <i class="ti ti-circle-check"></i> 標記已完成 PIF</button>
+      </div>`).join('')+`</div>`
+    : `<div class="empty" style="padding:24px"><i class="ti ti-clipboard-check"></i>目前沒有可完成的 PIF</div>`;
+  return h;
+}
+
+/* ---------- actions ---------- */
+const A = {
+  setRole(r){ role=r; render(); },
+  goLogin(side){ view = side==='eloga'?'eloga-login':'customer-login'; render(); },
+  backEntry(){ view='entry'; render(); },
+  loginEloga(){ role='eloga'; elgTab='receive'; view='app'; render(); },
+  loginCustomer(provider){
+    role='customer'; custTab='submit';
+    if(!me.nameCh){ Object.assign(me, SAMPLE_ME); }
+    if(!me.filled){ editingProfile=false; view='customer-profile'; } else { view='app'; }
+    render(); A.toast(provider+' 登入成功');
+  },
+  editProfile(){ editingProfile=true; view='customer-profile'; render(); },
+  profileBack(){ view = editingProfile? 'app' : 'customer-login'; render(); },
+  saveProfile(){
+    const g=id=>{const e=document.getElementById(id);return e?e.value.trim():'';};
+    me.nameCh=g('m_nch')||me.nameCh; me.nameEn=g('m_nen'); me.addrCh=g('m_ach'); me.addrEn=g('m_aen'); me.phone=g('m_tel');
+    me.filled=true; view='app'; custTab='submit'; render(); A.toast('廠商資料已儲存');
+  },
+  logout(){ view='entry'; render(); },
+  setCustTab(t){ custTab=t; render(); },
+  setElgTab(t){ elgTab=t; render(); },
+  pickData(id){ dataPid=id; dataTests={fang:true,chang:true,wen:false}; render(); },
+  toggleTest(k){ dataTests[k]=!dataTests[k]; render(); },
+  toggleShip(id){ const p=byId(id); p.shipSel=!p.shipSel; render(); },
+  toggleInv(id){ const p=byId(id); p.invSel=!p.invSel; render(); },
+  setFee(id,v){ byId(id).feeSel=v; render(); },
+  toggleSelClass(){},
+
+  arrange(){
+    const sel=products.filter(p=>p.mine && p.status==='pending' && p.shipSel);
+    if(!sel.length) return;
+    sel.forEach(p=>p.status='shipped');
+    render(); A.toast(`已安排寄送 ${sel.length} 項，依洛嘉前臺可收件`);
+  },
+  receive(id){ byId(id).status='received'; render(); A.toast('已接收，可到「請款」開單'); },
+  issueInvoice(){
+    const sel=P('received').filter(p=>p.invSel);
+    if(!sel.length) return;
+    sel.forEach(p=>{ p.status='invoiced'; p.charge=p.feeSel; });
+    render(); A.toast(`已開請款單回送客戶（${sel.length} 項）`);
+  },
+  reportPay(batch){
+    products.filter(p=>p.mine && p.status==='invoiced' && p.batch===batch).forEach(p=>p.status='reported');
+    render(); A.toast('已回報匯款，依洛嘉查帳中');
+  },
+  verify(id){ byId(id).status='verified'; render(); A.toast('查帳確認，產品轉送驗中'); },
+  complete(id){
+    const el=document.getElementById('dl_'+id);
+    byId(id).drive=(el&&el.value.trim())||'https://drive.google.com';
+    byId(id).status='completed';
+    render(); A.toast('已標記完成 PIF，客戶端已亮出');
+  },
+  openDrive(id){ const p=byId(id); if(p.drive) window.open(p.drive,'_blank'); else A.toast('尚未設定雲端硬碟連結'); },
+
+  _tt:null,
+  toast(msg){
+    const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
+    clearTimeout(A._tt); A._tt=setTimeout(()=>t.classList.remove('show'),2200);
+  }
+};
+window.A=A;
+render();
+</script>
+</body>
+</html>
