@@ -93,6 +93,8 @@
   .ck i{ font-size:15px; opacity:0; }
   .selrow.on .ck{ background:var(--accent); border-color:var(--accent); }
   .selrow.on .ck i{ opacity:1; }
+  .ck.on{ background:var(--accent); border-color:var(--accent); }
+  .ck.on i{ opacity:1; }
 
   .seg{ display:flex; gap:8px; margin-top:10px; }
   .seg button{ flex:1; height:42px; border:1px solid var(--line2); background:var(--surface); color:var(--ink);
@@ -225,7 +227,7 @@ const CUST = '晶寶企業行';
 const ADDR = '台南市佳里區佳興里宅興二街600號 · 洪莉晴 收';
 const ELG_TEL = '06-7228888';
 const FACTORY = 'E.L.G International Trading（依洛嘉）· 台南市佳里區佳興里宅興二街600號';
-let view='entry', role='customer', custTab='submit', elgTab='receive', dataPid=null, editingProfile=false, devOpen=false;
+let view='entry', role='customer', custTab='submit', elgTab='receive', dataPid=null, editingProfile=false, devOpen=false, custView=null, batch={};
 let me={ nameCh:'', nameEn:'', addrCh:'', addrEn:'', phone:'', filled:false };
 const SAMPLE_ME={ nameCh:'晶寶企業行', nameEn:'Jingbao Co., Ltd.', addrCh:'高雄市大寮區琉球里巷尾路89之1號', addrEn:'No.89-1, Xiangwei Rd., Daliao Dist., Kaohsiung', phone:'07-1234567' };
 const custName = p => p.mine ? (me.nameCh||'（未填寫廠商名）') : p.cust;
@@ -296,12 +298,14 @@ function parseCompany(t){
 }
 let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='', wipeOpen=false, ocrBusy=false;
 let sharedPIF=[
-  {name:'玻尿酸保濕精華', type:'液劑霜劑'},
-  {name:'金盞花舒緩面膜', type:'面膜'},
-  {name:'B5修護乳液', type:'液劑霜劑'},
-  {name:'積雪草修護安瓶', type:'液劑霜劑'},
-  {name:'摩洛哥護髮油', type:'油劑'},
-  {name:'神經醯胺保濕霜', type:'液劑霜劑'}
+  {name:'SYN三胜肽緊緻撫紋眼霜', type:'液劑霜劑'},
+  {name:'杏仁酸植萃亮顏精華', type:'液劑霜劑'},
+  {name:'藻臻粉', type:'其他'},
+  {name:'保濕波亮冰面膜', type:'面膜'},
+  {name:'水潤保濕面膜', type:'面膜'},
+  {name:'二裂酵母&靈芝抗老面膜', type:'面膜'},
+  {name:'修護舒緩面膜', type:'面膜'},
+  {name:'透亮美白面膜', type:'面膜'}
 ];
 let staff=[
   {name:'洪莉晴', email:'admin@eloga.com', role:'主要管理者'},
@@ -312,21 +316,36 @@ let customers=[
   {name:'芊奕田生技', email:'chianyi@line.me', login:'LINE', status:'已啟用', drive:''},
   {name:'夏芮蒂生技', email:'sharidy@gmail.com', login:'Google', status:'待審核', drive:''}
 ];
-const ELG_TABS={ '主要管理者':['home','receive','apply','data','invoice','pif'], '管理':['home','receive','apply','data','invoice','pif'], '前臺':['receive','board'] };
+const ELG_TABS={ '主要管理者':['home','customers','apply','data','invoice','pif'], '管理':['home','customers','apply','data','invoice','pif'], '前臺':['receive','board'] };
 
-let products=[
-  {id:'p1',cust:CUST,name:'玫瑰臉部精油',alias:'ELG-OIL-07',en:'Rose Facial Oil',spec:'100ml/瓶',qty:'4瓶',status:'applied'},
-  {id:'p2',cust:CUST,name:'舒緩夜語精油',alias:'ELG-OIL-12',en:'Calming Night Oil',spec:'100ml/瓶',qty:'4瓶',status:'approved',shipSel:true},
-  {id:'p3',cust:CUST,name:'B5 賦活保濕安瓶',alias:'ELG-AMP-03',en:'B5 Revita Ampoule',spec:'30ml',qty:'5瓶',status:'shipped'},
-  {id:'p4',cust:CUST,name:'蘆薈清爽去角質凝膠',alias:'ELG-GEL-21',en:'Aloe Peeling Gel',spec:'100g/瓶',qty:'3瓶',status:'received',batch:'6/11',invSel:true,feeSel:5000},
-  {id:'p5',cust:'芊奕田生技',name:'永恆之肌天絲面膜',alias:'',en:'Eternal Tencel Mask',spec:'25ml×5',qty:'2盒',status:'received',batch:'6/11',invSel:true,feeSel:10000},
-  {id:'p6',cust:CUST,name:'深層卸妝棉',alias:'ELG-PAD-09',en:'Deep Cleansing Pad',spec:'80片',qty:'4盒',status:'invoiced',batch:'6/05',charge:5000},
-  {id:'p7',cust:CUST,name:'淨白安瓶',alias:'ELG-AMP-15',en:'Brightening Ampoule',spec:'30ml',qty:'5瓶',status:'reported',batch:'6/05',charge:10000},
-  {id:'p8',cust:CUST,name:'保濕精華',alias:'ELG-SER-02',en:'Hydra Serum',spec:'50ml',qty:'3瓶',status:'paid',batch:'5/28',charge:5000,payNote:'08321'},
-  {id:'p9',cust:CUST,name:'修護面霜',alias:'ELG-CRM-08',en:'Repair Cream',spec:'50g',qty:'2瓶',status:'completed',batch:'5/20',charge:10000,drive:'https://drive.google.com'},
-  {id:'p10',cust:CUST,name:'亮采精華液',alias:'ELG-SER-19',en:'Glow Serum',spec:'30ml',qty:'4瓶',status:'testing',batch:'5/22',charge:10000},
-  {id:'p11',cust:CUST,name:'胺基酸潔顏乳',alias:'ELG-CLN-04',en:'Amino Cleanser',spec:'120ml',qty:'3瓶',status:'reporting',batch:'5/18',charge:5000}
-];
+let products=[];
+(function(){
+  let n=0;
+  const add=(cust,name,status,spec,qty,extra)=>products.push(Object.assign(
+    {id:'p'+(++n),cust,name,alias:'',spec:spec||'',qty:qty||'',status,batch:''}, extra||{}));
+  // 晶寶 — 已完成 PIF（檢驗費＋PIF 已付 · 白底）
+  ['循環晨韻精油','薑萃天竺葵舒緩精油','曲線緊緻精油','奧秘煥彩素顏霜','幹細胞活膚三合一地漿水','茉莉花萃精油']
+    .forEach(nm=>add(CUST,nm,'completed','','',{batch:'已完成',charge:10000,drive:'https://drive.google.com/drive/folders/jingbao-pif'}));
+  // 晶寶 — 送驗中（只付檢驗費、PIF 未付 · 綠底）
+  ['瓷娃娃馬卡龍精華','玫瑰微臻霜','超泌肌能賦活精萃因子','蘆薈舒緩晶凍','積雪草修護凍膜','玫瑰臉部精油PLUS','積雪草舒緩安瓶','黑蝸牛極致保濕安瓶','EGF緊緻彈潤安瓶','微金分子彈潤肌安瓶','綻光煥膚杏仁酸精華(杏仁酸12趴)','洋甘菊悠活精油']
+    .forEach(nm=>add(CUST,nm,'testing','','',{batch:'送驗中'}));
+  // 晶寶 — 等待依洛嘉確認（尚未付費 · 粉底；規格數量取自圖2第2箱）
+  add(CUST,'光感精萃潔顏露','applied','500g/瓶','1瓶');
+  add(CUST,'玫瑰奢華透光露','applied','500g/瓶','1瓶');
+  add(CUST,'B5精華賦活保濕安瓶','applied','10g/瓶','20瓶');
+  add(CUST,'柔嫩煥光保濕乳','applied','500g/瓶','1瓶');
+  add(CUST,'玫瑰潤膚舒壓霜','applied','500g/瓶','1瓶');
+  add(CUST,'極光煥膚精華(杏仁酸3趴)','applied','500g/瓶','1瓶');
+  add(CUST,'蘆薈凝萃去角質','applied','500g/瓶','1瓶');
+  add(CUST,'玫瑰花萃時光卸淨乳','applied','500g/瓶','1瓶');
+  // 晶寶 — 可寄送（流程示範）
+  add(CUST,'玫瑰舒緩噴霧','approved','100ml','4瓶',{shipSel:true});
+  // 芊奕田生技 — 跨廠商與流程示範
+  add('芊奕田生技','金盞花舒緩面膜','paid','25ml×5','2盒',{batch:'5/28',charge:5000,payNote:'王小姐'});
+  add('芊奕田生技','積雪草修護安瓶','paid','30ml','4瓶',{batch:'5/28',charge:10000,payNote:'王小姐'});
+  add('芊奕田生技','永恆之肌天絲面膜','received','25ml×5','2盒',{batch:'6/11'});
+  add('芊奕田生技','保濕修護精華','shipped','30ml','5瓶');
+})();
 products.forEach(p=>{ if(p.cust===CUST) p.mine=true; if(!p.type) p.type=inferType(p.name); if(!p.t) p.t=defTests(p.type); if(p.alias===undefined) p.alias=''; });
 
 const SM={ applied:['等待依洛嘉確認','w'], approved:['可寄送','i'], pending:['待寄送','n'],
@@ -338,14 +357,17 @@ const money = n => '$'+n.toLocaleString();
 const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 
 /* ---------- persistence ---------- */
-function save(){ try{ localStorage.setItem('elg_state', JSON.stringify({products,customers,staff,me,drafts,addTarget,addCust})); }catch(e){} }
+const SEED_VER='2026-06-13-jingbao';
+function save(){ try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,me,drafts,addTarget,addCust})); }catch(e){} }
 function load(){
   try{
     const raw=localStorage.getItem('elg_state'); if(!raw) return;
     const d=JSON.parse(raw);
+    if(d.seedVer!==SEED_VER) return;  // 資料版本更新 → 載入新的種子資料
     if(Array.isArray(d.products)){ products.length=0; d.products.forEach(x=>products.push(x)); }
     if(Array.isArray(d.customers)){ customers.length=0; d.customers.forEach(x=>customers.push(x)); }
     if(Array.isArray(d.staff)){ staff.length=0; d.staff.forEach(x=>staff.push(x)); }
+    if(Array.isArray(d.sharedPIF)){ sharedPIF.length=0; d.sharedPIF.forEach(x=>sharedPIF.push(x)); }
     if(d.me) me=d.me;
     if(Array.isArray(d.drafts)) drafts=d.drafts;
     if(d.addTarget) addTarget=d.addTarget;
@@ -499,14 +521,21 @@ function custSubmit(){
   }
 
   if(applied.length){
-    h += `<div class="faint" style="font-size:13px;margin:0 0 8px">申請中（待依洛嘉確認允許寄送）</div><div class="stack">`+ applied.map(p=>`
-      <div class="card row"><span><span class="nm" style="font-size:15px">${p.name}</span>${p.alias?`<br><span class="sub">別名：${p.alias}</span>`:''}</span>${pill(p.status)}</div>`).join('')+`</div>`;
+    h += `<div class="faint" style="font-size:13px;margin:0 0 8px">申請中（待依洛嘉確認 · 可自行撤銷）</div><div class="stack">`+ applied.map(p=>`
+      <div class="card"><div class="row"><span><span class="nm" style="font-size:15px">${p.name}</span>${p.alias?`<br><span class="sub">別名：${p.alias}</span>`:''}</span>${pill(p.status)}</div>
+        <button class="btn btn--ghost btn--sm" style="margin-top:10px;color:#C0392B;border-color:#E7C3BD" onclick="A.deleteMyProduct('${p.id}')"><i class="ti ti-trash"></i> 撤銷並刪除</button>
+      </div>`).join('')+`</div>`;
   }
   if(approved.length){
     h += `<div class="faint" style="font-size:13px;margin:14px 0 8px">可寄送（依洛嘉已允許 · 勾選後安排寄送）</div><div class="stack">`+ approved.map(p=>`
-      <div class="selrow ${p.shipSel?'on':''}" onclick="A.toggleShip('${p.id}')">
-        <span class="ck"><i class="ti ti-check"></i></span>
-        <span style="flex:1"><span class="nm">${p.name}</span><br><span class="sub">${p.alias?'別名：'+p.alias+' · ':''}${p.spec} · ${p.qty}</span></span>
+      <div class="card">
+        <div class="selrow ${p.shipSel?'on':''}" style="border:0;padding:0" onclick="A.toggleShip('${p.id}')">
+          <span class="ck"><i class="ti ti-check"></i></span>
+          <span style="flex:1"><span class="nm">${p.name}</span><br><span class="sub">${p.alias?'別名：'+p.alias+' · ':''}${p.spec} · ${p.qty}</span></span>
+        </div>
+        ${p.cancelReq
+          ? `<div class="sub" style="margin-top:8px;color:var(--w)"><i class="ti ti-clock"></i> 撤銷申請中，待依洛嘉同意 · <span style="cursor:pointer;text-decoration:underline" onclick="A.undoCancelReq('${p.id}')">取消申請</span></div>`
+          : `<button class="btn btn--ghost btn--sm" style="margin-top:8px" onclick="A.requestCancel('${p.id}')"><i class="ti ti-ban"></i> 申請撤銷</button>`}
       </div>`).join('') + `</div>`;
     h += `<div class="addr" style="margin-top:12px"><div class="t">寄送至</div><div class="a">${ADDR}</div><div class="a" style="margin-top:2px">電話 ${ELG_TEL}</div></div>`;
     h += `<button class="btn" style="margin-top:10px" ${n?'':'disabled'} onclick="A.arrange()">
@@ -518,7 +547,11 @@ function custSubmit(){
 
   h += `<div class="sect mt">進行中</div>`;
   h += prog.length ? `<div class="stack">`+ prog.map(p=>`
-      <div class="card row"><span class="nm" style="font-size:15px">${p.name}</span>${pill(p.status)}</div>`).join('')+`</div>`
+      <div class="card"><div class="row"><span class="nm" style="font-size:15px">${p.name}</span>${pill(p.status)}</div>
+        ${p.cancelReq
+          ? `<div class="sub" style="margin-top:8px;color:var(--w)"><i class="ti ti-clock"></i> 撤銷申請中，待依洛嘉同意 · <span style="cursor:pointer;text-decoration:underline" onclick="A.undoCancelReq('${p.id}')">取消申請</span></div>`
+          : `<button class="btn btn--ghost btn--sm" style="margin-top:8px" onclick="A.requestCancel('${p.id}')"><i class="ti ti-ban"></i> 申請撤銷</button>`}
+      </div>`).join('')+`</div>`
     : `<div class="empty"><i class="ti ti-progress"></i>還沒有進行中的樣品</div>`;
   return h;
 }
@@ -583,7 +616,7 @@ function elgHeader(){
   </div>`;
 }
 function elgApp(){
-  const TI={ home:['layout-dashboard','總覽'], receive:['package-import','收件'], apply:['list-check','申請'], data:['file-spreadsheet','送驗資料'], invoice:['receipt-2','請款'], pif:['clipboard-check','完成 PIF'], board:['clipboard-list','看板'] };
+  const TI={ home:['layout-dashboard','總覽'], customers:['users','客戶'], receive:['package-import','收件'], apply:['list-check','申請'], data:['file-spreadsheet','送驗資料'], invoice:['receipt-2','請款'], pif:['clipboard-check','完成 PIF'], board:['clipboard-list','看板'] };
   const allowed = zone==='front' ? ['receive','board'] : (ELG_TABS[elgRole]||ELG_TABS['主要管理者']);
   if(!allowed.includes(elgTab)) elgTab=allowed[0];
   const tabs=allowed.map(id=>tab(elgTab,id,TI[id][0],TI[id][1],'A.setElgTab')).join('');
@@ -593,6 +626,7 @@ function elgApp(){
 }
 function elgScreen(){
   if(elgTab==='home') return elgHome();
+  if(elgTab==='customers') return elgCustomers();
   if(elgTab==='receive') return elgReceive();
   if(elgTab==='apply') return elgApply();
   if(elgTab==='data') return elgData();
@@ -639,6 +673,18 @@ function elgApply(){
         <button class="btn btn--ok btn--sm" style="margin-top:10px" onclick="A.allowShip('${p.id}')"><i class="ti ti-check"></i> 確認並允許寄送</button>
       </div>`).join('')+`</div>`
     : `<div class="empty"><i class="ti ti-inbox"></i>目前沒有待確認的送驗申請</div>`;
+  const cancels=products.filter(p=>p.cancelReq);
+  h+=`<div class="row sect mt"><span>撤銷申請（已確認項目 · 待同意）</span><span class="pill pill--w">${cancels.length}</span></div>`;
+  h+= cancels.length ? `<div class="stack">`+ cancels.map(p=>`
+      <div class="card" style="border-color:var(--w)">
+        <div class="row"><span><span class="nm" style="font-size:15px">${p.name}</span>
+          <br><span class="sub">${custName(p)} · 目前：${SM[p.status][0]}</span></span></div>
+        <div style="display:flex;gap:8px;margin-top:10px">
+          <button class="btn btn--sm" style="background:#C0392B" onclick="A.approveCancel('${p.id}')"><i class="ti ti-trash"></i> 同意撤銷</button>
+          <button class="btn btn--ghost btn--sm" onclick="A.rejectCancel('${p.id}')">駁回</button>
+        </div>
+      </div>`).join('')+`</div>`
+    : `<div class="card faint" style="text-align:center;padding:16px">目前沒有撤銷申請</div>`;
   return h;
 }
 function elgHome(){
@@ -647,7 +693,7 @@ function elgHome(){
   const pend=customers.filter(x=>x.status==='待審核').length;
   const cards=[
     ['applied','等待確認','list-check','apply'],
-    ['shipped','待收件','package-import','receive'],
+    ['shipped','待收件','package-import','front'],
     ['received','待開收款單','receipt-2','invoice'],
     ['reported','待查帳','cash','invoice'],
     ['paid','待生成送驗','file-invoice','data'],
@@ -657,13 +703,69 @@ function elgHome(){
   ];
   let h=`<div class="note" style="margin-bottom:14px"><i class="ti ti-layout-dashboard"></i>全流程總覽 · 點任一階段直接前往處理。</div>`;
   h+=`<div class="dash">`+ cards.map(([st,lbl,ic,tab])=>`
-      <div class="metric" onclick="A.go('${tab}')"><div class="mi"><i class="ti ti-${ic}"></i></div>
+      <div class="metric" onclick="${tab==='front'?'A.goReceive()':"A.go('"+tab+"')"}"><div class="mi"><i class="ti ti-${ic}"></i></div>
         <div class="mv">${c(st)}</div><div class="ml">${lbl}</div></div>`).join('')+`</div>`;
   h+=`<div class="sect mt">客戶帳號</div>
     <div class="dash">
       <div class="metric"><div class="mi" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-users"></i></div><div class="mv">${reg}</div><div class="ml">已註冊</div></div>
       <div class="metric ${pend?'':''}" ${elgRole==='主要管理者'?'onclick="A.openAccounts()"':''}><div class="mi" style="background:var(--w-bg);color:var(--w)"><i class="ti ti-user-plus"></i></div><div class="mv">${pend}</div><div class="ml">客戶申請</div></div>
     </div>`;
+  return h;
+}
+function elgCustomers(){
+  const order=['applied','approved','shipped','received','invoiced','reported','paid','testing','reporting','completed'];
+  // 客戶列表
+  if(!custView){
+    const names=[...new Set(products.map(p=>custName(p)))].concat(customers.map(c=>c.name)).filter((v,i,a)=>v&&a.indexOf(v)===i);
+    let h=`<div class="note" style="margin-bottom:12px"><i class="ti ti-users"></i>客戶管理平台 · 點客戶查看其所有產品與階段，可手動調整狀態、批量處理。</div>`;
+    h+=`<div class="stack">`+ names.map(nm=>{
+      const its=products.filter(p=>custName(p)===nm);
+      const cobj=customers.find(c=>c.name===nm);
+      const done=its.filter(p=>p.status==='completed').length;
+      const wip=its.filter(p=>['shipped','received','invoiced','reported','paid','testing','reporting'].includes(p.status)).length;
+      const wait=its.filter(p=>['applied','approved'].includes(p.status)).length;
+      return `<div class="card" onclick="A.openCust('${nm}')" style="cursor:pointer">
+        <div class="row"><span class="nm" style="font-size:15px"><i class="ti ti-building-store"></i> ${nm}</span>
+          <i class="ti ti-chevron-right faint" style="font-size:20px"></i></div>
+        <div class="sub" style="margin-top:4px">${its.length} 件產品 · 等待 ${wait} · 進行 ${wip} · 完成 ${done}${cobj&&cobj.drive?' · 已設 PIF 資料夾':''}</div>
+      </div>`;
+    }).join('')+`</div>`;
+    return h;
+  }
+  // 客戶明細
+  const nm=custView;
+  const its=products.filter(p=>custName(p)===nm).slice().sort((a,b)=>order.indexOf(a.status)-order.indexOf(b.status));
+  const cobj=customers.find(c=>c.name===nm);
+  const selN=its.filter(p=>batch[p.id]).length;
+  const opts=order.map(k=>`<option value="${k}">${SM[k][0]}</option>`).join('');
+  let h=`<div class="row" style="margin-bottom:10px"><span class="nm" style="font-size:17px;cursor:pointer" onclick="A.openCust(null)"><i class="ti ti-arrow-left"></i> ${nm}</span>
+      <span class="pill pill--i">${its.length} 件</span></div>`;
+  h+=`<label class="lbl">PIF Google 資料夾連結</label>
+    <input class="fld" value="${cobj?(cobj.drive||''):''}" placeholder="貼上該客戶專屬資料夾連結" onchange="A.setCustDriveByName('${nm}',this.value)" style="margin-bottom:14px">`;
+  // 批量工具列
+  h+=`<div class="card" style="background:var(--n-bg);border:0;margin-bottom:12px">
+      <div class="row"><span class="nm">批量處理（已選 ${selN}）</span>
+        <span class="muted" style="font-size:13px;font-weight:600;cursor:pointer" onclick="A.batchAll('${nm}')">${selN===its.length&&its.length?'取消全選':'全選'}</span></div>
+      <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+        <select class="fld" id="batchSt" style="flex:1;min-width:130px">${opts}</select>
+        <button class="btn btn--sm" style="width:auto;padding:0 14px" ${selN?'':'disabled'} onclick="A.batchStatus()">套用狀態</button>
+      </div>
+      <button class="btn btn--sm" style="margin-top:8px" ${selN?'':'disabled'} onclick="A.batchGen()"><i class="ti ti-file-stack"></i> 批量生成合約＋清單（已選 ${selN}）</button>
+    </div>`;
+  // 產品清單（可勾選 + 手動改狀態）
+  h+=`<div class="stack">`+ its.map(p=>`
+      <div class="card">
+        <div style="display:flex;gap:8px;align-items:flex-start">
+          <span class="ck ${batch[p.id]?'on':''}" onclick="A.toggleBatch('${p.id}')" style="cursor:pointer;margin-top:2px"><i class="ti ti-check"></i></span>
+          <span style="flex:1"><span class="nm" style="font-size:15px">${p.name}</span>${p.alias?`<br><span class="sub">配方名：${p.alias}</span>`:''}
+            <br><span class="sub">${p.spec||'—'} · ${p.qty||'—'}</span></span>
+          ${pill(p.status)}
+        </div>
+        <label class="lbl" style="margin-top:10px">手動調整狀態</label>
+        <select class="fld" onchange="A.setStatus('${p.id}',this.value)">
+          ${order.map(k=>`<option value="${k}" ${p.status===k?'selected':''}>${SM[k][0]}</option>`).join('')}
+        </select>
+      </div>`).join('')+`</div>`;
   return h;
 }
 function elgReceive(){
@@ -704,13 +806,19 @@ function elgData(){
       <span style="flex:1" class="nm">${label}</span><span class="muted">${money(price)}</span></div>`;
   const sel=pool.filter(x=>x.genSel!==false);
   return `<div class="pane">
-    <div class="note" style="margin-bottom:14px"><i class="ti ti-file-invoice"></i>已收款、待送驗的「送驗總清單」。勾選要納入本次送驗的項目，設定檢驗項目後生成合作協議與樣品清單。</div>
-    <div class="sect" style="margin-bottom:8px">送驗總清單 · 勾選納入本次（${sel.length}/${pool.length}）</div>
-    <div class="stack">${pool.map(x=>`
-      <div class="selrow ${x.genSel!==false?'on':''}" onclick="A.toggleGen('${x.id}')">
-        <span class="ck"><i class="ti ti-check"></i></span>
-        <span style="flex:1"><span class="nm">${x.name}</span><br><span class="sub">${custName(x)} · ${testText(x.t)} · ${money(feeOf(x.t))}</span></span>
-      </div>`).join('')}</div>
+    <div class="note" style="margin-bottom:14px"><i class="ti ti-file-invoice"></i>已收款、待送驗的「送驗總清單」，可跨廠商勾選合併成同一份清單與合約。</div>
+    <div class="sect" style="margin-bottom:4px">送驗總清單（已勾 ${sel.length}/${pool.length} 筆 · ${[...new Set(pool.map(x=>custName(x)))].length} 家廠商）</div>
+    <div class="faint" style="font-size:12px;margin:0 0 10px">勾選不同廠商的樣品，會合併到同一份送驗清單與合作協議。</div>
+    ${[...new Set(pool.map(x=>custName(x)))].map(v=>{
+      const its=pool.filter(x=>custName(x)===v); const allSel=its.every(x=>x.genSel!==false);
+      return `<div class="row" style="margin:12px 0 6px"><span class="nm" style="font-size:14px"><i class="ti ti-building-store"></i> ${v}</span>
+        <span class="muted" style="font-size:12px;font-weight:600;cursor:pointer" onclick="A.toggleVendor('${v}')">${allSel?'全不選':'全選'}</span></div>
+        <div class="stack">`+ its.map(x=>`
+          <div class="selrow ${x.genSel!==false?'on':''}" onclick="A.toggleGen('${x.id}')">
+            <span class="ck"><i class="ti ti-check"></i></span>
+            <span style="flex:1"><span class="nm">${x.name}</span><br><span class="sub">${testText(x.t)} · ${x.spec||''} · ${money(feeOf(x.t))}</span></span>
+          </div>`).join('') + `</div>`;
+    }).join('')}
     <label class="lbl" style="margin-top:16px">設定檢驗項目（選擇產品）</label>
     <select class="fld" onchange="A.pickData(this.value)">
       ${pool.map(x=>`<option value="${x.id}" ${x.id===dataPid?'selected':''}>${custName(x)} · ${x.name}</option>`).join('')}
@@ -1029,7 +1137,16 @@ const A = {
   },
   pickElgRole(r){ elgRole=r; render(); },
   toggleGen(id){ const p=byId(id); if(p) p.genSel = (p.genSel===false); render(); },
+  toggleVendor(v){ const its=products.filter(p=>p.status==='paid'&&custName(p)===v); const allSel=its.every(p=>p.genSel!==false); its.forEach(p=>p.genSel = allSel?false:true); render(); },
   go(t){ elgTab=t; render(); },
+  goReceive(){ zone='front'; elgTab='receive'; render(); },
+  openCust(nm){ custView=nm; batch={}; render(); },
+  setStatus(id,st){ const p=byId(id); if(p) p.status=st; render(); },
+  toggleBatch(id){ batch[id]=!batch[id]; render(); },
+  batchAll(nm){ const its=products.filter(p=>custName(p)===nm); const all=its.every(p=>batch[p.id]); its.forEach(p=>batch[p.id]=all?false:true); render(); },
+  batchStatus(){ const st=(document.getElementById('batchSt')||{}).value; const ids=Object.keys(batch).filter(k=>batch[k]); if(!ids.length){ A.toast('請先勾選項目'); return; } ids.forEach(id=>{ const p=byId(id); if(p) p.status=st; }); A.toast('已將 '+ids.length+' 筆設為「'+SM[st][0]+'」'); render(); },
+  batchGen(){ const ids=Object.keys(batch).filter(k=>batch[k]); const list=products.filter(p=>ids.includes(p.id)); if(!list.length){ A.toast('請先勾選項目'); return; } batch={}; A.exportSongyan(list); },
+  setCustDriveByName(nm,v){ const c=customers.find(x=>x.name===nm); if(c){ c.drive=(v||'').trim(); save(); A.toast('已更新 PIF 資料夾連結'); } },
   toggleDev(){ devOpen=!devOpen; render(); },
   devGo(which){
     devOpen=false;
@@ -1143,11 +1260,11 @@ const A = {
       render(); A.toast('已匯入 '+nP+' 筆 · '+custSet.size+' 個客戶，已回送客戶端');
     }catch(e){ A.toast('匯入失敗：檔案格式不符'); }
   },
-  async exportSongyan(){
+  async exportSongyan(explicitList){
     if(typeof ExcelJS==='undefined'){ A.toast('Excel 函式庫載入中，請稍候再按'); return; }
-    const list=products.filter(p=>p.status==='paid' && p.genSel!==false)
-                       .slice().sort((a,b)=>custName(a).localeCompare(custName(b),'zh-Hant'));
-    if(!list.length){ A.toast('請先在送驗總清單勾選要送驗的項目'); return; }
+    const list=(explicitList && explicitList.length ? explicitList.slice() : products.filter(p=>p.status==='paid' && p.genSel!==false))
+                       .sort((a,b)=>custName(a).localeCompare(custName(b),'zh-Hant'));
+    if(!list.length){ A.toast('請先勾選要送驗的項目'); return; }
     const FN='E.L.G INTERNATIONAL TRADING CO., LTD.';
     const FA='No. 600, Zhaixing 2nd St., Jiaxing Vil., Jiali Dist., Tainan City 722013, Taiwan (R.O.C.)';
     const thin={style:'thin'}, BD={top:thin,left:thin,right:thin,bottom:thin};
@@ -1204,10 +1321,21 @@ const A = {
     const ab=new Blob(['\ufeff'+ah],{type:'application/msword'});
     const au=URL.createObjectURL(ab), aa=document.createElement('a');
     aa.href=au; aa.download='合作協議.doc'; document.body.appendChild(aa); aa.click(); aa.remove(); URL.revokeObjectURL(au);
-    list.forEach(p=>{ p.status='testing'; });
-    render(); A.toast('已生成合作協議＋樣品清單（'+list.length+' 筆），轉為送驗中');
+    list.forEach(p=>{ p.status='testing'; delete p.genSel; });
+    const vd=[...new Set(list.map(p=>custName(p)))].length;
+    render(); A.toast('已生成合作協議＋樣品清單（'+vd+' 家廠商 · '+list.length+' 筆），轉為送驗中');
   },
   toggleShip(id){ const p=byId(id); p.shipSel=!p.shipSel; render(); },
+  deleteMyProduct(id){
+    const p=byId(id); if(!p||!ownedByMe(p)) return;
+    if(p.status!=='applied'){ A.toast('已確認項目請改用「申請撤銷」'); return; }
+    const i=products.findIndex(x=>x.id===id); if(i>=0) products.splice(i,1);
+    render(); A.toast('已撤銷並刪除');
+  },
+  requestCancel(id){ const p=byId(id); if(p){ p.cancelReq=true; } render(); A.toast('已送出撤銷申請，待依洛嘉同意'); },
+  undoCancelReq(id){ const p=byId(id); if(p){ delete p.cancelReq; } render(); A.toast('已取消撤銷申請'); },
+  approveCancel(id){ const i=products.findIndex(x=>x.id===id); if(i>=0) products.splice(i,1); render(); A.toast('已同意撤銷並移除'); },
+  rejectCancel(id){ const p=byId(id); if(p){ delete p.cancelReq; } render(); A.toast('已駁回撤銷申請'); },
   toggleInv(id){ const p=byId(id); p.invSel=!p.invSel; render(); },
   setFee(id,v){ byId(id).feeSel=v; render(); },
   toggleSelClass(){},
