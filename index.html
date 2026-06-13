@@ -765,11 +765,12 @@ function elgInvoice(){
   const toCheck=P('reported');
   if(!recv.length && !toCheck.length) return `<div class="empty"><i class="ti ti-receipt-off"></i>目前沒有待請款或待查帳的項目</div>`;
   const custs=[...new Set(recv.map(p=>custName(p)))];
+  recv.forEach(p=>{ if(p.invSel===undefined) p.invSel=true; if(!p.feeSel) p.feeSel=5000; });
   let h=`<div class="note" style="margin-bottom:14px"><i class="ti ti-users"></i>收款單依客戶分開：各客戶獨立勾選樣品與檢驗費（$5,000／$10,000），分別開單回送該客戶。</div>`;
   h += `<div class="row sect"><span>開收款單（已收樣）</span><span class="pill pill--i">${recv.length}</span></div>`;
   h += recv.length ? custs.map(cn=>{
     const items=recv.filter(p=>custName(p)===cn);
-    const tot=items.filter(p=>p.invSel).reduce((s,p)=>s+p.feeSel,0);
+    const tot=items.filter(p=>p.invSel).reduce((s,p)=>s+(p.feeSel||0),0);
     return `<div class="card" style="margin-bottom:12px">
       <div class="row" style="margin-bottom:8px"><span class="nm" style="font-size:15px"><i class="ti ti-building-store"></i> ${cn}</span><span class="pill pill--i">${items.length} 項</span></div>
       ${items.map(p=>`
@@ -1220,7 +1221,7 @@ const A = {
   allowShip(id){ const p=byId(id); if(p){ p.status='approved'; p.shipSel=true; } render(); A.toast('已確認允許寄送，回送客戶端'); },
   openMyFolder(){ const c=customers.find(x=>x.name===me.nameCh); if(c&&c.drive) window.open(c.drive,'_blank'); else A.toast('依洛嘉尚未提供你的 PIF 雲端資料夾連結'); },
   setCustDrive(i,v){ if(customers[i]){ customers[i].drive=(v||'').trim(); save(); A.toast('已更新客戶 PIF 資料夾連結'); } },
-  receive(id){ byId(id).status='received'; render(); A.toast('已收樣，可到「請款」開收款單'); },
+  receive(id){ const p=byId(id); if(p){ p.status='received'; if(p.invSel===undefined)p.invSel=true; if(!p.feeSel)p.feeSel=5000; } render(); A.toast('已收樣，可到「請款」開收款單'); },
   issueInvoiceFor(cn){
     const sel=P('received').filter(p=>custName(p)===cn && p.invSel);
     if(!sel.length){ A.toast('請先勾選 '+cn+' 的樣品'); return; }
