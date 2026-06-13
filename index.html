@@ -245,6 +245,38 @@ function defTests(type){
   if(type==='液劑霜劑') return {fang:true,chang:true,wen:false};   // 其他液劑霜劑：防腐＋常规
   return {fang:false,chang:true,wen:false};
 }
+function testText(t){ t=t||{}; const a=[]; if(t.fang)a.push('防腐效能測驗'); if(t.chang)a.push('常規9項'); if(t.wen)a.push('穩定性測試'); return a.join('+')||'—'; }
+function feeOf(t){ t=t||{}; return (t.fang?350:0)+(t.chang?200:0)+(t.wen?350:0); }
+function agreementHTML(list){
+  const d=new Date(), ds=d.getFullYear()+'年'+String(d.getMonth()+1).padStart(2,'0')+'月'+String(d.getDate()).padStart(2,'0')+'日';
+  const rows=list.map((p,i)=>`<tr><td align="center">${i+1}</td><td>${p.name}</td><td>${testText(p.t)}</td><td align="center">${feeOf(p.t)}</td></tr>`).join('');
+  const total=list.reduce((s,p)=>s+feeOf(p.t),0);
+  return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+  <head><meta charset="utf-8"><title>合作協議</title></head>
+  <body style="font-family:'PMingLiU','新細明體',serif;font-size:14px;line-height:1.7">
+  <h2 style="text-align:center">广东微化检验科技有限公司合作協議</h2>
+  <p>項目名稱：化妝品備案檢測服務</p>
+  <p>委 托 方：依洛嘉國際實業有限公司（甲方）</p>
+  <p>受 托 方：广东微化检验科技有限公司（乙方）</p>
+  <p>甲、乙雙方本著自願、平等、公平、誠實、信用的原則，經友好協商，根據中華人民共和國有關法律、法規的規定簽定本協議，由雙方共同遵守。</p>
+  <p><b>一、服務內容</b></p>
+  <p>1.甲方提出化妝品檢測服務由乙方負責測試並出具報告、提交備案；</p>
+  <p>2.乙方協助甲方就該項目進行檢測工作。</p>
+  <p>合同雙方在未經對方同意的情況下，不得以任何方式泄露雙方價格和資料給任何第三方，但公司發放的資料及國家法律另有要求除外。</p>
+  <p><b>二、項目及費用</b></p>
+  <table border="1" cellspacing="0" cellpadding="5" style="border-collapse:collapse;width:100%">
+    <tr><th>序號</th><th>產品</th><th>項　目</th><th>費用</th></tr>
+    ${rows}
+    <tr><td colspan="3" align="right"><b>合計</b></td><td align="center"><b>${total}</b></td></tr>
+    <tr><td colspan="4">備注：以實際周期為准。</td></tr>
+  </table>
+  <br><p>本協議一式兩份，雙方各執一份，具有相同的法律效力，自雙方簽字之日起立即生效。</p>
+  <p>本協議由雙方蓋章，以昭信守：</p>
+  <p>甲方：依洛嘉國際實業有限公司　　　乙方：广东微化检验科技有限公司</p>
+  <p>蓋章：　　　　　　　　　　　　　蓋章：</p>
+  <p>日期：${ds}　　　　日期：${ds}</p>
+  </body></html>`;
+}
 function cellText(v){
   if(v===null||v===undefined) return '';
   if(typeof v==='object'){
@@ -321,21 +353,6 @@ function load(){
   }catch(e){}
 }
 
-/* ---------- dev role switcher ---------- */
-function devSwitcher(){
-  if(!devOpen) return `<button class="devbtn" onclick="A.toggleDev()"><i class="ti ti-switch-horizontal"></i> 測試切換</button>`;
-  const cur = view!=='app' ? (view==='board'?'未登入看板':'入口／登入') : (role==='customer'?('客戶：'+(me.nameCh||'')):('依洛嘉 · '+elgRole+' · '+(zone==='front'?'前臺':'後臺')));
-  return `<div class="devmenu">
-    <div class="devhd">測試身分 · 目前：${cur} <i class="ti ti-x" onclick="A.toggleDev()"></i></div>
-    <button onclick="A.devGo('customer')"><i class="ti ti-user"></i> 客戶端（${SAMPLE_ME.nameCh}）</button>
-    <button onclick="A.devGo('admin')"><i class="ti ti-shield-check"></i> 依洛嘉 · 主要管理者（後臺）</button>
-    <button onclick="A.devGo('manage')"><i class="ti ti-briefcase"></i> 依洛嘉 · 管理（後臺）</button>
-    <button onclick="A.devGo('front')"><i class="ti ti-building-store"></i> 依洛嘉 · 前臺（櫃檯）</button>
-    <button onclick="A.devGo('board')"><i class="ti ti-clipboard-list"></i> 共同資訊看板（未登入）</button>
-    <button onclick="A.devGo('entry')"><i class="ti ti-home"></i> 入口頁</button>
-  </div>`;
-}
-
 /* ---------- shell ---------- */
 function render(){
   save();
@@ -352,7 +369,24 @@ function render(){
   else html = (role==='customer') ? custApp() : elgApp();
   app.innerHTML=html;
   app.className = app.querySelector('.tabbar') ? 'mode-app' : 'mode-full';
-  const dev=document.getElementById('dev'); if(dev) dev.innerHTML=devSwitcher();
+  const dev=document.getElementById('dev');
+  if(dev){
+    if(!devOpen){
+      dev.innerHTML=`<button class="devbtn" onclick="A.toggleDev()"><i class="ti ti-switch-horizontal"></i> 測試切換</button>`;
+    } else {
+      const cur = view!=='app' ? (view==='board'?'未登入看板':'入口／登入')
+        : (role==='customer'?('客戶：'+(me.nameCh||'')):('依洛嘉 · '+elgRole+' · '+(zone==='front'?'前臺':'後臺')));
+      dev.innerHTML=`<div class="devmenu">
+        <div class="devhd">測試身分 · 目前：${cur} <i class="ti ti-x" onclick="A.toggleDev()"></i></div>
+        <button onclick="A.devGo('customer')"><i class="ti ti-user"></i> 客戶端（${SAMPLE_ME.nameCh}）</button>
+        <button onclick="A.devGo('admin')"><i class="ti ti-shield-check"></i> 依洛嘉 · 主要管理者（後臺）</button>
+        <button onclick="A.devGo('manage')"><i class="ti ti-briefcase"></i> 依洛嘉 · 管理（後臺）</button>
+        <button onclick="A.devGo('front')"><i class="ti ti-building-store"></i> 依洛嘉 · 前臺（櫃檯）</button>
+        <button onclick="A.devGo('board')"><i class="ti ti-clipboard-list"></i> 共同資訊看板（未登入）</button>
+        <button onclick="A.devGo('entry')"><i class="ti ti-home"></i> 入口頁</button>
+      </div>`;
+    }
+  }
 }
 function entryScreen(){
   return `<div class="full">
@@ -668,10 +702,16 @@ function elgData(){
     <div class="selrow ${p.t[k]?'on':''}" onclick="A.toggleTest('${k}')">
       <span class="ck"><i class="ti ti-check"></i></span>
       <span style="flex:1" class="nm">${label}</span><span class="muted">${money(price)}</span></div>`;
-  const exportable=pool.length;
+  const sel=pool.filter(x=>x.genSel!==false);
   return `<div class="pane">
-    <div class="note" style="margin-bottom:14px"><i class="ti ti-file-invoice"></i>已收款、待送驗的項目。設定檢驗項目後「生成送驗合約」即自動轉「送驗中」。</div>
-    <label class="lbl">選擇產品</label>
+    <div class="note" style="margin-bottom:14px"><i class="ti ti-file-invoice"></i>已收款、待送驗的「送驗總清單」。勾選要納入本次送驗的項目，設定檢驗項目後生成合作協議與樣品清單。</div>
+    <div class="sect" style="margin-bottom:8px">送驗總清單 · 勾選納入本次（${sel.length}/${pool.length}）</div>
+    <div class="stack">${pool.map(x=>`
+      <div class="selrow ${x.genSel!==false?'on':''}" onclick="A.toggleGen('${x.id}')">
+        <span class="ck"><i class="ti ti-check"></i></span>
+        <span style="flex:1"><span class="nm">${x.name}</span><br><span class="sub">${custName(x)} · ${testText(x.t)} · ${money(feeOf(x.t))}</span></span>
+      </div>`).join('')}</div>
+    <label class="lbl" style="margin-top:16px">設定檢驗項目（選擇產品）</label>
     <select class="fld" onchange="A.pickData(this.value)">
       ${pool.map(x=>`<option value="${x.id}" ${x.id===dataPid?'selected':''}>${custName(x)} · ${x.name}</option>`).join('')}
     </select>
@@ -711,9 +751,9 @@ function elgData(){
     <label class="lbl" style="margin-top:16px">功能性測試（手寫輸入 · 選填）</label>
     <textarea class="fld" style="height:64px;line-height:1.5" placeholder="如需功能性測試，描述項目／方法" onchange="A.setFunc('${p.id}',this.value)">${p.func||''}</textarea>
     <button class="btn btn--ghost" style="margin-top:16px" onclick="A.openAddItems('eloga')"><i class="ti ti-plus"></i> 新增品項（手動／辨識）</button>
-    <button class="btn" style="margin-top:10px" onclick="A.exportSongyan()">
-      <i class="ti ti-file-spreadsheet"></i> 生成送驗合約並送驗（${exportable} 筆）</button>
-    <div class="faint" style="font-size:12px;margin-top:8px;text-align:center">產生送驗清單 Excel、依客戶合併加總，並把這些項目轉為「送驗中」。</div>
+    <button class="btn" style="margin-top:10px" ${sel.length?'':'disabled'} onclick="A.exportSongyan()">
+      <i class="ti ti-file-stack"></i> 生成合作協議＋樣品清單並送驗（已勾選 ${sel.length} 筆）</button>
+    <div class="faint" style="font-size:12px;margin-top:8px;text-align:center">同時產出：給實驗室的樣品清單 Excel（依客戶合併）＋ 依洛嘉與微化檢驗的合作協議 Word；並把這些項目轉為「送驗中」。</div>
     <label class="btn btn--ghost" style="margin-top:14px;display:flex;cursor:pointer">
       <i class="ti ti-file-import"></i> 匯入送驗清單 XLSX（回送客戶）
       <input type="file" accept=".xlsx" style="display:none" onchange="A.importSongyan(this)">
@@ -987,6 +1027,7 @@ const A = {
     render(); A.toast('已加入 '+n+' 筆');
   },
   pickElgRole(r){ elgRole=r; render(); },
+  toggleGen(id){ const p=byId(id); if(p) p.genSel = (p.genSel===false); render(); },
   go(t){ elgTab=t; render(); },
   toggleDev(){ devOpen=!devOpen; render(); },
   devGo(which){
@@ -1103,9 +1144,9 @@ const A = {
   },
   async exportSongyan(){
     if(typeof ExcelJS==='undefined'){ A.toast('Excel 函式庫載入中，請稍候再按'); return; }
-    const list=products.filter(p=>p.status==='paid')
+    const list=products.filter(p=>p.status==='paid' && p.genSel!==false)
                        .slice().sort((a,b)=>custName(a).localeCompare(custName(b),'zh-Hant'));
-    if(!list.length){ A.toast('沒有待送驗的項目（需先完成收款查帳）'); return; }
+    if(!list.length){ A.toast('請先在送驗總清單勾選要送驗的項目'); return; }
     const FN='E.L.G INTERNATIONAL TRADING CO., LTD.';
     const FA='No. 600, Zhaixing 2nd St., Jiaxing Vil., Jiali Dist., Tainan City 722013, Taiwan (R.O.C.)';
     const thin={style:'thin'}, BD={top:thin,left:thin,right:thin,bottom:thin};
@@ -1158,8 +1199,12 @@ const A = {
     const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
     const url=URL.createObjectURL(blob), a=document.createElement('a');
     a.href=url; a.download='送驗清單.xlsx'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    const ah=agreementHTML(list);
+    const ab=new Blob(['\ufeff'+ah],{type:'application/msword'});
+    const au=URL.createObjectURL(ab), aa=document.createElement('a');
+    aa.href=au; aa.download='合作協議.doc'; document.body.appendChild(aa); aa.click(); aa.remove(); URL.revokeObjectURL(au);
     list.forEach(p=>{ p.status='testing'; });
-    render(); A.toast('已生成送驗合約（'+list.length+' 筆），轉為送驗中');
+    render(); A.toast('已生成合作協議＋樣品清單（'+list.length+' 筆），轉為送驗中');
   },
   toggleShip(id){ const p=byId(id); p.shipSel=!p.shipSel; render(); },
   toggleInv(id){ const p=byId(id); p.invSel=!p.invSel; render(); },
