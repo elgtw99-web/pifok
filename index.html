@@ -392,7 +392,7 @@ let staff=[
   {name:'前臺收件', email:'desk@eloga.com', role:'前臺'}
 ];
 let customers=[
-  {name:'晶寶企業行', email:'jingbao@gmail.com', login:'Google', status:'已啟用', drive:'https://drive.google.com/drive/folders/jingbao-pif', driveAuth:true},
+  {name:'晶寶企業行', email:'vic881019@gmail.com', login:'Google', status:'已啟用', drive:'https://drive.google.com/drive/folders/jingbao-pif', driveAuth:true},
   {name:'芊奕田生技', email:'chianyi@line.me', login:'LINE', status:'已啟用', drive:''},
   {name:'夏芮蒂生技', email:'sharidy@gmail.com', login:'Google', status:'待審核', drive:''}
 ];
@@ -437,7 +437,7 @@ const money = n => '$'+n.toLocaleString();
 const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 
 /* ---------- persistence ---------- */
-const SEED_VER='2026-06-13-jingbao-driveauth';
+const SEED_VER='2026-06-15-jingbao-vicmail';
 function save(){ try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO})); }catch(e){} }
 function load(){
   try{
