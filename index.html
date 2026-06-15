@@ -282,10 +282,11 @@ const FACTORY = 'E.L.G International Trading（依洛嘉）· 台南市佳里區
 let view='entry', role='customer', custTab='submit', elgTab='receive', dataPid=null, editingProfile=false, devOpen=false, custView=null, batch={}, libStatOff={}, libCustOff={}, libQ='', libImpCust='', libDrafts=[], libImpStatus='applied', confirmDel=null;
 let me={ nameCh:'', nameEn:'', addrCh:'', addrEn:'', phone:'', filled:false };
 const SAMPLE_ME={ nameCh:'晶寶企業行', nameEn:'Jingbao Co., Ltd.', addrCh:'高雄市大寮區琉球里巷尾路89之1號', addrEn:'No.89-1, Xiangwei Rd., Daliao Dist., Kaohsiung', phone:'07-1234567' };
-const custName = p => p.mine ? (me.nameCh || p.cust || CUST) : (p.cust || CUST);
+const SAMPLE_ME2={ nameCh:'芊奕田生技', nameEn:'Chianyitian Biotech Co., Ltd.', addrCh:'臺中市西屯區工業區一路100號', addrEn:'No.100, Gongye 1st Rd., Xitun Dist., Taichung', phone:'04-23591234' };
+const custName = p => p.cust || CUST;
 const CINFO = { '芊奕田生技':'台南市安平區建平一街56號', '夏芮蒂生技':'花蓮市中美路71-12號1樓' };
 const custAddr = p => p.mine ? (me.addrCh||'') : (CINFO[p.cust]||'');
-const ownedByMe = p => !!me.nameCh && custName(p)===me.nameCh;
+const ownedByMe = p => !!me.nameCh && (p.cust||CUST)===me.nameCh;
 function vendorOpts(sel){
   const names=[...new Set([CUST].concat(customers.map(c=>c.name)).concat(products.map(p=>custName(p))))].filter(Boolean);
   return names.map(nm=>`<option ${nm===sel?'selected':''}>${nm}</option>`).join('');
@@ -395,7 +396,7 @@ let staff=[
 ];
 let customers=[
   {name:'晶寶企業行', email:'vic881019@gmail.com', login:'Google', status:'已啟用', drive:'https://drive.google.com/drive/folders/jingbao-pif', driveAuth:true},
-  {name:'芊奕田生技', email:'chianyi@line.me', login:'LINE', status:'已啟用', drive:''},
+  {name:'芊奕田生技', email:'chianyi@line.me', login:'LINE', status:'已啟用', drive:'https://drive.google.com/drive/folders/chianyi-pif', driveAuth:true},
   {name:'夏芮蒂生技', email:'sharidy@gmail.com', login:'Google', status:'待審核', drive:''}
 ];
 const ELG_TABS={ '主要管理者':['home','customers','library','receive','apply','data','invoice','pif'], '管理':['home','customers','library','receive','apply','data','invoice','pif'] };
@@ -422,11 +423,15 @@ let products=[];
   add(CUST,'玫瑰花萃時光卸淨乳','applied','500g/瓶','1瓶');
   // 晶寶 — 可寄送（流程示範）
   add(CUST,'玫瑰舒緩噴霧','approved','100ml','4瓶',{shipSel:true});
-  // 芊奕田生技 — 跨廠商與流程示範
+  // 芊奕田生技 — 跨廠商與流程示範（橫跨各階段，方便驗證資料隔離）
+  add('芊奕田生技','薰衣草舒眠精油','applied','30ml','6瓶');
+  add('芊奕田生技','膠原蛋白緊緻面膜','applied','25ml×5','3盒');
+  add('芊奕田生技','保濕修護精華','shipped','30ml','5瓶');
+  add('芊奕田生技','永恆之肌天絲面膜','received','25ml×5','2盒',{batch:'6/11'});
   add('芊奕田生技','金盞花舒緩面膜','paid','25ml×5','2盒',{batch:'5/28',charge:5000,payNote:'王小姐'});
   add('芊奕田生技','積雪草修護安瓶','paid','30ml','4瓶',{batch:'5/28',charge:10000,payNote:'王小姐'});
-  add('芊奕田生技','永恆之肌天絲面膜','received','25ml×5','2盒',{batch:'6/11'});
-  add('芊奕田生技','保濕修護精華','shipped','30ml','5瓶');
+  add('芊奕田生技','山茶花亮澤護髮油','testing','100ml','3瓶',{batch:'送驗中'});
+  add('芊奕田生技','蜂王漿賦活霜','completed','50g','2瓶',{batch:'已完成',charge:10000,drive:'https://drive.google.com/drive/folders/chianyi-pif'});
 })();
 products.forEach(p=>{ if(p.cust===CUST) p.mine=true; if(!p.type) p.type=inferType(p.name); if(!p.t) p.t=defTests(p.type); if(p.alias===undefined) p.alias=''; });
 
@@ -439,7 +444,7 @@ const money = n => '$'+n.toLocaleString();
 const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 
 /* ---------- persistence ---------- */
-const SEED_VER='2026-06-15-jingbao-vicmail';
+const SEED_VER='2026-06-15-twocust-isolation';
 function save(){ try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO})); }catch(e){} }
 function load(){
   try{
@@ -495,6 +500,7 @@ function render(){
       dev.innerHTML=`<div class="devmenu">
         <div class="devhd">測試身分 · 目前：${cur} <i class="ti ti-x" onclick="A.toggleDev()"></i></div>
         <button onclick="A.devGo('customer')"><i class="ti ti-user"></i> 客戶端（${SAMPLE_ME.nameCh}）</button>
+        <button onclick="A.devGo('customer2')"><i class="ti ti-user"></i> 客戶端（${SAMPLE_ME2.nameCh}）</button>
         <button onclick="A.devGo('admin')"><i class="ti ti-shield-check"></i> 依洛嘉後臺 · 主要管理者</button>
         <button onclick="A.devGo('manage')"><i class="ti ti-briefcase"></i> 依洛嘉後臺 · 管理</button>
         <button onclick="A.devGo('board')"><i class="ti ti-clipboard-list"></i> 客戶公共平臺（免登入）</button>
@@ -1404,7 +1410,7 @@ const A = {
       const ty=inferType(d.name);
       const base={id:'n'+(uid++),name:d.name,alias:d.alias||'',en:d.en||'',spec:d.spec||'',qty:d.qty||'',amt:'',func:'',type:ty,t:defTests(ty)};
       if(addTarget==='eloga') Object.assign(base,{cust:addCust,status:'received',batch:'今日',invSel:true,feeSel:5000});
-      else Object.assign(base,{mine:true,status:'applied'});
+      else Object.assign(base,{cust:(me.nameCh||CUST),mine:(me.nameCh===CUST),status:'applied'});
       products.push(base);
     });
     const n=drafts.length; drafts=[]; view='app';
@@ -1503,7 +1509,8 @@ const A = {
   toggleDev(){ devOpen=!devOpen; render(); },
   devGo(which){
     devOpen=false;
-    if(which==='customer'){ role='customer'; if(!me.nameCh) Object.assign(me,SAMPLE_ME); me.filled=true; custTab='submit'; view='app'; }
+    if(which==='customer'){ role='customer'; Object.assign(me,SAMPLE_ME); me.filled=true; custTab='submit'; view='app'; }
+    else if(which==='customer2'){ role='customer'; Object.assign(me,SAMPLE_ME2); me.filled=true; custTab='submit'; view='app'; }
     else if(which==='admin'){ role='eloga'; elgRole='主要管理者'; zone='back'; elgTab='home'; view='app'; }
     else if(which==='manage'){ role='eloga'; elgRole='管理'; zone='back'; elgTab='home'; view='app'; }
     else if(which==='board'){ role='guest'; view='board'; }
@@ -1578,7 +1585,7 @@ const A = {
   openSharedPIF(){ view='shared-pif'; render(); },
   closeSharedPIF(){ view='app'; custTab='submit'; render(); },
   sharePIF(i){ const it=sharedPIF[i]; if(!it) return;
-    products.push({id:'s'+Date.now(),name:it.name,alias:'',en:'',spec:'',qty:'',amt:'',func:'',type:it.type,t:defTests(it.type),mine:true,status:'applied',shared:true});
+    products.push({id:'s'+Date.now(),name:it.name,alias:'',en:'',spec:'',qty:'',amt:'',func:'',type:it.type,t:defTests(it.type),cust:(me.nameCh||CUST),mine:(me.nameCh===CUST),status:'applied',shared:true});
     render(); A.toast('已共用至計劃：'+it.name); },
   async photoRecognized(input){
     const file=input&&input.files&&input.files[0]; if(!file) return;
