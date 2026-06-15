@@ -48,6 +48,17 @@
 
   .screen{ flex:1; overflow-y:auto; padding:18px 20px 24px; }
   .tabbar{ display:flex; border-top:1px solid var(--line); flex:none; background:var(--surface); }
+  #fab{ position:absolute; z-index:62; left:16px; bottom:88px; }
+  #fab.hide{ display:none; }
+  .fabbtn{ width:54px; height:54px; border-radius:50%; border:0; background:#06C755; color:#fff;
+    box-shadow:0 6px 18px rgba(0,0,0,.22); display:flex; align-items:center; justify-content:center;
+    cursor:pointer; font-family:inherit; transition:transform .12s; }
+  .fabbtn:active{ transform:scale(.92); }
+  .fabbtn i{ font-size:27px; }
+  .backbtn{ display:inline-flex; align-items:center; gap:6px; border:1px solid var(--line); background:var(--surface);
+    border-radius:10px; padding:7px 13px; font-family:inherit; font-size:13.5px; font-weight:600; color:var(--ink); cursor:pointer; }
+  .backbtn:active{ background:var(--n-bg); }
+  .backbtn i{ font-size:17px; }
   .tabbar button{
     flex:1; border:0; background:transparent; padding:9px 2px 12px; cursor:pointer; font-family:inherit;
     color:var(--faint); font-size:11px; font-weight:600; display:flex; flex-direction:column; align-items:center; gap:3px;
@@ -249,6 +260,7 @@
     .pane .stack{ display:flex; flex-direction:column; }
     .dash{ grid-template-columns:repeat(4,1fr); }
     .devbtn,.devmenu{ bottom:24px; right:24px; }
+    #fab{ left:auto; right:24px; bottom:88px; }
   }
   /* ===== MOBILE: 表格自動拆成乾淨卡片（電腦端維持表格匯總） ===== */
   @media (max-width:820px){
@@ -271,6 +283,7 @@
   <div class="phone">
     <div id="app"></div>
     <div class="toast" id="toast"></div>
+    <div id="fab"></div>
     <div id="dev"></div>
   </div>
 
@@ -585,6 +598,26 @@ products.forEach(p=>{ if(!p.type) p.type=inferType(p.name); if(p.alias===undefin
       status:'testing',batch:'第一次送驗',t:T(r[4],r[5],r[6]),type:inferType(r[0]),
       self:false, mine:(co===CUST)}); });
 })();
+(function(){
+  // 依「晶寶付款清單」校正狀態：兩欄打勾=已完成 / 只付檢驗費=送驗中 / 未付=已收樣待付
+  let n=products.length;
+  const JB_DONE=['循環晨韻精油','薑萃天竺葵舒緩精油','曲線緊緻精油','奧秘煥彩素顏霜','幹細胞活膚三合一地漿水','茉莉花萃精油'];
+  const JB_TEST=['瓷娃娃馬卡龍精華','玫瑰微臻霜','超泌肌能賦活精萃因子','蘆薈舒緩晶凍','積雪草修護凍膜','玫瑰臉部精油PLUS','積雪草舒緩安瓶','黑蝸牛極致保濕安瓶','EGF緊緻彈潤安瓶','微金分子彈潤肌安瓶','綻光煥膚杏仁酸精華','洋甘菊悠活精油'];
+  // 補上系統內缺少的品項（白底已完成 + 瓷娃娃送驗中）
+  JB_DONE.concat(['瓷娃娃馬卡龍精華']).forEach(nm=>{
+    if(!products.some(p=>p.cust===CUST && p.name===nm)){
+      const done=JB_DONE.includes(nm), ty=inferType(nm);
+      products.push(Object.assign({id:'jb-'+(++n),cust:CUST,name:nm,alias:'',en:'',spec:'',qty:'',status:done?'completed':'testing',batch:done?'已完成':'送驗中',type:ty,t:defTests(ty),mine:true},
+        done?{charge:10000,drive:'https://drive.google.com/drive/folders/jingbao-pif'}:{}));
+    }
+  });
+  // 依品名套用狀態
+  products.forEach(p=>{ if(p.cust!==CUST) return;
+    if(JB_DONE.includes(p.name)){ p.status='completed'; p.batch='已完成'; if(!p.drive)p.drive='https://drive.google.com/drive/folders/jingbao-pif'; if(p.charge==null)p.charge=10000; }
+    else if(JB_TEST.includes(p.name)){ p.status='testing'; if(!p.batch||p.batch==='匯入清單')p.batch='送驗中'; }
+    else { p.status='received'; }  // 未付（粉色）→ 已收樣待付
+  });
+})();
 
 const SM={ applied:['等待依洛嘉確認','w'], approved:['可寄送','i'], pending:['待寄送','n'],
   shipped:['已寄出樣品','i'], received:['已收樣','i'], invoiced:['待匯款','w'], reported:['待查帳','w'],
@@ -595,7 +628,7 @@ const money = n => '$'+n.toLocaleString();
 const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 
 /* ---------- persistence ---------- */
-const SEED_VER='2026-06-15-batch1-12';
+const SEED_VER='2026-06-15-jingbao-fix';
 function save(){ try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,showcase,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO})); }catch(e){} }
 function load(){
   try{
@@ -642,6 +675,12 @@ function render(){
   else if(view==='app') endc = (role==='customer') ? 'end-customer' : 'end-back';
   app.className = (app.querySelector('.tabbar') ? 'mode-app' : 'mode-full') + ' ' + endc;
   const newScreen=app.querySelector('.screen'); if(newScreen && sy) newScreen.scrollTop=sy;
+  const fab=document.getElementById('fab');
+  if(fab){
+    const showFab = !['entry','eloga-login','customer-login'].includes(view);
+    fab.style.display = showFab ? '' : 'none';
+    fab.innerHTML = showFab ? `<button class="fabbtn" title="PIF 客服（LINE）" aria-label="PIF 客服" onclick="A.openSupport()"><i class="ti ti-brand-line"></i></button>` : '';
+  }
   const dev=document.getElementById('dev');
   if(dev){
     if(!devOpen){
@@ -829,7 +868,7 @@ function custSubmit(){
 function custBilling(){
   const inv = products.filter(p=>ownedByMe(p) && p.status==='invoiced');
   const batches=[...new Set(inv.map(p=>p.batch))];
-  let h = '';
+  let h = supportLnk();
   const myc=customers.find(c=>c.name===me.nameCh);
   if(myc && myc.contract){
     const led=(myc.ledger||[]).slice(0,8);
@@ -1063,7 +1102,7 @@ function boardBody(){
 }
 function boardScreen(){
   return `<div class="hd"><div><h1>客戶公共平臺</h1><p>樣品收發狀態與可共用 PIF</p></div>
-      <button class="iconbtn" onclick="A.backEntry()" title="關閉"><i class="ti ti-x"></i></button></div>
+      <button class="backbtn" onclick="A.backEntry()"><i class="ti ti-arrow-left"></i> 返回入口</button></div>
     <div class="screen">${boardBody()}</div>`;
 }
 function elgApply(){
@@ -1241,7 +1280,8 @@ function elgCustomers(){
   const cobj=customers.find(c=>c.name===nm);
   const selN=its.filter(p=>batch[p.id]).length;
   const optsel=order.map(k=>`<option value="${k}">${SM[k][0]}</option>`).join('');
-  let h=`<div class="row" style="margin-bottom:10px"><span class="nm" style="font-size:17px;cursor:pointer" onclick="A.openCust(null)"><i class="ti ti-arrow-left"></i> ${nm}</span>
+  let h=`<div class="row" style="margin-bottom:10px;gap:10px"><button class="backbtn" onclick="A.openCust(null)"><i class="ti ti-arrow-left"></i> 客戶列表</button>
+      <span class="nm" style="font-size:16px;flex:1;min-width:0">${nm}</span>
       <span class="pill pill--i">${its.length} 件</span></div>`;
   // 狀態儀表板
   const present=order.filter(k=>its.some(p=>p.status===k));
@@ -1566,7 +1606,7 @@ function syncDrafts(){ drafts=drafts.map((d,i)=>({ name:dval('d_n_'+i,d.name), a
 function addItemsScreen(){
   const seg=(id,ic,lbl)=>`<button class="${addMode===id?'on':''}" onclick="A.setAddMode('${id}')"><i class="ti ti-${ic}"></i> ${lbl}</button>`;
   let h=`<div class="hd"><div><h1>新增品項</h1><p>${addTarget==='eloga'?'依洛嘉自建':'拍照／貼文字／手動'}</p></div>
-      <button class="iconbtn" onclick="A.closeAddItems()" title="關閉"><i class="ti ti-x"></i></button></div>
+      <button class="backbtn" onclick="A.closeAddItems()"><i class="ti ti-arrow-left"></i> 返回</button></div>
     <div class="screen"><div class="pane">`;
   if(addTarget==='eloga'){
     h+=`<label class="lbl">歸屬客戶</label>
@@ -1611,7 +1651,7 @@ function photoMode(){
 }
 function sharedPifScreen(){
   return `<div class="hd"><div><h1>依洛嘉 PIF 共用清單</h1><p>已有 PIF、可共用的產品</p></div>
-      <button class="iconbtn" onclick="A.closeSharedPIF()" title="關閉"><i class="ti ti-x"></i></button></div>
+      <button class="backbtn" onclick="A.closeSharedPIF()"><i class="ti ti-arrow-left"></i> 返回</button></div>
     <div class="screen">
       <div class="note" style="margin-bottom:14px"><i class="ti ti-files"></i>這些是依洛嘉已做過 PIF 的產品，點「共用」即可沿用，加入你的計劃清單。</div>
       <div class="stack">${sharedPIF.map((it,i)=>{
@@ -1644,7 +1684,7 @@ function manualMode(){
 function elogaAccounts(){
   const s = acctTab==='staff';
   let h = `<div class="hd"><div><h1>帳號管理</h1><p>主要管理者 · 建立帳號與權限</p></div>
-      <button class="iconbtn" onclick="A.closeAccounts()" title="關閉"><i class="ti ti-x"></i></button></div>
+      <button class="backbtn" onclick="A.closeAccounts()"><i class="ti ti-arrow-left"></i> 返回後臺</button></div>
     <div class="screen">
       <div class="seg" style="margin-top:0">
         <button class="${s?'on':''}" onclick="A.acctTab('staff')">內部帳號</button>
@@ -2258,6 +2298,9 @@ const A = {
   }
 };
 window.A=A;
+// 打字時自動隱藏浮動客服圖標，避免擋住輸入
+document.addEventListener('focusin', e=>{ const t=e.target&&e.target.tagName; if(t==='INPUT'||t==='TEXTAREA'){ const f=document.getElementById('fab'); if(f) f.classList.add('hide'); } });
+document.addEventListener('focusout', ()=>{ const f=document.getElementById('fab'); if(f) f.classList.remove('hide'); });
 load();
 render();
 </script>
