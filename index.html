@@ -69,6 +69,8 @@
   .grphd2 .chev{ font-size:16px;color:var(--faint);transition:transform .15s; }
   .grp.collapsed .chev{ transform:rotate(-90deg); }
   .grp.collapsed .grpbody{ display:none; }
+  .pifgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(168px,1fr)); gap:10px; }
+  .pifgrid .card{ padding:11px 12px; display:flex; flex-direction:column; gap:4px; }
   .screen.searching .grp .grpbody{ display:block; }
   .screen.searching .grp .chev{ transform:rotate(0deg); }
   .chips{ display:flex;flex-wrap:wrap;gap:7px;margin:0 0 12px; }
@@ -1183,10 +1185,13 @@ function elgPif(){
     : `<div class="empty" style="padding:24px"><i class="ti ti-clipboard-check"></i>目前沒有製作中的 PIF</div>`;
 
   const doneAll=products.filter(p=>p.status==='completed');
-  h += `<div class="sect mt">已完成 PIF 明細（含客戶）</div>`;
-  h += doneAll.length ? `<div class="stack">`+ doneAll.map(p=>`
-      <div class="card row"><span><span class="nm" style="font-size:15px">${p.name}</span><br><span class="sub">${custName(p)} · 完成 ${p.batch||''}</span></span>
-      <span class="pill pill--s"><i class="ti ti-circle-check"></i> 已完成</span></div>`).join('')+`</div>`
+  h += `<div class="row sect mt"><span>已完成 PIF 明細（含客戶）</span><span class="sub faint">右側為 PIF 處理狀態</span></div>`;
+  h += doneAll.length ? `<div class="pifgrid">`+ doneAll.map(p=>`
+      <div class="card">
+        <span class="nm" style="font-size:13px;line-height:1.25">${p.name}</span>
+        <span class="sub" style="font-size:11px">${custName(p)}</span>
+        <span class="pill pill--s" style="font-size:10px;align-self:flex-start"><i class="ti ti-circle-check"></i> PIF 已完成</span>
+      </div>`).join('')+`</div>`
     : `<div class="card faint" style="text-align:center;padding:18px">尚無已完成 PIF</div>`;
   return h;
 }
