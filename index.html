@@ -282,10 +282,14 @@ const FACTORY = 'E.L.G International Trading（依洛嘉）· 台南市佳里區
 let view='entry', role='customer', custTab='submit', elgTab='receive', dataPid=null, editingProfile=false, devOpen=false, custView=null, batch={}, libStatOff={}, libCustOff={}, libQ='', libImpCust='', libDrafts=[], libImpStatus='applied', confirmDel=null;
 let me={ nameCh:'', nameEn:'', addrCh:'', addrEn:'', phone:'', filled:false };
 const SAMPLE_ME={ nameCh:'晶寶企業行', nameEn:'Jingbao Co., Ltd.', addrCh:'高雄市大寮區琉球里巷尾路89之1號', addrEn:'No.89-1, Xiangwei Rd., Daliao Dist., Kaohsiung', phone:'07-1234567' };
-const SAMPLE_ME2={ nameCh:'芊奕田生技', nameEn:'Chianyitian Biotech Co., Ltd.', addrCh:'臺中市西屯區工業區一路100號', addrEn:'No.100, Gongye 1st Rd., Xitun Dist., Taichung', phone:'04-23591234' };
+const SAMPLE_ME2={ nameCh:'芊奕田生技', nameEn:'Chianyitian Biotech Co., Ltd.', addrCh:'台南市安平區建平一街56號', addrEn:'No.56, Jianping 1st St., Anping Dist., Tainan', phone:'06-2991234' };
 const custName = p => p.cust || CUST;
-const CINFO = { '芊奕田生技':'台南市安平區建平一街56號', '夏芮蒂生技':'花蓮市中美路71-12號1樓' };
-const custAddr = p => p.mine ? (me.addrCh||'') : (CINFO[p.cust]||'');
+const CINFO = {
+  '晶寶企業行':'高雄市大寮區琉球里巷尾路89之1號',
+  '芊奕田生技':'台南市安平區建平一街56號',
+  '夏芮蒂生物科技有限公司':'花蓮市中美路71-12號1樓'
+};
+const custAddr = p => CINFO[custName(p)] || (p.mine ? (me.addrCh||'') : '');
 const ownedByMe = p => !!me.nameCh && (p.cust||CUST)===me.nameCh;
 function vendorOpts(sel){
   const names=[...new Set([CUST].concat(customers.map(c=>c.name)).concat(products.map(p=>custName(p))))].filter(Boolean);
@@ -334,11 +338,12 @@ function testText(t){ t=t||{}; const a=[]; if(t.fang)a.push('防腐效能測驗'
 function feeOf(t){ t=t||{}; return (t.fang?350:0)+(t.chang?200:0)+(t.wen?350:0); }
 function agreementHTML(list){
   const d=new Date(), ds=d.getFullYear()+'年'+String(d.getMonth()+1).padStart(2,'0')+'月'+String(d.getDate()).padStart(2,'0')+'日';
+  const docNo='MC-'+String(d.getFullYear()).slice(2)+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'01';
   const rows=list.map((p,i)=>`<tr><td align="center">${i+1}</td><td>${p.name}</td><td>${testText(p.t)}</td><td align="center">${feeOf(p.t)}</td></tr>`).join('');
-  const total=list.reduce((s,p)=>s+feeOf(p.t),0);
   return `<html xmlns:o="urn:schemas-microsoft-com:office:office" xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
   <head><meta charset="utf-8"><title>合作協議</title></head>
   <body style="font-family:'PMingLiU','新細明體',serif;font-size:14px;line-height:1.7">
+  <p style="text-align:right">文件编号：${docNo}</p>
   <h2 style="text-align:center">广东微化检验科技有限公司合作協議</h2>
   <p>項目名稱：化妝品備案檢測服務</p>
   <p>委 托 方：依洛嘉國際實業有限公司（甲方）</p>
@@ -352,7 +357,6 @@ function agreementHTML(list){
   <table border="1" cellspacing="0" cellpadding="5" style="border-collapse:collapse;width:100%">
     <tr><th>序號</th><th>產品</th><th>項　目</th><th>費用</th></tr>
     ${rows}
-    <tr><td colspan="3" align="right"><b>合計</b></td><td align="center"><b>${total}</b></td></tr>
     <tr><td colspan="4">備注：以實際周期為准。</td></tr>
   </table>
   <br><p>本協議一式兩份，雙方各執一份，具有相同的法律效力，自雙方簽字之日起立即生效。</p>
