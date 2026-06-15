@@ -396,7 +396,7 @@ let customers=[
   {name:'芊奕田生技', email:'chianyi@line.me', login:'LINE', status:'已啟用', drive:''},
   {name:'夏芮蒂生技', email:'sharidy@gmail.com', login:'Google', status:'待審核', drive:''}
 ];
-const ELG_TABS={ '主要管理者':['home','customers','library','apply','data','invoice','pif'], '管理':['home','customers','library','apply','data','invoice','pif'], '前臺':['receive','board'] };
+const ELG_TABS={ '主要管理者':['home','customers','library','receive','apply','data','invoice','pif'], '管理':['home','customers','library','receive','apply','data','invoice','pif'] };
 
 let products=[];
 (function(){
@@ -480,7 +480,7 @@ function render(){
   if(view==='board') endc='end-board';
   else if(view==='add-items'||view==='shared-pif'||view==='customer-login'||view==='customer-profile') endc='end-customer';
   else if(view==='eloga-accounts') endc='end-back';
-  else if(view==='app') endc = (role==='customer') ? 'end-customer' : (zone==='front'?'end-front':'end-back');
+  else if(view==='app') endc = (role==='customer') ? 'end-customer' : 'end-back';
   app.className = (app.querySelector('.tabbar') ? 'mode-app' : 'mode-full') + ' ' + endc;
   const newScreen=app.querySelector('.screen'); if(newScreen && sy) newScreen.scrollTop=sy;
   const dev=document.getElementById('dev');
@@ -488,15 +488,14 @@ function render(){
     if(!devOpen){
       dev.innerHTML=`<button class="devbtn" onclick="A.toggleDev()"><i class="ti ti-switch-horizontal"></i> 測試切換</button>`;
     } else {
-      const cur = view!=='app' ? (view==='board'?'未登入看板':'入口／登入')
-        : (role==='customer'?('客戶：'+(me.nameCh||'')):('依洛嘉 · '+elgRole+' · '+(zone==='front'?'前臺':'後臺')));
+      const cur = view!=='app' ? (view==='board'?'客戶公共平臺':'入口／登入')
+        : (role==='customer'?('客戶：'+(me.nameCh||'')):('依洛嘉後臺 · '+elgRole));
       dev.innerHTML=`<div class="devmenu">
         <div class="devhd">測試身分 · 目前：${cur} <i class="ti ti-x" onclick="A.toggleDev()"></i></div>
         <button onclick="A.devGo('customer')"><i class="ti ti-user"></i> 客戶端（${SAMPLE_ME.nameCh}）</button>
-        <button onclick="A.devGo('admin')"><i class="ti ti-shield-check"></i> 依洛嘉 · 主要管理者（後臺）</button>
-        <button onclick="A.devGo('manage')"><i class="ti ti-briefcase"></i> 依洛嘉 · 管理（後臺）</button>
-        <button onclick="A.devGo('front')"><i class="ti ti-building-store"></i> 依洛嘉 · 前臺（櫃檯）</button>
-        <button onclick="A.devGo('board')"><i class="ti ti-clipboard-list"></i> 共同資訊看板（未登入）</button>
+        <button onclick="A.devGo('admin')"><i class="ti ti-shield-check"></i> 依洛嘉後臺 · 主要管理者</button>
+        <button onclick="A.devGo('manage')"><i class="ti ti-briefcase"></i> 依洛嘉後臺 · 管理</button>
+        <button onclick="A.devGo('board')"><i class="ti ti-clipboard-list"></i> 客戶公共平臺（免登入）</button>
         <button onclick="A.devGo('entry')"><i class="ti ti-home"></i> 入口頁</button>
       </div>`;
     }
@@ -522,7 +521,7 @@ function entryScreen(){
       </button>
       <button class="entrycard" onclick="A.openBoard()">
         <span class="ec-ic" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-clipboard-list"></i></span>
-        <span class="ec-t"><span class="nm">共同資訊看板</span><span class="sub">送驗中／完成 PIF · 免登入</span></span>
+        <span class="ec-t"><span class="nm">客戶公共平臺</span><span class="sub">樣品收發狀態／可共用 PIF · 免登入</span></span>
         <i class="ti ti-chevron-right faint" style="font-size:20px"></i>
       </button>
     </div>
@@ -536,7 +535,7 @@ function elogaLogin(){
     <label class="lbl">帳號</label><input class="fld" value="eloga.admin" style="margin-bottom:14px">
     <label class="lbl">密碼</label><input class="fld" type="password" value="demo1234" style="margin-bottom:14px">
     <label class="lbl">以身分登入（Demo · 測試權限）</label>
-    <div class="seg" style="margin-bottom:20px">${chip('主要管理者')}${chip('管理')}${chip('前臺')}</div>
+    <div class="seg" style="margin-bottom:20px">${chip('主要管理者')}${chip('管理')}</div>
     <button class="btn" onclick="A.loginEloga()"><i class="ti ti-login-2"></i> 登入</button>
   </div>`;
 }
@@ -640,16 +639,22 @@ function custSubmit(){
   h += `<div class="sect mt">進行中</div>`;
   if(prog.length){
     const porder=['shipped','received','invoiced','reported','paid','testing','reporting','completed'];
+    const cancelable=['shipped','received','invoiced','reported','paid'];
     const present=porder.filter(k=>prog.some(p=>p.status===k));
     h += srchBar('搜尋進行中品名…');
     h += present.map(k=>{
       const grp=prog.filter(p=>p.status===k);
-      const body=`<div class="stack">`+ grp.map(p=>`
-        <div class="card compact" data-nm="${p.name}"><div class="row"><span class="nm" style="font-size:14px">${p.name}</span></div>
-          ${p.cancelReq
-            ? `<div class="sub" style="margin-top:8px;color:var(--w)"><i class="ti ti-clock"></i> 撤銷申請中，待依洛嘉同意 · <span style="cursor:pointer;text-decoration:underline" onclick="A.undoCancelReq('${p.id}')">取消申請</span></div>`
-            : `<button class="btn btn--ghost btn--sm" style="margin-top:8px" onclick="A.requestCancel('${p.id}')"><i class="ti ti-ban"></i> 申請撤銷</button>`}
-        </div>`).join('')+`</div>`;
+      const canCancel=cancelable.includes(k);
+      const body=`<div class="stack">`+ grp.map(p=>{
+        let right;
+        if(p.paused) right=`<span class="pill pill--n" style="font-size:11px"><i class="ti ti-player-pause"></i> 已暫停</span>`;
+        else if(canCancel) right = p.cancelReq
+            ? `<span class="sub" style="color:var(--w);white-space:nowrap"><i class="ti ti-clock"></i> 撤銷申請中 · <span style="cursor:pointer;text-decoration:underline" onclick="A.undoCancelReq('${p.id}')">取消</span></span>`
+            : `<span class="sub" style="color:#C0392B;cursor:pointer;white-space:nowrap" onclick="A.requestCancel('${p.id}')"><i class="ti ti-ban"></i> 申請撤銷</span>`;
+        else right=`<span class="sub faint" style="white-space:nowrap">送驗中不可撤銷</span>`;
+        return `<div class="card compact" data-nm="${p.name}"><div class="row" style="align-items:center;gap:10px">
+            <span class="nm" style="font-size:14px;flex:1">${p.name}</span>${right}</div></div>`;
+      }).join('')+`</div>`;
       return collGroup(SM[k][1], SM[k][0], grp.length, body);
     }).join('');
   } else {
@@ -711,7 +716,7 @@ function custBoard(){
     h+= present.map(k=>{
       const grp=mine.filter(p=>p.status===k);
       const body=`<div class="stack">`+ grp.map(p=>`
-        <div class="card compact" data-nm="${p.name}"><div class="row"><span><span class="nm" style="font-size:13.5px">${p.name}</span>${p.alias?`<br><span class="sub">配方名：${p.alias}</span>`:''}</span>
+        <div class="card compact" data-nm="${p.name}"><div class="row"><span><span class="nm" style="font-size:13.5px">${p.name}</span>${p.paused?' <span class="pill pill--n" style="font-size:10px"><i class="ti ti-player-pause"></i> 已暫停</span>':''}${p.alias?`<br><span class="sub">配方名：${p.alias}</span>`:''}</span>
           ${p.status==='completed'?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" onclick="A.openDrive('${p.id}')"><i class="ti ti-download"></i> PIF</button>`:''}</div>
         </div>`).join('')+`</div>`;
       return collGroup(SM[k][1], SM[k][0], grp.length, body);
@@ -729,16 +734,15 @@ function custBoard(){
 
 /* ===================== ELOGA ===================== */
 function elgHeader(){
-  const z=(id,lbl)=>`<button class="${zone===id?'on':''}" onclick="A.setZone('${id}')">${lbl}</button>`;
-  const gear = (zone==='back' && elgRole==='主要管理者') ? `<button class="hbtn" onclick="A.openAccounts()"><i class="ti ti-settings"></i> 帳號</button>` : '';
+  const gear = (elgRole==='主要管理者') ? `<button class="hbtn" onclick="A.openAccounts()"><i class="ti ti-settings"></i> 帳號</button>` : '';
   return `<div class="hd">
-    <div><div class="ztog">${z('back','後臺')}${z('front','前臺')}</div><p style="margin:7px 0 0;font-size:12px" class="muted">${elgRole}</p></div>
+    <div><h1 style="font-size:20px">依洛嘉後臺</h1><p style="margin:5px 0 0;font-size:12px" class="muted">${elgRole} · 可檢視與管理全部客戶</p></div>
     <div style="display:flex;align-items:center;gap:12px">${gear}<button class="iconbtn" onclick="A.logout()" title="登出"><i class="ti ti-logout"></i></button></div>
   </div>`;
 }
 function elgApp(){
-  const TI={ home:['layout-dashboard','總覽'], customers:['users','客戶'], library:['database','樣品庫'], receive:['package-import','收件'], apply:['list-check','申請'], data:['file-spreadsheet','送驗資料'], invoice:['receipt-2','請款'], pif:['clipboard-check','完成 PIF'], board:['clipboard-list','看板'] };
-  const allowed = zone==='front' ? ['receive','board'] : (ELG_TABS[elgRole]||ELG_TABS['主要管理者']);
+  const TI={ home:['layout-dashboard','總覽'], customers:['users','客戶'], library:['database','樣品庫'], receive:['package-import','收件'], apply:['list-check','申請'], data:['file-spreadsheet','送驗資料'], invoice:['receipt-2','請款'], pif:['clipboard-check','完成 PIF'] };
+  const allowed = ELG_TABS[elgRole]||ELG_TABS['主要管理者'];
   if(!allowed.includes(elgTab)) elgTab=allowed[0];
   const tabs=allowed.map(id=>tab(elgTab,id,TI[id][0],TI[id][1],'A.setElgTab')).join('');
   return elgHeader() +
@@ -758,27 +762,21 @@ function elgScreen(){
 }
 function boardBody(){
   if(role==='customer') return custBoard();
-  if(role==='eloga'){
-    const groups=[['testing','送驗中'],['reporting','PIF製作中'],['completed','已完成 PIF']];
-    let h=`<div class="note" style="margin-bottom:12px"><i class="ti ti-eye"></i>內部總覽：依階段彙整全部客戶的進度（含客戶名）。</div>`;
-    groups.forEach(([st,lbl])=>{
-      const list=products.filter(p=>p.status===st);
-      h+=`<div class="row sect"><span>${lbl}</span><span class="pill pill--${SM[st][1]}">${list.length}</span></div>`;
-      h+= list.length ? `<div class="stack">`+ list.map(p=>`
-          <div class="card row"><span><span class="nm" style="font-size:15px">${p.name}</span><br><span class="sub">${custName(p)} · ${p.batch||''}</span></span>${pill(p.status)}</div>`).join('')+`</div>`
-        : `<div class="card faint" style="text-align:center;padding:16px">無</div>`;
-    });
-    return h;
-  }
-  // anonymous (未登入)：只顯示依洛嘉可共用 PIF，不揭露任何客戶資料
-  let h=`<div class="note" style="margin-bottom:12px"><i class="ti ti-lock"></i>未登入僅顯示依洛嘉可共用的 PIF 產品；登入後可看到自己的送驗進度。</div>`;
-  h+=`<div class="sect">依洛嘉目前可共用的 PIF 產品</div>`;
-  h+=`<div class="stack">`+ sharedPIF.map(it=>`
-      <div class="card row"><span class="nm" style="font-size:15px">${it.name}</span><span class="sub">${it.type}</span></div>`).join('')+`</div>`;
+  // 公共平臺（未登入）：唯讀。只揭露可共用 PIF 明細，不顯示任何特定客戶資料。
+  let h=`<div class="note" style="margin-bottom:12px"><i class="ti ti-lock"></i>這是客戶公共平臺（唯讀）。登入後可查看「自己已寄送樣品」的收發狀態；未登入僅顯示下方可共用的 PIF 明細。</div>`;
+  h+=`<div class="sect">可共用 PIF 明細</div>`;
+  h+= srchBar('搜尋可共用 PIF…');
+  h+= sharedPIF.length ? collGroup('s','可共用 PIF', sharedPIF.length,
+      `<div class="stack">`+ sharedPIF.map(it=>`
+        <div class="card compact" data-nm="${it.name} ${it.type||''}"><div class="row" style="align-items:center;gap:8px">
+          <span style="flex:1;min-width:0"><span class="nm" style="font-size:13.5px">${it.name}</span><br><span class="sub">${it.type||'—'} · 已有 PIF</span></span>
+          <span class="pill pill--s" style="font-size:11px">可共用</span></div></div>`).join('')+`</div>`)
+    : `<div class="card faint" style="text-align:center;padding:18px">目前沒有可共用的 PIF</div>`;
+  h+=`<div class="faint" style="font-size:12px;margin-top:12px"><i class="ti ti-login"></i> 想查自己樣品的收發狀態？請以客戶身分登入。</div>`;
   return h;
 }
 function boardScreen(){
-  return `<div class="hd"><div><h1>共同資訊看板</h1><p>送驗中與完成 PIF 品項</p></div>
+  return `<div class="hd"><div><h1>客戶公共平臺</h1><p>樣品收發狀態與可共用 PIF</p></div>
       <button class="iconbtn" onclick="A.backEntry()" title="關閉"><i class="ti ti-x"></i></button></div>
     <div class="screen">${boardBody()}</div>`;
 }
@@ -815,7 +813,7 @@ function elgHome(){
   const pend=customers.filter(x=>x.status==='待審核').length;
   const cards=[
     ['applied','等待確認','list-check','apply'],
-    ['shipped','待收件','package-import','front'],
+    ['shipped','待收件','package-import','receive'],
     ['received','待開收款單','receipt-2','invoice'],
     ['reported','待查帳','cash','invoice'],
     ['paid','待生成送驗','file-invoice','data'],
@@ -825,7 +823,7 @@ function elgHome(){
   ];
   let h=`<div class="note" style="margin-bottom:14px"><i class="ti ti-layout-dashboard"></i>全流程總覽 · 點任一階段直接前往處理。</div>`;
   h+=`<div class="dash">`+ cards.map(([st,lbl,ic,tab])=>`
-      <div class="metric" onclick="${tab==='front'?'A.goReceive()':"A.go('"+tab+"')"}"><div class="mi"><i class="ti ti-${ic}"></i></div>
+      <div class="metric" onclick="A.go('${tab}')"><div class="mi"><i class="ti ti-${ic}"></i></div>
         <div class="mv">${c(st)}</div><div class="ml">${lbl}</div></div>`).join('')+`</div>`;
   h+=`<div class="sect mt">客戶帳號</div>
     <div class="dash">
@@ -1002,7 +1000,8 @@ function elgCustomers(){
         <td data-label="費用" style="white-space:nowrap">${money(feeOf(p.t))}</td>
         <td data-label="狀態"><select class="fld fld--mini" onchange="A.setStatus('${p.id}',this.value)">
           ${order.map(o=>`<option value="${o}" ${p.status===o?'selected':''}>${SM[o][0]}</option>`).join('')}
-        </select></td>
+        </select>
+        <button class="btn btn--ghost btn--sm" style="margin-top:6px;width:100%;${p.paused?'color:#C0392B':''}" onclick="A.togglePause('${p.id}')"><i class="ti ti-player-${p.paused?'play':'pause'}"></i> ${p.paused?'已暫停 · 點此恢復':'暫停（不退款）'}</button></td>
       </tr>`).join('') : `<tr><td colspan="7" style="text-align:center;padding:24px;color:var(--muted)">此廠商尚無送驗商品</td></tr>`)
     +`</tbody></table></div>`;
   return h;
@@ -1010,14 +1009,11 @@ function elgCustomers(){
 function elgReceive(){
   const waiting=P('shipped');
   const recent=P('received');
-  let h='';
-  if(zone==='front'){
-    h += `<div class="dash" style="margin-bottom:16px">
-        <div class="metric"><div class="mi" style="background:var(--w-bg);color:var(--w)"><i class="ti ti-truck-loading"></i></div><div class="mv">${waiting.length}</div><div class="ml">待收件</div></div>
-        <div class="metric"><div class="mi" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-package"></i></div><div class="mv">${recent.length}</div><div class="ml">已收樣</div></div>
-      </div>`;
-  }
-  h += `<div class="addr" style="margin-bottom:16px"><div class="t">收件地址（前臺收樣）</div><div class="a">${ADDR}</div><div class="a" style="margin-top:2px">電話 ${ELG_TEL}</div></div>`;
+  let h=`<div class="dash" style="margin-bottom:16px">
+      <div class="metric"><div class="mi" style="background:var(--w-bg);color:var(--w)"><i class="ti ti-truck-loading"></i></div><div class="mv">${waiting.length}</div><div class="ml">待收件</div></div>
+      <div class="metric"><div class="mi" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-package"></i></div><div class="mv">${recent.length}</div><div class="ml">已收樣</div></div>
+    </div>`;
+  h += `<div class="addr" style="margin-bottom:16px"><div class="t">收件地址（客戶寄樣到此）</div><div class="a">${ADDR}</div><div class="a" style="margin-top:2px">電話 ${ELG_TEL}</div></div>`;
   h += `<div class="row sect"><span>待收件</span><span class="pill pill--w">${waiting.length}</span></div>`;
   h += waiting.length ? `<div class="stack">`+ waiting.map(p=>`
       <div class="card" style="border-color:var(--w)"><div class="row">
@@ -1384,7 +1380,7 @@ const A = {
   setRole(r){ role=r; render(); },
   goLogin(side){ view = side==='eloga'?'eloga-login':'customer-login'; render(); },
   backEntry(){ view='entry'; render(); },
-  loginEloga(){ role='eloga'; zone = elgRole==='前臺'?'front':'back'; const a=ELG_TABS[elgRole]||['receive']; elgTab=a[0]; view='app'; render(); A.toast('以「'+elgRole+'」身分登入'); },
+  loginEloga(){ role='eloga'; zone='back'; const a=ELG_TABS[elgRole]||ELG_TABS['主要管理者']; elgTab=a[0]; view='app'; render(); A.toast('以「'+elgRole+'」身分登入'); },
   setZone(z){ zone=z; if(view==='eloga-accounts') view='app'; render(); },
   openAddItems(target){ if(addTarget!==target) drafts=[]; addTarget=target; if(!addCust) addCust=(customers[0]&&customers[0].name)||''; view='add-items'; render(); },
   closeAddItems(){ view='app'; if(addTarget==='eloga') elgTab='data'; else custTab='submit'; render(); },
@@ -1414,7 +1410,7 @@ const A = {
   toggleGen(id){ const p=byId(id); if(p) p.genSel = (p.genSel===false); render(); },
   toggleVendor(v){ const its=products.filter(p=>p.status==='paid'&&custName(p)===v); const allSel=its.every(p=>p.genSel!==false); its.forEach(p=>p.genSel = allSel?false:true); render(); },
   go(t){ elgTab=t; confirmDel=null; render(); },
-  goReceive(){ zone='front'; elgTab='receive'; render(); },
+  goReceive(){ elgTab='receive'; render(); },
   openCust(nm){ custView=nm; batch={}; confirmDel=null; render(); },
   setStatus(id,st){ const p=byId(id); if(p) p.status=st; render(); },
   setField(id,f,v){ const p=byId(id); if(p){ p[f]=v; save(); } },
@@ -1505,7 +1501,6 @@ const A = {
     if(which==='customer'){ role='customer'; if(!me.nameCh) Object.assign(me,SAMPLE_ME); me.filled=true; custTab='submit'; view='app'; }
     else if(which==='admin'){ role='eloga'; elgRole='主要管理者'; zone='back'; elgTab='home'; view='app'; }
     else if(which==='manage'){ role='eloga'; elgRole='管理'; zone='back'; elgTab='home'; view='app'; }
-    else if(which==='front'){ role='eloga'; elgRole='前臺'; zone='front'; elgTab='receive'; view='app'; }
     else if(which==='board'){ role='guest'; view='board'; }
     else { view='entry'; }
     render();
@@ -1693,7 +1688,8 @@ const A = {
     const i=products.findIndex(x=>x.id===id); if(i>=0) products.splice(i,1);
     render(); A.toast('已撤銷並刪除');
   },
-  requestCancel(id){ const p=byId(id); if(p){ p.cancelReq=true; } render(); A.toast('已送出撤銷申請，待依洛嘉同意'); },
+  requestCancel(id){ const p=byId(id); if(!p) return; if(['testing','reporting','completed'].includes(p.status)){ A.toast('已進入送驗，無法撤銷（如需暫停請洽依洛嘉）'); return; } p.cancelReq=true; render(); A.toast('已送出撤銷申請，待依洛嘉同意'); },
+  togglePause(id){ const p=byId(id); if(p){ p.paused=!p.paused; if(p.paused) delete p.cancelReq; save(); render(); A.toast(p.paused?'已暫停此樣品（不退款）':'已恢復此樣品'); } },
   undoCancelReq(id){ const p=byId(id); if(p){ delete p.cancelReq; } render(); A.toast('已取消撤銷申請'); },
   approveCancel(id){ const i=products.findIndex(x=>x.id===id); if(i>=0) products.splice(i,1); render(); A.toast('已同意撤銷並移除'); },
   rejectCancel(id){ const p=byId(id); if(p){ delete p.cancelReq; } render(); A.toast('已駁回撤銷申請'); },
