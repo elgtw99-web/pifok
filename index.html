@@ -63,7 +63,7 @@
   .chips{ display:flex;flex-wrap:wrap;gap:7px;margin:0 0 12px; }
   .fchip{ font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:9px;border:1.5px solid var(--line2);color:var(--muted);cursor:pointer;user-select:none; }
   .fchip.on{ background:var(--ink);border-color:var(--ink);color:#fff; }
-  .tablewrap{ overflow-x:auto;border:1px solid var(--line2);border-radius:12px; }
+  .tablewrap{ overflow-x:auto;border:1px solid var(--line2);border-radius:12px;background:var(--surface); }
   table.dtable{ width:100%;border-collapse:collapse;font-size:13px;min-width:760px; }
   table.dtable th{ text-align:left;font-weight:700;font-size:11.5px;color:var(--muted);padding:10px 12px;border-bottom:1.5px solid var(--line2);white-space:nowrap;background:var(--n-bg); }
   table.dtable td{ padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:middle; }
@@ -75,7 +75,7 @@
   table.dtable td .fld--mini{ width:100%; }
   .sect.mt{ margin-top:22px; }
   .muted{ color:var(--muted); } .faint{ color:var(--faint); }
-  .card{ border:1px solid var(--line2); border-radius:14px; padding:15px; }
+  .card{ border:1px solid var(--line2); border-radius:14px; padding:15px; background:var(--surface); }
   .card+.card{ margin-top:10px; }
   .row{ display:flex; align-items:center; justify-content:space-between; gap:10px; }
   .stack{ display:flex; flex-direction:column; gap:10px; }
@@ -146,6 +146,13 @@
   .miniline{ display:flex; justify-content:space-between; font-size:14px; padding:5px 0; }
 
   #app{ flex:1; display:flex; flex-direction:column; min-height:0; }
+  /* 不同端的柔和底色，方便測試辨識 */
+  #app.end-entry{ --endbg:var(--bg); }
+  #app.end-customer{ --endbg:#EAF2F1; }   /* 客戶端 · 柔和湖綠 */
+  #app.end-back{ --endbg:#F3EEE5; }        /* 依洛嘉後臺 · 柔和米砂 */
+  #app.end-front{ --endbg:#ECE9F5; }       /* 依洛嘉前臺 · 柔和薰衣草 */
+  #app.end-board{ --endbg:#ECF1EB; }       /* 共同看板 · 柔和淺鼠尾草 */
+  #app .hd, #app .screen{ background:var(--endbg, var(--surface)); }
   .full{ flex:1; padding:28px 24px; display:flex; flex-direction:column; overflow-y:auto; }
   .brand{ text-align:center; margin-top:36px; }
   .logo{ width:64px;height:64px;border-radius:18px;background:var(--ink);color:#fff;font-size:28px;font-weight:700;
@@ -259,7 +266,7 @@ const CUST = '晶寶企業行';
 const ADDR = '台南市佳里區佳興里宅興二街600號 · 洪莉晴 收';
 const ELG_TEL = '06-7228888';
 const FACTORY = 'E.L.G International Trading（依洛嘉）· 台南市佳里區佳興里宅興二街600號';
-let view='entry', role='customer', custTab='submit', elgTab='receive', dataPid=null, editingProfile=false, devOpen=false, custView=null, batch={}, libStatOff={}, libCustOff={}, libQ='', libImpCust='';
+let view='entry', role='customer', custTab='submit', elgTab='receive', dataPid=null, editingProfile=false, devOpen=false, custView=null, batch={}, libStatOff={}, libCustOff={}, libQ='', libImpCust='', libDrafts=[], libImpStatus='applied', confirmDel=null;
 let me={ nameCh:'', nameEn:'', addrCh:'', addrEn:'', phone:'', filled:false };
 const SAMPLE_ME={ nameCh:'晶寶企業行', nameEn:'Jingbao Co., Ltd.', addrCh:'高雄市大寮區琉球里巷尾路89之1號', addrEn:'No.89-1, Xiangwei Rd., Daliao Dist., Kaohsiung', phone:'07-1234567' };
 const custName = p => p.mine ? (me.nameCh||'（未填寫廠商名）') : p.cust;
@@ -390,7 +397,7 @@ const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 
 /* ---------- persistence ---------- */
 const SEED_VER='2026-06-13-jingbao-driveauth';
-function save(){ try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,me,drafts,addTarget,addCust})); }catch(e){} }
+function save(){ try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO})); }catch(e){} }
 function load(){
   try{
     const raw=localStorage.getItem('elg_state'); if(!raw) return;
@@ -402,6 +409,9 @@ function load(){
     if(Array.isArray(d.sharedPIF)){ sharedPIF.length=0; d.sharedPIF.forEach(x=>sharedPIF.push(x)); }
     if(d.me) me=d.me;
     if(Array.isArray(d.drafts)) drafts=d.drafts;
+    if(Array.isArray(d.libDrafts)) libDrafts=d.libDrafts;
+    if(d.libImpStatus) libImpStatus=d.libImpStatus;
+    if(d.CINFO && typeof d.CINFO==='object'){ Object.keys(d.CINFO).forEach(k=>{ CINFO[k]=d.CINFO[k]; }); }
     if(d.addTarget) addTarget=d.addTarget;
     if(d.addCust) addCust=d.addCust;
   }catch(e){}
@@ -422,7 +432,12 @@ function render(){
   else if(view==='shared-pif') html=sharedPifScreen();
   else html = (role==='customer') ? custApp() : elgApp();
   app.innerHTML=html;
-  app.className = app.querySelector('.tabbar') ? 'mode-app' : 'mode-full';
+  let endc='end-entry';
+  if(view==='board') endc='end-board';
+  else if(view==='add-items'||view==='shared-pif'||view==='customer-login'||view==='customer-profile') endc='end-customer';
+  else if(view==='eloga-accounts') endc='end-back';
+  else if(view==='app') endc = (role==='customer') ? 'end-customer' : (zone==='front'?'end-front':'end-back');
+  app.className = (app.querySelector('.tabbar') ? 'mode-app' : 'mode-full') + ' ' + endc;
   const dev=document.getElementById('dev');
   if(dev){
     if(!devOpen){
@@ -786,10 +801,34 @@ function elgLibrary(){
       </div>
       <label class="lbl" style="margin-top:10px">貼上文字辨識（LINE／Excel 複製，一行一品）</label>
       <textarea class="fld" id="libPaste" rows="3" placeholder="例：&#10;玫瑰精油  100ml  4瓶&#10;B5安瓶  30ml  5瓶"></textarea>
-      <button class="btn btn--ghost btn--sm" style="margin-top:8px" onclick="A.importPaste()"><i class="ti ti-clipboard-check"></i> 辨識並匯入文字</button>
+      <button class="btn btn--ghost btn--sm" style="margin-top:8px" onclick="A.importPaste()"><i class="ti ti-clipboard-check"></i> 辨識文字（進待確認）</button>
       ${ocrBusy?`<div class="sub" style="margin-top:10px"><i class="ti ti-loader"></i> 照片辨識中，首次需下載辨識模型，請稍候…</div>`:''}
-      <div class="faint" style="font-size:12px;margin-top:8px">三種匯入都歸入上方所選客戶（Excel 例外，依「公司資料」欄自動建立客戶）。照片／文字辨識狀態為「等待依洛嘉確認」。</div>
+      <div class="faint" style="font-size:12px;margin-top:8px">照片／文字會先進下方「待確認」清單，核對後再歸入客戶端（Excel 例外，依「公司資料」欄自動建立客戶並直接匯入）。</div>
     </div>`;
+  // 待確認辨識結果（核對後再歸入客戶端）
+  if(libDrafts.length){
+    const order2=['applied','approved','shipped','received','invoiced','reported','paid','testing','reporting','completed'];
+    h+=`<div class="card" style="margin-bottom:14px;border-color:var(--accent)">
+        <div class="row" style="margin-bottom:8px"><span class="nm" style="font-size:14px"><i class="ti ti-checkup-list"></i> 待確認辨識結果（${libDrafts.length}）</span>
+          <span class="muted" style="font-size:13px;font-weight:600;cursor:pointer" onclick="A.libClearDrafts()">清空</span></div>
+        <div class="tablewrap"><table class="dtable">
+          <thead><tr><th>客戶</th><th>品名</th><th>規格</th><th>數量</th><th style="width:40px"></th></tr></thead>
+          <tbody>`+ libDrafts.map((d,i)=>`
+            <tr>
+              <td data-label="客戶"><input class="fld fld--mini" value="${(d.cust||'').replace(/"/g,'&quot;')}" placeholder="${tgt||'所選客戶'}" onchange="A.libDraftSet(${i},'cust',this.value)"></td>
+              <td data-label="品名"><input class="fld fld--mini" value="${(d.name||'').replace(/"/g,'&quot;')}" onchange="A.libDraftSet(${i},'name',this.value)"></td>
+              <td data-label="規格"><input class="fld fld--mini" value="${(d.spec||'').replace(/"/g,'&quot;')}" onchange="A.libDraftSet(${i},'spec',this.value)"></td>
+              <td data-label="數量"><input class="fld fld--mini" value="${(d.qty||'').replace(/"/g,'&quot;')}" onchange="A.libDraftSet(${i},'qty',this.value)"></td>
+              <td data-label=""><span style="cursor:pointer;color:#C0392B" onclick="A.libDraftDel(${i})"><i class="ti ti-trash"></i></span></td>
+            </tr>`).join('')+`</tbody></table></div>
+        <div style="display:flex;gap:8px;align-items:flex-end;margin-top:12px;flex-wrap:wrap">
+          <div style="flex:1;min-width:150px"><label class="lbl">匯入後狀態</label>
+            <select class="fld fld--mini" onchange="A.setLibImpStatus(this.value)">${order2.map(k=>`<option value="${k}" ${libImpStatus===k?'selected':''}>${SM[k][0]}</option>`).join('')}</select></div>
+          <button class="btn" style="flex:none;width:auto;padding:0 16px;margin:0" onclick="A.libCommitDrafts()"><i class="ti ti-check"></i> 確認並匯入到客戶端</button>
+        </div>
+        <div class="faint" style="font-size:12px;margin-top:6px">未填客戶的列會歸入上方所選客戶；Excel 會自動帶入各列公司。客戶端與「申請」分頁可再確認。</div>
+      </div>`;
+  }
   h+=`<label class="lbl">狀態篩選（點選切換顯示）</label>
     <div class="chips">`+ stPresent.map(k=>`<span class="fchip ${libStatOff[k]?'':'on'}" onclick="A.libToggleStat('${k}')">${SM[k][0]} ${products.filter(p=>p.status===k).length}</span>`).join('')+`</div>`;
   h+=`<label class="lbl">客戶篩選</label>
@@ -803,10 +842,11 @@ function elgLibrary(){
       <select class="fld" id="batchSt" style="width:auto;min-width:150px">${opts}</select>
       <button class="btn btn--sm" style="width:auto;padding:0 14px" ${selN?'':'disabled'} onclick="A.libApply()"><i class="ti ti-send"></i> 套用狀態並同步客戶看板</button>
       <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" ${selN?'':'disabled'} onclick="A.batchGen()"><i class="ti ti-file-stack"></i> 生成合約＋清單</button>
+      <button class="btn btn--sm" style="width:auto;padding:0 14px;background:${confirmDel==='batch'?'#C0392B':'#B23A3A'}" ${selN?'':'disabled'} onclick="A.batchDelete()"><i class="ti ti-trash"></i> ${confirmDel==='batch'?'確認刪除？':'刪除所選'}</button>
     </div>`;
   // 總表
   h+=`<div class="tablewrap"><table class="dtable">
-    <thead><tr><th style="width:34px"></th><th>客戶</th><th>品名</th><th>規格</th><th>數量</th><th>檢驗項目</th><th>費用</th><th>狀態</th></tr></thead>
+    <thead><tr><th style="width:34px"></th><th>客戶</th><th>品名</th><th>規格</th><th>數量</th><th>檢驗項目</th><th>費用</th><th>狀態</th><th style="width:40px"></th></tr></thead>
     <tbody>`+ (rows.length ? rows.map(p=>`
       <tr class="${batch[p.id]?'sel':''}" data-nm="${p.name}">
         <td data-label=""><span class="ck ${batch[p.id]?'on':''}" onclick="A.toggleBatch('${p.id}')" style="cursor:pointer"><i class="ti ti-check"></i></span></td>
@@ -817,7 +857,8 @@ function elgLibrary(){
         <td data-label="檢驗項目" style="white-space:nowrap">${testText(p.t)}</td>
         <td data-label="費用" style="white-space:nowrap">${money(feeOf(p.t))}</td>
         <td data-label="狀態">${pill(p.status)}</td>
-      </tr>`).join('') : `<tr><td colspan="8" style="text-align:center;padding:24px;color:var(--muted)">目前篩選沒有符合的樣品</td></tr>`)
+        <td data-label=""><span style="cursor:pointer;color:${confirmDel===p.id?'#C0392B':'var(--faint)'}" title="刪除" onclick="A.delProduct('${p.id}')"><i class="ti ti-trash"></i></span></td>
+      </tr>`).join('') : `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">目前篩選沒有符合的樣品</td></tr>`)
     +`</tbody></table></div>`;
   return h;
 }
@@ -881,6 +922,7 @@ function elgCustomers(){
         <button class="btn btn--sm" style="width:auto;padding:0 14px" ${selN?'':'disabled'} onclick="A.batchStatus()">套用狀態</button>
       </div>
       <button class="btn btn--sm" style="margin-top:8px" ${selN?'':'disabled'} onclick="A.batchGen()"><i class="ti ti-file-stack"></i> 批量生成合約＋清單（已選 ${selN}）</button>
+      <button class="btn btn--sm" style="margin-top:8px;background:${confirmDel==='batch'?'#C0392B':'#B23A3A'}" ${selN?'':'disabled'} onclick="A.batchDelete()"><i class="ti ti-trash"></i> ${confirmDel==='batch'?'確認刪除？再按一次':'刪除所選'}</button>
     </div>`;
   // 表格式清單：勾選 + 可改規格/數量 + 內嵌狀態下拉
   const sorted=its.slice().sort((a,b)=> order.indexOf(a.status)-order.indexOf(b.status));
@@ -1288,12 +1330,12 @@ const A = {
   pickElgRole(r){ elgRole=r; render(); },
   toggleGen(id){ const p=byId(id); if(p) p.genSel = (p.genSel===false); render(); },
   toggleVendor(v){ const its=products.filter(p=>p.status==='paid'&&custName(p)===v); const allSel=its.every(p=>p.genSel!==false); its.forEach(p=>p.genSel = allSel?false:true); render(); },
-  go(t){ elgTab=t; render(); },
+  go(t){ elgTab=t; confirmDel=null; render(); },
   goReceive(){ zone='front'; elgTab='receive'; render(); },
-  openCust(nm){ custView=nm; batch={}; render(); },
+  openCust(nm){ custView=nm; batch={}; confirmDel=null; render(); },
   setStatus(id,st){ const p=byId(id); if(p) p.status=st; render(); },
   setField(id,f,v){ const p=byId(id); if(p){ p[f]=v; save(); } },
-  toggleBatch(id){ batch[id]=!batch[id]; render(); },
+  toggleBatch(id){ batch[id]=!batch[id]; confirmDel=null; render(); },
   batchAll(nm){ const its=products.filter(p=>custName(p)===nm); const all=its.every(p=>batch[p.id]); its.forEach(p=>batch[p.id]=all?false:true); render(); },
   batchStatus(){ const st=(document.getElementById('batchSt')||{}).value; const ids=Object.keys(batch).filter(k=>batch[k]); if(!ids.length){ A.toast('請先勾選項目'); return; } ids.forEach(id=>{ const p=byId(id); if(p) p.status=st; }); A.toast('已將 '+ids.length+' 筆設為「'+SM[st][0]+'」'); render(); },
   batchGen(){ const ids=Object.keys(batch).filter(k=>batch[k]); const list=products.filter(p=>ids.includes(p.id)); if(!list.length){ A.toast('請先勾選項目'); return; } batch={}; A.exportSongyan(list); },
@@ -1306,17 +1348,14 @@ const A = {
   libAll(){ const rows=products.filter(p=> !libStatOff[p.status] && !libCustOff[custName(p)] && (!libQ||p.name.indexOf(libQ)>=0)); const all=rows.length&&rows.every(p=>batch[p.id]); rows.forEach(p=>batch[p.id]=all?false:true); render(); },
   libApply(){ const st=(document.getElementById('batchSt')||{}).value; const ids=Object.keys(batch).filter(k=>batch[k]); if(!ids.length){ A.toast('請先勾選樣品'); return; } ids.forEach(id=>{ const p=byId(id); if(p) p.status=st; }); save(); A.toast('已將 '+ids.length+' 筆設為「'+SM[st][0]+'」並同步到客戶狀態看板'); render(); },
   setLibImpCust(v){ libImpCust=v||''; },
-  _addImported(got,prefix){
-    const cust=libImpCust || [...new Set(products.map(p=>custName(p)))].concat(customers.map(c=>c.name)).filter(Boolean)[0] || '（未標客戶）';
-    const uid=Date.now();
-    got.forEach((g,i)=>{ const ty=inferType(g.name); products.push({id:prefix+(uid+i),name:g.name,alias:'',en:g.en||'',spec:g.spec||'',qty:g.qty||'',type:ty,t:defTests(ty),cust,status:'applied',batch:''}); });
-    save(); return cust;
-  },
+  setLibImpStatus(v){ libImpStatus=v||'applied'; },
+  _impCust(){ return libImpCust || [...new Set(products.map(p=>custName(p)))].concat(customers.map(c=>c.name)).filter(Boolean)[0] || '（未標客戶）'; },
   importPaste(){
     const txt=(document.getElementById('libPaste')||{}).value||'';
     const got=parseLines(txt);
     if(!got.length){ A.toast('未辨識到品名，請檢查貼上的文字'); return; }
-    const cust=A._addImported(got,'pst'); render(); A.toast('已辨識並匯入 '+got.length+' 筆到「'+cust+'」');
+    libDrafts=libDrafts.concat(got.map(g=>({name:g.name||'',spec:g.spec||'',qty:g.qty||'',en:g.en||'',cust:'',t:null}))); libImpStatus='applied';
+    render(); A.toast('辨識 '+got.length+' 筆，請核對後確認匯入');
   },
   async importPhoto(input){
     const file=input&&input.files&&input.files[0]; if(!file) return;
@@ -1325,10 +1364,38 @@ const A = {
     try{
       const res=await Tesseract.recognize(file,'chi_tra+eng');
       const got=parseLines((res&&res.data&&res.data.text)||'');
-      if(got.length){ const cust=A._addImported(got,'ocr'); A.toast('已辨識並匯入 '+got.length+' 筆到「'+cust+'」'); }
+      if(got.length){ libDrafts=libDrafts.concat(got.map(g=>({name:g.name||'',spec:g.spec||'',qty:g.qty||'',en:g.en||'',cust:'',t:null}))); libImpStatus='applied'; A.toast('辨識 '+got.length+' 筆，請核對後確認匯入'); }
       else A.toast('未辨識到品名，請改用貼文字或手動');
     }catch(e){ A.toast('辨識失敗，請重試或改用手動'); }
     ocrBusy=false; render();
+  },
+  libDraftSet(i,f,v){ if(libDrafts[i]){ libDrafts[i][f]=v; save(); } },
+  delProduct(id){
+    if(confirmDel!==id){ confirmDel=id; render(); A.toast('再按一次垃圾桶以確認刪除'); return; }
+    const i=products.findIndex(x=>x.id===id); if(i>=0) products.splice(i,1);
+    delete batch[id]; confirmDel=null; save(); render(); A.toast('已刪除該樣品');
+  },
+  batchDelete(){
+    const ids=Object.keys(batch).filter(k=>batch[k]); if(!ids.length){ A.toast('請先勾選要刪除的項目'); return; }
+    if(confirmDel!=='batch'){ confirmDel='batch'; render(); A.toast('再按一次「刪除所選」以確認刪除 '+ids.length+' 筆'); return; }
+    ids.forEach(id=>{ const i=products.findIndex(x=>x.id===id); if(i>=0) products.splice(i,1); });
+    batch={}; confirmDel=null; save(); render(); A.toast('已刪除 '+ids.length+' 筆');
+  },
+  libDraftDel(i){ libDrafts.splice(i,1); render(); },
+  libClearDrafts(){ libDrafts=[]; render(); A.toast('已清空待確認清單'); },
+  libCommitDrafts(){
+    const rows=libDrafts.filter(d=>(d.name||'').trim());
+    if(!rows.length){ A.toast('沒有可匯入的品名'); return; }
+    const uid=Date.now(); const cset=new Set();
+    rows.forEach((g,i)=>{
+      const cust=(g.cust||'').trim() || A._impCust();
+      if(cust && cust!=='（未標客戶）' && !customers.find(c=>c.name===cust)) customers.push({name:cust,email:'',login:'匯入',status:'已啟用'});
+      if(g.caddr) CINFO[cust]=g.caddr;
+      cset.add(cust);
+      const ty=inferType(g.name);
+      products.push({id:'imp'+(uid+i),name:g.name.trim(),alias:'',en:g.en||'',spec:g.spec||'',qty:g.qty||'',type:ty,t:g.t||defTests(ty),cust,status:libImpStatus,batch:''});
+    });
+    libDrafts=[]; save(); render(); A.toast('已確認匯入 '+rows.length+' 筆 · '+cset.size+' 個客戶（'+SM[libImpStatus][0]+'）');
   },
   toggleDev(){ devOpen=!devOpen; render(); },
   devGo(which){
@@ -1417,7 +1484,7 @@ const A = {
       const wb=new ExcelJS.Workbook();
       await wb.xlsx.load(await file.arrayBuffer());
       const ws=wb.worksheets[0]; if(!ws){ A.toast('讀不到工作表'); return; }
-      let lastCo='', nP=0, uid=Date.now(); const custSet=new Set();
+      let lastCo='', n=0; const staged=[];
       ws.eachRow((row,rn)=>{
         if(rn===1) return;
         const name=cellText(row.getCell(2).value).trim();
@@ -1430,17 +1497,12 @@ const A = {
         const hh=cellText(row.getCell(8).value).trim()==='V';
         let co=cellText(row.getCell(9).value).trim(); if(co) lastCo=co; else co=lastCo;
         const cm=parseCompany(co);
-        if(cm.cname){
-          if(!customers.find(c=>c.name===cm.cname)) customers.push({name:cm.cname,email:'',login:'匯入',status:'已啟用'});
-          if(cm.caddr) CINFO[cm.cname]=cm.caddr;
-          custSet.add(cm.cname);
-        }
-        const ty=inferType(name);
-        products.push({id:'imp'+(uid++),name,en,spec,qty,amt:'',func:'',type:ty,
-          t:{fang:f,chang:g,wen:hh},cust:cm.cname||'（未標客戶）',status:'testing',batch:'匯入'});
-        nP++;
+        staged.push({name,en,spec,qty,cust:cm.cname||'',caddr:cm.caddr||'', t:(f||g||hh)?{fang:f,chang:g,wen:hh}:null});
+        n++;
       });
-      render(); A.toast('已匯入 '+nP+' 筆 · '+custSet.size+' 個客戶，已回送客戶端');
+      if(!n){ A.toast('Excel 沒有讀到樣品列'); return; }
+      libDrafts=libDrafts.concat(staged); libImpStatus='testing';
+      render(); A.toast('已讀取 '+n+' 筆，請於「待確認」核對後匯入');
     }catch(e){ A.toast('匯入失敗：檔案格式不符'); }
   },
   async exportSongyan(explicitList){
