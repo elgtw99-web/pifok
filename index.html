@@ -677,7 +677,20 @@ function custSubmit(){
 function custBilling(){
   const inv = products.filter(p=>ownedByMe(p) && p.status==='invoiced');
   const batches=[...new Set(inv.map(p=>p.batch))];
-  let h = `<div class="sect">待匯款</div>`;
+  let h = '';
+  const myc=customers.find(c=>c.name===me.nameCh);
+  if(myc && myc.contract){
+    const led=(myc.ledger||[]).slice(0,8);
+    h += `<div class="card" style="border-color:var(--s)">
+        <div class="row"><span class="nm"><i class="ti ti-wallet"></i> 合約預付餘額</span><span class="amt" style="color:var(--s)">${money(myc.balance||0)}</span></div>
+        <div class="sub" style="margin-top:4px">送驗檢驗費會自動從此餘額扣除，餘額不足的品項才會另開收款單。</div>
+        ${led.length?`<div style="margin-top:10px;border-top:1px solid var(--line);padding-top:8px">
+          <div class="sub" style="margin-bottom:4px">近期扣款</div>
+          ${led.map(e=>`<div class="miniline"><span>${e.t} · ${e.name}</span><span>-${money(e.amt)} · 餘 ${money(e.bal)}</span></div>`).join('')}
+        </div>`:''}
+      </div>`;
+  }
+  h += `<div class="sect${myc&&myc.contract?' mt':''}">待匯款</div>`;
   if(batches.length){
     h += batches.map(b=>{
       const items=inv.filter(p=>p.batch===b);
@@ -1127,8 +1140,10 @@ function elgInvoice(){
   h += recv.length ? custs.map(cn=>{
     const items=recv.filter(p=>custName(p)===cn);
     const tot=items.filter(p=>p.invSel).reduce((s,p)=>s+(p.feeSel||0),0);
+    const cobj=customers.find(c=>c.name===cn); const isC=cobj&&cobj.contract; const bal=cobj?(cobj.balance||0):0;
     return `<div class="card" style="margin-bottom:12px">
-      <div class="row" style="margin-bottom:8px"><span class="nm" style="font-size:15px"><i class="ti ti-building-store"></i> ${cn}</span><span class="pill pill--i">${items.length} 項</span></div>
+      <div class="row" style="margin-bottom:8px"><span class="nm" style="font-size:15px"><i class="ti ti-building-store"></i> ${cn}${isC?' <span class="pill pill--s" style="font-size:10px">合約制</span>':''}</span><span class="pill pill--i">${items.length} 項</span></div>
+      ${isC?`<div class="sub" style="margin-bottom:4px">合約餘額：<b style="color:${bal>=tot?'var(--s)':'var(--w)'}">${money(bal)}</b>${bal<tot?'（不足，差額將改開收款單）':''}</div>`:''}
       ${items.map(p=>`
         <div style="border-top:1px solid var(--line);padding-top:10px;margin-top:10px">
           <div class="selrow ${p.invSel?'on':''}" style="border:0;padding:0" onclick="A.toggleInv('${p.id}')">
@@ -1140,9 +1155,10 @@ function elgInvoice(){
             <button class="${p.feeSel===10000?'on':''}" onclick="A.setFee('${p.id}',10000)">$10,000 檢驗費</button>
           </div>
         </div>`).join('')}
-      <div class="total" style="margin-top:10px"><span class="muted">${cn} 收款單合計</span><span class="amt">${money(tot)}</span></div>
-      <button class="btn btn--sm" style="margin-top:10px" ${tot?'':'disabled'} onclick="A.issueInvoiceFor('${cn}')">
-        <i class="ti ti-send"></i> 開收款單給 ${cn}</button>
+      <div class="total" style="margin-top:10px"><span class="muted">${cn} 合計</span><span class="amt">${money(tot)}</span></div>
+      ${isC
+        ? `<button class="btn btn--ok btn--sm" style="margin-top:10px" ${tot?'':'disabled'} onclick="A.settleByContract('${cn}')"><i class="ti ti-wallet"></i> 依合約餘額自動結算（不足改開收款單）</button>`
+        : `<button class="btn btn--sm" style="margin-top:10px" ${tot?'':'disabled'} onclick="A.issueInvoiceFor('${cn}')"><i class="ti ti-send"></i> 開收款單給 ${cn}</button>`}
     </div>`;
   }).join('') : `<div class="card faint" style="text-align:center;padding:16px">沒有待開單的樣品</div>`;
 
@@ -1358,9 +1374,18 @@ function customerSection(){
     else act=`<div style="display:flex;gap:8px;margin-top:10px">
         <button class="btn btn--sm" style="width:auto;padding:0 14px" onclick="A.enableCust(${i})"><i class="ti ti-rotate"></i> 重新啟用</button>
         <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;color:#C0392B;border-color:#E7C3BD" onclick="A.delCustomer(${i})"><i class="ti ti-trash"></i> ${confirmDel==='ca'+i?'確認刪除？':'刪除帳號'}</button></div>`;
+    const contractBlock = (c.status==='待審核') ? '' : `
+      <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13.5px;font-weight:600">
+          <input type="checkbox" ${c.contract?'checked':''} onclick="A.toggleContract(${i})"> 合約制（送驗自動從預付餘額扣款）</label>
+        ${c.contract?`<div style="margin-top:8px">
+          <div class="sub">目前合約餘額：<b style="color:var(--s)">${money(c.balance||0)}</b></div>
+          <div style="display:flex;gap:8px;margin-top:6px"><input class="fld fld--mini" id="bal_${i}" placeholder="輸入金額後設定" style="flex:1">
+            <button class="btn btn--sm" style="width:auto;padding:0 14px" onclick="A.setBalance(${i})">設定餘額</button></div></div>`:''}
+      </div>`;
     return `<div class="card"><div class="row"><span class="nm" style="font-size:15px">${c.name}</span>
       <span class="pill pill--${sc}">${c.status}</span></div>
-      <div class="sub" style="margin-top:4px">${c.email||'尚未綁定'} · 登入：${c.login}</div>${act}</div>`;
+      <div class="sub" style="margin-top:4px">${c.email||'尚未綁定'} · 登入：${c.login}</div>${act}${contractBlock}</div>`;
   };
   let h=`<div style="display:flex;gap:10px;margin:16px 0 14px">
       <div class="card" style="flex:1;text-align:center;padding:12px"><div style="font-size:24px;font-weight:700">${active.length}</div><div class="sub">已註冊帳號</div></div>
@@ -1728,6 +1753,22 @@ const A = {
     if(!sel.length){ A.toast('請先勾選 '+cn+' 的樣品'); return; }
     sel.forEach(p=>{ p.status='invoiced'; p.charge=p.feeSel; });
     render(); A.toast('已開收款單給 '+cn+'（'+sel.length+' 項），回送該客戶');
+  },
+  toggleContract(i){ const c=customers[i]; if(!c) return; c.contract=!c.contract; if(c.contract && c.balance===undefined) c.balance=0; save(); render(); A.toast(c.contract?(c.name+' 已設為合約制'):(c.name+' 已取消合約制')); },
+  setBalance(i){ const c=customers[i]; if(!c) return; const v=Number((dval('bal_'+i,'')||'').replace(/[^0-9.-]/g,'')); if(isNaN(v)){ A.toast('請輸入金額'); return; } c.balance=v; c.contract=true; save(); render(); A.toast(c.name+' 合約餘額設為 '+money(v)); },
+  settleByContract(cn){
+    const c=customers.find(x=>x.name===cn); if(!c){ A.toast('找不到客戶'); return; }
+    const items=P('received').filter(p=>custName(p)===cn && p.invSel);
+    if(!items.length){ A.toast('請先勾選 '+cn+' 的樣品'); return; }
+    let bal=c.balance||0, deducted=0, dN=0, invN=0;
+    c.ledger=c.ledger||[]; const ds=new Date().toLocaleDateString('zh-TW');
+    items.forEach(p=>{
+      const fee=p.feeSel||0; p.charge=fee;
+      if(bal>=fee){ bal-=fee; deducted+=fee; dN++; p.status='paid'; p.paidVia='contract'; c.ledger.unshift({t:ds,name:p.name,amt:fee,bal:bal}); }
+      else { p.status='invoiced'; invN++; }
+    });
+    c.balance=bal; save(); render();
+    A.toast(`合約扣款 ${dN} 筆共 ${money(deducted)}，餘額 ${money(bal)}`+(invN?`；${invN} 筆餘額不足已改開收款單`:''));
   },
   reportPay(batch){
     const note=((document.getElementById('pn_'+batch)||{}).value||'').trim();
