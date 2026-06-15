@@ -300,6 +300,11 @@ const custAddr = p => CINFO[custName(p)] || (p.mine ? (me.addrCh||'') : '');
 const ownedByMe = p => !!me.nameCh && (p.cust||CUST)===me.nameCh;
 const shareState = it => it.state || (it.hidden?'hidden':'public');
 const VERIFY_BASE='https://pif.eloga.app/verify';
+const SUPPORT_URL='https://lin.ee/sydzl5i';
+function supportLnk(){ return `<div class="lnk" onclick="A.openSupport()" style="margin-bottom:10px">
+      <span class="l"><i class="ti ti-brand-line lead" style="color:#06C755"></i>
+      <span><span class="nm">PIF 客服</span><br><span class="sub">有問題？點此用 LINE 聯絡依洛嘉 PIF 客服</span></span></span>
+      <i class="ti ti-external-link faint" style="font-size:18px"></i></div>`; }
 const verifyURL = c => `${VERIFY_BASE}?token=${c.verifyToken||''}&c=${encodeURIComponent(c.name)}`;
 function vendorOpts(sel){
   const names=[...new Set([CUST].concat(customers.map(c=>c.name)).concat(products.map(p=>custName(p))))].filter(Boolean);
@@ -404,7 +409,7 @@ function parseCompany(t){
   const ad=(t.match(/公司地址\s*[:：]?\s*([^\n]+)/)||[])[1]||'';
   return { cname:nm.trim(), caddr:ad.trim() };
 }
-let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='', wipeOpen=false, ocrBusy=false, custAddOpen=false;
+let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='', wipeOpen=false, ocrBusy=false, custAddOpen=false, pendingRestore=null, scQ='', scPage=0, scOpen=null, scDraft={name:'',en:'',tagline:'',cover:'',html:'',link:''};
 let sharedPIF=[
   {name:'SYN三胜肽緊緻撫紋眼霜', type:'液劑霜劑'},
   {name:'杏仁酸植萃亮顏精華', type:'液劑霜劑'},
@@ -429,7 +434,14 @@ let customers=[
   {name:'凱德妮斯企業社', email:'', login:'臨時', status:'臨時', temp:true, drive:''},
   {name:'姝顏生技企業社', email:'', login:'臨時', status:'臨時', temp:true, drive:''}
 ];
-const ELG_TABS={ '主要管理者':['home','customers','library','receive','apply','data','invoice','pif'], '管理':['home','customers','library','receive','apply','data','invoice','pif'] };
+const DEMO_INTRO='<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;font-family:-apple-system,system-ui,sans-serif;color:#2b2b2b}.hero{background:linear-gradient(135deg,#3E6B5E,#9DB6A7);color:#fff;padding:40px 24px;text-align:center}.hero h1{margin:0;font-size:26px}.hero p{margin:8px 0 0;opacity:.9}.sec{padding:24px}.sec h2{font-size:18px;border-left:4px solid #3E6B5E;padding-left:10px}.tag{display:inline-block;background:#EAF2F1;color:#3E6B5E;border-radius:999px;padding:4px 12px;font-size:13px;margin:4px 4px 0 0}</style></head><body><div class="hero"><h1>黑珍珠煥顏時空膠囊</h1><p>Black Pearl Renewal Capsule</p></div><div class="sec"><h2>產品特色</h2><p>單顆獨立精華膠囊，旅行隨身、用量精準，一顆鎖住整日保養。</p><div><span class="tag">黑珍珠萃取</span><span class="tag">煥顏緊緻</span><span class="tag">旅行友善</span></div></div><div class="sec"><h2>適用</h2><p>晚間保養最後一道鎖水步驟，取一顆塗抹全臉。</p></div><div class="sec" style="background:#F7F5EF"><h2>依洛嘉 E.L.G International Trading</h2><p>OEM／ODM 化妝品代工 · 台南市佳里區佳興里宅興二街600號</p></div></body></html>';
+let showcase=[
+  {id:'sc1',name:'紫草潤色唇膏',en:'Lithospermum Tinted Lip Balm',tagline:'天然紫草萃取，潤色與護唇一次到位',cover:'',html:'',link:'',ts:'2026-06-10'},
+  {id:'sc2',name:'奢華黑金潤澤膠原C型眼膜',en:'Black Gold Collagen Eye Mask',tagline:'黑金膠原貼合眼周，緊緻保濕有感',cover:'',html:'',link:'',ts:'2026-06-08'},
+  {id:'sc3',name:'黃金竹炭淨白亮采C型眼膜',en:'Gold Bamboo Charcoal Eye Mask',tagline:'竹炭淨化＋亮采配方，告別暗沉',cover:'',html:'',link:'',ts:'2026-06-05'},
+  {id:'sc4',name:'黑珍珠煥顏時空膠囊',en:'Black Pearl Renewal Capsule',tagline:'單顆精華膠囊，旅行隨身鎖住保養',cover:'',html:DEMO_INTRO,link:'',ts:'2026-06-01'}
+];
+const ELG_TABS={ '主要管理者':['home','customers','library','receive','apply','data','invoice','pif','showcase'], '管理':['home','customers','library','receive','apply','data','invoice','pif','showcase'] };
 
 let products=[];
 (function(){
@@ -516,8 +528,8 @@ const money = n => '$'+n.toLocaleString();
 const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 
 /* ---------- persistence ---------- */
-const SEED_VER='2026-06-15-import-64-temp';
-function save(){ try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO})); }catch(e){} }
+const SEED_VER='2026-06-15-showcase';
+function save(){ try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,showcase,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO})); }catch(e){} }
 function load(){
   try{
     const raw=localStorage.getItem('elg_state'); if(!raw) return;
@@ -527,6 +539,7 @@ function load(){
     if(Array.isArray(d.customers)){ customers.length=0; d.customers.forEach(x=>customers.push(x)); }
     if(Array.isArray(d.staff)){ staff.length=0; d.staff.forEach(x=>staff.push(x)); }
     if(Array.isArray(d.sharedPIF)){ sharedPIF.length=0; d.sharedPIF.forEach(x=>sharedPIF.push(x)); }
+    if(Array.isArray(d.showcase)){ showcase.length=0; d.showcase.forEach(x=>showcase.push(x)); }
     if(d.me) me=d.me;
     if(Array.isArray(d.drafts)) drafts=d.drafts;
     if(Array.isArray(d.libDrafts)) libDrafts=d.libDrafts;
@@ -656,11 +669,13 @@ function custApp(){
        ${tab(custTab,'submit','clipboard-plus','送驗','A.setCustTab')}
        ${tab(custTab,'billing','receipt','帳務','A.setCustTab')}
        ${tab(custTab,'board','layout-dashboard','進度看板','A.setCustTab')}
+       ${tab(custTab,'news','sparkles','新品介紹','A.setCustTab')}
      </div>`;
 }
 function custScreen(){
   if(custTab==='submit') return custSubmit();
   if(custTab==='billing') return custBilling();
+  if(custTab==='news') return custShowcase();
   return custBoard();
 }
 function custSubmit(){
@@ -681,6 +696,7 @@ function custSubmit(){
       <span class="l"><i class="ti ti-cloud lead"></i>
       <span><span class="nm">我的 PIF 雲端資料夾</span><br><span class="sub">${(myc&&myc.drive&&myc.driveAuth)?'由依洛嘉提供，點擊開啟':(myc&&myc.drive?'依洛嘉尚未授權存取':'依洛嘉尚未提供連結')}</span></span></span>
       <i class="ti ti-external-link faint" style="font-size:18px"></i></div>`;
+  h += supportLnk();
 
   h += `<div class="row sect mt"><span>我要送驗的產品</span><span class="muted" style="font-size:13px;font-weight:600;cursor:pointer" onclick="A.openAddItems('customer')">+ 新增送驗產品</span></div>`;
 
@@ -802,6 +818,7 @@ function custBoard(){
       <span class="l"><i class="ti ti-cloud lead"></i>
       <span><span class="nm">我的 PIF 雲端資料夾</span><br><span class="sub">${(myc&&myc.drive&&myc.driveAuth)?'點此開啟下載 PIF':(myc&&myc.drive?'依洛嘉尚未授權存取':'依洛嘉尚未提供連結')}</span></span></span>
       <i class="ti ti-external-link faint" style="font-size:18px"></i></div>`;
+  h+= supportLnk();
   h+=`<div class="sect">我的產品進度</div>`;
   h+= srchBar('搜尋我的產品…');
   if(mine.length){
@@ -841,7 +858,7 @@ function elgHeader(){
   </div>`;
 }
 function elgApp(){
-  const TI={ home:['layout-dashboard','總覽'], customers:['users','客戶'], library:['database','樣品庫'], receive:['package-import','收件'], apply:['list-check','申請'], data:['file-spreadsheet','送驗資料'], invoice:['receipt-2','請款'], pif:['clipboard-check','完成 PIF'] };
+  const TI={ home:['layout-dashboard','總覽'], customers:['users','客戶'], library:['database','樣品庫'], receive:['package-import','收件'], apply:['list-check','申請'], data:['file-spreadsheet','送驗資料'], invoice:['receipt-2','請款'], pif:['clipboard-check','完成 PIF'], showcase:['sparkles','新品介紹'] };
   const allowed = ELG_TABS[elgRole]||ELG_TABS['主要管理者'];
   if(!allowed.includes(elgTab)) elgTab=allowed[0];
   const tabs=allowed.map(id=>tab(elgTab,id,TI[id][0],TI[id][1],'A.setElgTab')).join('');
@@ -857,8 +874,89 @@ function elgScreen(){
   if(elgTab==='apply') return elgApply();
   if(elgTab==='data') return elgData();
   if(elgTab==='invoice') return elgInvoice();
+  if(elgTab==='showcase') return elgShowcase();
   if(elgTab==='board') return boardBody();
   return elgPif();
+}
+/* ---------- 新品介紹 showcase ---------- */
+function scCard(it, admin){
+  const cover = it.cover
+    ? `<div style="height:96px;border-radius:12px 12px 0 0;background:#eee center/cover no-repeat url('${it.cover}')"></div>`
+    : `<div style="height:96px;border-radius:12px 12px 0 0;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--accent,#3E6B5E),#9DB6A7)">${(it.name||'?').slice(0,1)}</div>`;
+  return `<div class="card" data-nm="${(it.name+' '+(it.en||'')).replace(/"/g,'&quot;')}" style="padding:0;overflow:hidden">
+    ${cover}
+    <div style="padding:10px 12px 12px">
+      <div class="nm" style="font-size:14px;line-height:1.3">${it.name}</div>
+      ${it.en?`<div class="sub" style="font-size:11.5px">${it.en}</div>`:''}
+      <div class="sub" style="margin-top:4px;min-height:30px">${it.tagline||''}</div>
+      <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+        <button class="btn btn--ok btn--sm" style="width:auto;padding:0 12px" onclick="A.scOpenItem('${it.id}')"><i class="ti ti-eye"></i> 介紹</button>
+        ${admin?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 10px;color:#C0392B;border-color:#E7C3BD" onclick="A.delShowcase('${it.id}')"><i class="ti ti-trash"></i> ${confirmDel==='sc'+it.id?'確認':''}</button>`:''}
+      </div>
+    </div></div>`;
+}
+function scGrid(admin){
+  const PER=6, q=scQ.trim().toLowerCase();
+  const items=showcase.filter(it=>!q || (it.name+' '+(it.en||'')+' '+(it.tagline||'')).toLowerCase().includes(q));
+  const pages=Math.max(1,Math.ceil(items.length/PER));
+  if(scPage>=pages) scPage=pages-1; if(scPage<0) scPage=0;
+  const slice=items.slice(scPage*PER,scPage*PER+PER);
+  let h=`<div style="position:relative;margin-bottom:12px"><i class="ti ti-search" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--faint)"></i>
+    <input class="fld" style="padding-left:36px" value="${scQ.replace(/"/g,'&quot;')}" placeholder="搜尋新品（名稱／英文／介紹）· 輸入後按 Enter" onchange="A.scSearch(this.value)"></div>`;
+  h+= items.length ? `<div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">`+slice.map(it=>scCard(it,admin)).join('')+`</div>`
+    : `<div class="card faint" style="text-align:center;padding:20px">${q?'找不到符合的新品':'尚無新品介紹'}</div>`;
+  if(pages>1){
+    h+=`<div class="row" style="justify-content:center;gap:14px;margin-top:14px">
+      <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" ${scPage===0?'disabled':''} onclick="A.scGo(${scPage-1})"><i class="ti ti-chevron-left"></i></button>
+      <span class="muted" style="font-size:13px;font-weight:600">第 ${scPage+1} / ${pages} 頁</span>
+      <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" ${scPage>=pages-1?'disabled':''} onclick="A.scGo(${scPage+1})"><i class="ti ti-chevron-right"></i></button>
+    </div>`;
+  }
+  return h;
+}
+function showcaseDetail(id, admin){
+  const it=showcase.find(x=>x.id===id); if(!it){ scOpen=null; return ''; }
+  const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
+  let body;
+  if(it.html) body=`<iframe title="${it.name}" sandbox="allow-scripts allow-popups" style="width:100%;height:62vh;border:1px solid var(--line);border-radius:12px;background:#fff" srcdoc="${esc(it.html)}"></iframe>`;
+  else if(it.link) body=`<div class="card" style="text-align:center;padding:24px"><p class="sub">此新品以外部連結提供介紹頁</p>
+      <button class="btn" style="margin-top:10px;width:auto;padding:0 18px" onclick="window.open('${it.link}','_blank')"><i class="ti ti-external-link"></i> 開啟介紹頁</button></div>`;
+  else body=`<div class="card"><div class="nm" style="font-size:16px">${it.name}</div><div class="sub" style="margin-top:6px">${it.en||''}</div><p style="margin-top:10px">${it.tagline||'尚未上傳介紹文件，可於後臺上傳 index 文件。'}</p></div>`;
+  return `<div class="pane">
+    <div class="row" style="margin-bottom:12px;gap:10px"><button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.scClose()"><i class="ti ti-arrow-left"></i> 返回</button>
+      <span class="nm" style="font-size:15px">${it.name}</span></div>
+    ${body}</div>`;
+}
+function elgShowcase(){
+  if(scOpen) return showcaseDetail(scOpen,true);
+  let h=`<div class="pane">
+    <div class="note" style="margin-bottom:14px"><i class="ti ti-sparkles"></i>建立依洛嘉最新新品介紹頁，可上傳 index 產品介紹文件（HTML）直接供行銷使用；客戶端會在「新品介紹」分頁看到，兩欄展示、可搜尋與翻頁。</div>
+    <div class="card" style="border-color:var(--accent)">
+      <p class="nm" style="font-size:15px"><i class="ti ti-plus"></i> 新增新品</p>
+      <label class="lbl" style="margin-top:8px">產品名稱</label><input class="fld" value="${(scDraft.name||'').replace(/"/g,'&quot;')}" oninput="A.scSetField('name',this.value)" placeholder="例：紫草潤色唇膏">
+      <label class="lbl" style="margin-top:8px">英文名（選填）</label><input class="fld" value="${(scDraft.en||'').replace(/"/g,'&quot;')}" oninput="A.scSetField('en',this.value)">
+      <label class="lbl" style="margin-top:8px">一句話介紹（行銷標語）</label><input class="fld" value="${(scDraft.tagline||'').replace(/"/g,'&quot;')}" oninput="A.scSetField('tagline',this.value)" placeholder="例：天然紫草萃取，潤色與護唇一次到位">
+      <label class="lbl" style="margin-top:8px">外部連結（選填，無上傳文件時可用）</label><input class="fld" value="${(scDraft.link||'').replace(/"/g,'&quot;')}" oninput="A.scSetField('link',this.value)" placeholder="https://...">
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+        <label class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;display:inline-flex;cursor:pointer;margin:0"><i class="ti ti-photo"></i> ${scDraft.cover?'已選封面圖 ✓':'上傳封面圖'}<input type="file" accept="image/*" style="display:none" onchange="A.scUploadCover(this)"></label>
+        <label class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;display:inline-flex;cursor:pointer;margin:0"><i class="ti ti-file-code"></i> ${scDraft.html?'已選介紹文件 ✓':'上傳 index 介紹文件 (.html)'}<input type="file" accept=".html,.htm,text/html" style="display:none" onchange="A.scUploadDoc(this)"></label>
+      </div>
+      <button class="btn btn--sm" style="margin-top:12px;width:auto;padding:0 18px" onclick="A.addShowcase()"><i class="ti ti-check"></i> 新增到新品介紹</button>
+    </div>
+    <div class="row sect mt"><span>新品介紹（${showcase.length}）· 兩欄展示</span></div>`;
+  h+= scGrid(true);
+  h+=`</div>`;
+  return h;
+}
+function custShowcase(){
+  if(scOpen) return showcaseDetail(scOpen,false);
+  let h=`<div class="pane">
+    ${supportLnk()}
+    <div class="sect">依洛嘉最新新品介紹</div>
+    <div class="faint" style="font-size:12px;margin:0 0 10px">點各產品「介紹」查看完整產品介紹頁</div>`;
+  h+= scGrid(false);
+  h+=`</div>`;
+  return h;
 }
 function boardBody(){
   if(role==='customer') return custBoard();
@@ -1450,11 +1548,32 @@ function elogaAccounts(){
         <button class="${!s?'on':''}" onclick="A.acctTab('customer')">客戶帳號</button>
       </div>
       ${s? staffSection() : customerSection()}
-      <div style="margin-top:28px;padding-top:16px;border-top:1px solid var(--line)">
+      <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--line)">
+        <div class="card" style="border-color:var(--accent)">
+          <p class="nm" style="font-size:15px"><i class="ti ti-database-export"></i> 資料備份與還原</p>
+          <p class="sub" style="margin:4px 0 10px">系統資料目前存在本機瀏覽器，建議定期下載備份。換裝置、清快取或更新版本後，可用備份檔還原全部資料。</p>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn--sm" style="width:auto;padding:0 16px" onclick="A.exportBackup()"><i class="ti ti-download"></i> 下載備份檔</button>
+            <label class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px;display:inline-flex;cursor:pointer;margin:0"><i class="ti ti-upload"></i> 選擇備份檔還原
+              <input type="file" accept=".json,application/json" style="display:none" onchange="A.importBackup(this)"></label>
+          </div>
+          ${pendingRestore ? `
+            <div class="card" style="border-color:var(--w);margin-top:12px">
+              <p class="nm" style="font-size:14px;color:var(--w)"><i class="ti ti-alert-triangle"></i> 確認還原？將覆蓋目前全部資料</p>
+              <p class="sub" style="margin:4px 0 0">備份時間：${pendingRestore._ts||'—'}</p>
+              <p class="sub" style="margin:2px 0 10px">內容：產品 ${(pendingRestore.products||[]).length} 筆 · 客戶 ${(pendingRestore.customers||[]).length} 家 · 內部帳號 ${(pendingRestore.staff||[]).length}</p>
+              <div style="display:flex;gap:8px">
+                <button class="btn btn--sm" style="width:auto;padding:0 16px" onclick="A.confirmRestore()"><i class="ti ti-check"></i> 確認還原</button>
+                <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" onclick="A.cancelRestore()">取消</button>
+              </div>
+            </div>` : ''}
+        </div>
+      </div>
+      <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--line)">
         ${ wipeOpen ? `
           <div class="card" style="border-color:#C0392B">
             <p class="nm" style="font-size:15px;color:#C0392B">清空所有資料</p>
-            <p class="sub" style="margin:4px 0 10px">將刪除所有送驗品項、客戶與廠商資料（內部帳號保留），無法復原。請輸入內部密碼確認。</p>
+            <p class="sub" style="margin:4px 0 10px">將刪除所有送驗品項、客戶與廠商資料（內部帳號保留），無法復原。建議先「下載備份檔」。請輸入內部密碼確認。</p>
             <input id="wipe_pw" class="fld" type="password" placeholder="內部密碼" style="margin-bottom:10px">
             <div style="display:flex;gap:8px">
               <button class="btn btn--danger btn--sm" onclick="A.doWipe()"><i class="ti ti-trash"></i> 確認清空</button>
@@ -1742,8 +1861,65 @@ const A = {
   },
   logout(){ view='entry'; render(); },
   openAccounts(){ view='eloga-accounts'; acctTab='staff'; addOpen=false; wipeOpen=false; render(); },
+  scSearch(v){ scQ=v; scPage=0; render(); },
+  scGo(n){ scPage=n; render(); },
+  scOpenItem(id){ scOpen=id; render(); },
+  scClose(){ scOpen=null; render(); },
+  scSetField(f,v){ scDraft[f]=v; },
+  scUploadCover(input){ const f=input&&input.files&&input.files[0]; if(!f) return;
+    const r=new FileReader(); r.onload=()=>{ scDraft.cover=r.result; render(); A.toast('已選封面圖'); }; r.readAsDataURL(f); input.value=''; },
+  scUploadDoc(input){ const f=input&&input.files&&input.files[0]; if(!f) return;
+    f.text().then(t=>{ scDraft.html=t; render(); A.toast('已載入介紹文件'); }).catch(()=>A.toast('讀取文件失敗')); input.value=''; },
+  addShowcase(){
+    const name=(scDraft.name||'').trim(); if(!name){ A.toast('請填產品名稱'); return; }
+    const d=new Date(), p=n=>String(n).padStart(2,'0');
+    showcase.unshift({ id:'sc'+Date.now(), name, en:(scDraft.en||'').trim(), tagline:(scDraft.tagline||'').trim(),
+      cover:scDraft.cover||'', html:scDraft.html||'', link:(scDraft.link||'').trim(), ts:`${d.getFullYear()}-${p(d.getMonth()+1)}-${p(d.getDate())}` });
+    scDraft={name:'',en:'',tagline:'',cover:'',html:'',link:''}; scPage=0; save(); render(); A.toast('已新增新品：'+name);
+  },
+  delShowcase(id){
+    if(confirmDel!=='sc'+id){ confirmDel='sc'+id; render(); A.toast('再按一次刪除以確認'); return; }
+    const i=showcase.findIndex(x=>x.id===id); if(i>=0){ const nm=showcase[i].name; showcase.splice(i,1); confirmDel=null; save(); render(); A.toast('已刪除新品：'+nm); }
+  },
+  openSupport(){ window.open(SUPPORT_URL,'_blank'); },
   openWipe(){ wipeOpen=true; render(); },
   cancelWipe(){ wipeOpen=false; render(); },
+  exportBackup(){
+    const data={ app:'eloga-pif', backupVer:1, seedVer:SEED_VER, _ts:new Date().toLocaleString('zh-TW'),
+      products, customers, staff, sharedPIF, showcase, me, drafts, addTarget, addCust, libDrafts, libImpStatus, CINFO };
+    const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+    const url=URL.createObjectURL(blob), a=document.createElement('a');
+    const d=new Date(), p=n=>String(n).padStart(2,'0');
+    a.href=url; a.download=`eloga-backup-${d.getFullYear()}${p(d.getMonth()+1)}${p(d.getDate())}-${p(d.getHours())}${p(d.getMinutes())}.json`;
+    document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    A.toast('已下載備份檔，請妥善保存');
+  },
+  async importBackup(input){
+    const file=input&&input.files&&input.files[0]; if(!file) return;
+    try{
+      const obj=JSON.parse(await file.text());
+      if(obj.app!=='eloga-pif' || !Array.isArray(obj.products)){ A.toast('這不是有效的依洛嘉備份檔'); input.value=''; return; }
+      pendingRestore=obj; render();
+    }catch(e){ A.toast('讀取失敗：檔案毀損或格式不符'); }
+    input.value='';
+  },
+  cancelRestore(){ pendingRestore=null; render(); },
+  confirmRestore(){
+    const d=pendingRestore; if(!d) return;
+    if(Array.isArray(d.products)){ products.length=0; d.products.forEach(x=>products.push(x)); }
+    if(Array.isArray(d.customers)){ customers.length=0; d.customers.forEach(x=>customers.push(x)); }
+    if(Array.isArray(d.staff)){ staff.length=0; d.staff.forEach(x=>staff.push(x)); }
+    if(Array.isArray(d.sharedPIF)){ sharedPIF.length=0; d.sharedPIF.forEach(x=>sharedPIF.push(x)); }
+    if(Array.isArray(d.showcase)){ showcase.length=0; d.showcase.forEach(x=>showcase.push(x)); }
+    if(d.me && typeof d.me==='object') me=Object.assign({},d.me);
+    if(Array.isArray(d.drafts)) drafts=d.drafts;
+    if(typeof d.addTarget!=='undefined') addTarget=d.addTarget;
+    if(typeof d.addCust!=='undefined') addCust=d.addCust;
+    if(Array.isArray(d.libDrafts)) libDrafts=d.libDrafts;
+    if(typeof d.libImpStatus!=='undefined') libImpStatus=d.libImpStatus;
+    if(d.CINFO && typeof d.CINFO==='object'){ Object.keys(d.CINFO).forEach(k=>{ CINFO[k]=d.CINFO[k]; }); }
+    pendingRestore=null; save(); render(); A.toast('已從備份還原全部資料');
+  },
   doWipe(){
     const pw=((document.getElementById('wipe_pw')||{}).value||'').trim();
     if(pw!=='ELG2025'){ A.toast('密碼錯誤'); return; }
@@ -1767,8 +1943,8 @@ const A = {
     if(!nm){ A.toast('請填廠商名稱'); return; }
     customers.push({name:nm,email:ml,login:'—',status:'邀請中'}); addOpen=false; render(); A.toast('已建立客戶並寄出邀請');
   },
-  setCustTab(t){ custTab=t; render(); },
-  setElgTab(t){ elgTab=t; render(); },
+  setCustTab(t){ custTab=t; scOpen=null; scPage=0; render(); },
+  setElgTab(t){ elgTab=t; scOpen=null; scPage=0; render(); },
   pickData(id){ dataPid=id; render(); },
   toggleTest(k){ const p=byId(dataPid); if(p){ p.t=p.t||{fang:true,chang:true,wen:false}; p.t[k]=!p.t[k]; } render(); },
   setType(id,v){ const p=byId(id); if(p){ p.type=v; p.t=defTests(v); } render(); },
