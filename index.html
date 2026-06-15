@@ -336,6 +336,19 @@ function refreshSelUI(){
   });
   document.querySelectorAll('[data-needsel]').forEach(b=>{ b.disabled = selN===0; });
 }
+function selBar(ids, actions){
+  selScope=ids.slice();
+  const selN=ids.filter(id=>batch[id]).length, allOn=ids.length>0&&selN===ids.length;
+  return `<div class="card compact" style="background:var(--n-bg);border:0;margin-bottom:10px">
+    <div class="row" style="align-items:center;gap:10px;flex-wrap:wrap">
+      <span class="ck ${allOn?'on':''}" onclick="A.selAllScope(${allOn?'false':'true'})" style="cursor:pointer;flex:0 0 auto"><i class="ti ti-check"></i></span>
+      <span class="nm" style="font-size:13px;cursor:pointer" onclick="A.selAllScope(${allOn?'false':'true'})">全選</span>
+      <span class="muted" style="font-size:12.5px">已選 ${selN} 筆</span>
+      <span style="flex:1"></span>
+      ${actions.map(a=>`<button class="btn ${a.cls||'btn--ghost'} btn--sm" style="width:auto;padding:0 12px" ${selN?'':'disabled'} onclick="${a.fn}">${a.ic?'<i class="ti ti-'+a.ic+'"></i> ':''}${a.label}</button>`).join('')}
+    </div></div>`;
+}
+function selCk(id){ return `<span class="ck ${batch[id]?'on':''}" onclick="A.toggleSel('${id}')" style="cursor:pointer;flex:0 0 auto"><i class="ti ti-check"></i></span>`; }
 function inferType(name){
   const s=name||'';
   if(/精油|護髮油|卸妝油|唇膏|護唇|膏|膠囊/.test(s)) return '油劑';
@@ -409,7 +422,7 @@ function parseCompany(t){
   const ad=(t.match(/公司地址\s*[:：]?\s*([^\n]+)/)||[])[1]||'';
   return { cname:nm.trim(), caddr:ad.trim() };
 }
-let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='', wipeOpen=false, ocrBusy=false, custAddOpen=false, pendingRestore=null, scQ='', scPage=0, scOpen=null, scDraft={name:'',en:'',tagline:'',cover:'',html:'',link:''};
+let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='', wipeOpen=false, ocrBusy=false, custAddOpen=false, pendingRestore=null, scQ='', scPage=0, scOpen=null, scDraft={name:'',en:'',tagline:'',cover:'',html:'',link:''}, pifSel={}, scSel={}, selScope=[];
 let sharedPIF=[
   {name:'SYN三胜肽緊緻撫紋眼霜', type:'液劑霜劑'},
   {name:'杏仁酸植萃亮顏精華', type:'液劑霜劑'},
@@ -714,7 +727,8 @@ function custSubmit(){
       </div>`).join('')+`</div>`;
   }
   if(approved.length){
-    h += `<div class="faint" style="font-size:13px;margin:14px 0 8px">可寄送（依洛嘉已允許 · 勾選後安排寄送）</div><div class="stack">`+ approved.map(p=>`
+    h += `<div class="row" style="margin:14px 0 8px"><span class="faint" style="font-size:13px">可寄送（依洛嘉已允許 · 勾選後安排寄送）</span>
+        <span class="muted" style="font-size:12px;font-weight:600;cursor:pointer" onclick="A.shipAll()">${approved.every(p=>p.shipSel)?'全不選':'全選'}</span></div><div class="stack">`+ approved.map(p=>`
       <div class="card compact">
         <div class="selrow ${p.shipSel?'on':''}" style="border:0;padding:0" onclick="A.toggleShip('${p.id}')">
           <span class="ck"><i class="ti ti-check"></i></span>
@@ -883,7 +897,8 @@ function scCard(it, admin){
   const cover = it.cover
     ? `<div style="height:96px;border-radius:12px 12px 0 0;background:#eee center/cover no-repeat url('${it.cover}')"></div>`
     : `<div style="height:96px;border-radius:12px 12px 0 0;display:flex;align-items:center;justify-content:center;font-size:30px;font-weight:800;color:#fff;background:linear-gradient(135deg,var(--accent,#3E6B5E),#9DB6A7)">${(it.name||'?').slice(0,1)}</div>`;
-  return `<div class="card" data-nm="${(it.name+' '+(it.en||'')).replace(/"/g,'&quot;')}" style="padding:0;overflow:hidden">
+  return `<div class="card" data-nm="${(it.name+' '+(it.en||'')).replace(/"/g,'&quot;')}" style="padding:0;overflow:hidden;position:relative">
+    ${admin?`<span class="ck ${scSel[it.id]?'on':''}" onclick="A.scToggleSel('${it.id}')" style="cursor:pointer;position:absolute;top:8px;left:8px;z-index:2;background:#fff;border-radius:6px"><i class="ti ti-check"></i></span>`:''}
     ${cover}
     <div style="padding:10px 12px 12px">
       <div class="nm" style="font-size:14px;line-height:1.3">${it.name}</div>
@@ -944,6 +959,17 @@ function elgShowcase(){
       <button class="btn btn--sm" style="margin-top:12px;width:auto;padding:0 18px" onclick="A.addShowcase()"><i class="ti ti-check"></i> 新增到新品介紹</button>
     </div>
     <div class="row sect mt"><span>新品介紹（${showcase.length}）· 兩欄展示</span></div>`;
+  if(showcase.length){
+    const selN=Object.keys(scSel).filter(k=>scSel[k]).length, allOn=selN===showcase.length;
+    h+=`<div class="card compact" style="background:var(--n-bg);border:0;margin-bottom:10px">
+      <div class="row" style="align-items:center;gap:10px;flex-wrap:wrap">
+        <span class="ck ${allOn?'on':''}" onclick="A.scSelAll(${allOn?'false':'true'})" style="cursor:pointer;flex:0 0 auto"><i class="ti ti-check"></i></span>
+        <span class="nm" style="font-size:13px;cursor:pointer" onclick="A.scSelAll(${allOn?'false':'true'})">全選</span>
+        <span class="muted" style="font-size:12.5px">已選 ${selN} 筆</span>
+        <span style="flex:1"></span>
+        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;color:#C0392B;border-color:#E7C3BD" ${selN?'':'disabled'} onclick="A.scDelSel()"><i class="ti ti-trash"></i> 刪除所選</button>
+      </div></div>`;
+  }
   h+= scGrid(true);
   h+=`</div>`;
   return h;
@@ -989,10 +1015,11 @@ function boardScreen(){
 function elgApply(){
   const list=products.filter(p=>p.status==='applied');
   let h=`<div class="row sect"><span>送驗申請（待確認允許寄送）</span><span class="pill pill--w">${list.length}</span></div>`;
-  h+=`<div class="note" style="margin:8px 0 12px"><i class="ti ti-list-check"></i>客戶送來的送驗申請，確認後即「允許寄送」，回送客戶端讓他們備樣寄出。</div>`;
+  h+=`<div class="note" style="margin:8px 0 12px"><i class="ti ti-list-check"></i>客戶送來的送驗申請，確認後即「允許寄送」，回送客戶端讓他們備樣寄出。可勾選多筆一次允許，或逐筆處理。</div>`;
+  if(list.length) h+= selBar(list.map(p=>p.id), [{label:'批量允許寄送',ic:'check',fn:'A.batchAllow()',cls:'btn--ok'}]);
   h+= list.length ? `<div class="stack">`+ list.map(p=>`
       <div class="card">
-        <div class="row"><span><span class="nm" style="font-size:15px">${p.name}</span>
+        <div class="row" style="gap:10px">${selCk(p.id)}<span style="flex:1;min-width:0"><span class="nm" style="font-size:15px">${p.name}</span>
           <br><span class="sub">${custName(p)}${p.alias?' · 配方名：'+p.alias:''}</span></span>
           <span class="pill pill--w">申請中</span></div>
         <div class="sub" style="margin-top:6px">${p.spec||'—'} · ${p.qty||'—'}</div>
@@ -1229,9 +1256,10 @@ function elgReceive(){
     </div>`;
   h += `<div class="addr" style="margin-bottom:16px"><div class="t">收件地址（客戶寄樣到此）</div><div class="a">${ADDR}</div><div class="a" style="margin-top:2px">電話 ${ELG_TEL}</div></div>`;
   h += `<div class="row sect"><span>待收件</span><span class="pill pill--w">${waiting.length}</span></div>`;
+  if(waiting.length) h+= selBar(waiting.map(p=>p.id), [{label:'批量接收',ic:'package',fn:'A.batchReceive()',cls:'btn--ok'}]);
   h += waiting.length ? `<div class="stack">`+ waiting.map(p=>`
-      <div class="card" style="border-color:var(--w)"><div class="row">
-        <span><span class="nm">${p.name}</span><br><span class="sub">${custName(p)} · ${p.qty}</span></span>
+      <div class="card" style="border-color:var(--w)"><div class="row" style="gap:10px">${selCk(p.id)}
+        <span style="flex:1;min-width:0"><span class="nm">${p.name}</span><br><span class="sub">${custName(p)} · ${p.qty}</span></span>
         <button class="btn btn--ok btn--sm" style="width:auto;padding:0 16px" onclick="A.receive('${p.id}')">接收</button>
       </div></div>`).join('')+`</div>`
     : `<div class="card faint" style="text-align:center;padding:20px">沒有待收件樣品</div>`;
@@ -1256,7 +1284,8 @@ function elgData(){
   const sel=pool.filter(x=>x.genSel!==false);
   return `<div class="pane">
     <div class="note" style="margin-bottom:14px"><i class="ti ti-file-invoice"></i>已收款、待送驗的「送驗總清單」，可跨廠商勾選合併成同一份清單與合約。</div>
-    <div class="sect" style="margin-bottom:4px">送驗總清單（已勾 ${sel.length}/${pool.length} 筆 · ${[...new Set(pool.map(x=>custName(x)))].length} 家廠商）</div>
+    <div class="row" style="margin-bottom:4px"><span class="sect" style="margin:0">送驗總清單（已勾 ${sel.length}/${pool.length} 筆 · ${[...new Set(pool.map(x=>custName(x)))].length} 家廠商）</span>
+      <span class="muted" style="font-size:12px;font-weight:600;cursor:pointer" onclick="A.toggleGenAll()">${pool.every(x=>x.genSel!==false)?'全不選':'全選'}</span></div>
     <div class="faint" style="font-size:12px;margin:0 0 10px">勾選不同廠商的樣品，會合併到同一份送驗清單與合作協議。</div>
     ${[...new Set(pool.map(x=>custName(x)))].map(v=>{
       const its=pool.filter(x=>custName(x)===v); const allSel=its.every(x=>x.genSel!==false);
@@ -1333,7 +1362,8 @@ function elgInvoice(){
     const tot=items.filter(p=>p.invSel).reduce((s,p)=>s+(p.feeSel||0),0);
     const cobj=customers.find(c=>c.name===cn); const isC=cobj&&cobj.contract; const bal=cobj?(cobj.balance||0):0;
     return `<div class="card" style="margin-bottom:12px">
-      <div class="row" style="margin-bottom:8px"><span class="nm" style="font-size:15px"><i class="ti ti-building-store"></i> ${cn}${isC?' <span class="pill pill--s" style="font-size:10px">合約制</span>':''}</span><span class="pill pill--i">${items.length} 項</span></div>
+      <div class="row" style="margin-bottom:8px"><span class="nm" style="font-size:15px"><i class="ti ti-building-store"></i> ${cn}${isC?' <span class="pill pill--s" style="font-size:10px">合約制</span>':''}</span>
+        <span class="muted" style="font-size:12px;font-weight:600;cursor:pointer" onclick="A.toggleInvVendor('${cn}')">${items.every(p=>p.invSel)?'全不選':'全選'}</span></div>
       ${isC?`<div class="sub" style="margin-bottom:4px">合約餘額：<b style="color:${bal>=tot?'var(--s)':'var(--w)'}">${money(bal)}</b>${bal<tot?'（不足，差額將改開收款單）':''}</div>`:''}
       ${items.map(p=>`
         <div style="border-top:1px solid var(--line);padding-top:10px;margin-top:10px">
@@ -1384,8 +1414,9 @@ function elgPif(){
   const making=P('reporting');
   let h=`<div class="note" style="margin-bottom:12px"><i class="ti ti-flask"></i>送驗中收到檢驗報告 → 轉 PIF 製作中；製作完成上傳雲端 → 標記已完成。</div>`;
   h += `<div class="row sect"><span>送驗中（待收檢驗報告）</span><span class="pill pill--s">${testing.length}</span></div>`;
+  if(testing.length) h+= selBar(testing.map(p=>p.id), [{label:'批量：收到報告轉製作',ic:'file-check',fn:'A.batchReceiveReport()',cls:'btn--ok'}]);
   h += testing.length ? `<div class="stack">`+ testing.map(p=>`
-      <div class="card"><div class="row"><span><span class="nm">${p.name}</span><br><span class="sub">${custName(p)} · ${p.batch||''}</span></span><span class="pill pill--s">送驗中</span></div>
+      <div class="card"><div class="row" style="gap:10px">${selCk(p.id)}<span style="flex:1;min-width:0"><span class="nm">${p.name}</span><br><span class="sub">${custName(p)} · ${p.batch||''}</span></span><span class="pill pill--s">送驗中</span></div>
         <button class="btn btn--sm" style="margin-top:10px" onclick="A.receiveReport('${p.id}')"><i class="ti ti-file-check"></i> 收到檢驗報告（轉 PIF 製作中）</button>
       </div>`).join('')+`</div>`
     : `<div class="card faint" style="text-align:center;padding:16px">目前沒有送驗中項目</div>`;
@@ -1415,15 +1446,31 @@ function elgPif(){
   const bld=sharedPIF.filter(it=>shareState(it)==='building');
   const hid=sharedPIF.filter(it=>shareState(it)==='hidden');
   h += `<div class="row sect mt"><span>可共用 PIF（公開顯示設定）</span><span class="pill pill--s">公開 ${pub.length} · 建置中 ${bld.length} · 隱藏 ${hid.length}</span></div>`;
-  h += `<div class="note" style="margin:6px 0 10px"><i class="ti ti-eye"></i>每筆可設為「公開可共用 / 可共用·建置中 / 隱藏」。建置中會以「建置中」標籤對客戶顯示但不可共用；隱藏只有後臺看得到。</div>`;
+  h += `<div class="note" style="margin:6px 0 10px"><i class="ti ti-eye"></i>勾選多筆後用上方批次鈕一次改狀態；或用每筆右側下拉個別調整。建置中會以「建置中」標籤對客戶顯示但不可共用；隱藏只有後臺看得到。</div>`;
+  if(sharedPIF.length){
+    const selIdx=Object.keys(pifSel).filter(k=>pifSel[k]).map(Number);
+    const selN=selIdx.length, allOn=selN===sharedPIF.length;
+    h += `<div class="card compact" style="background:var(--n-bg);border:0;margin-bottom:10px">
+        <div class="row" style="align-items:center;gap:10px;flex-wrap:wrap">
+          <span class="ck ${allOn?'on':''}" data-selall onclick="A.pifSelAll(${allOn?'false':'true'})" style="cursor:pointer;flex:0 0 auto"><i class="ti ti-check"></i></span>
+          <span class="nm" style="font-size:13px;cursor:pointer" onclick="A.pifSelAll(${allOn?'false':'true'})">全選</span>
+          <span class="muted" style="font-size:12.5px" data-selcount>已選 ${selN} 筆</span>
+          <span style="flex:1"></span>
+          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" ${selN?'':'disabled'} onclick="A.setShareStateBatch('public')">設為公開</button>
+          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" ${selN?'':'disabled'} onclick="A.setShareStateBatch('building')">建置中</button>
+          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" ${selN?'':'disabled'} onclick="A.setShareStateBatch('hidden')">隱藏</button>
+        </div>
+      </div>`;
+  }
   const stateRow=(it,i)=>{
     const st=shareState(it);
     const badge = st==='public'?'<span class="pill pill--s" style="font-size:10px">公開</span>'
       : st==='building'?'<span class="pill pill--w" style="font-size:10px">建置中</span>'
       : '<span class="pill pill--n" style="font-size:10px">隱藏</span>';
-    return `<div class="card compact row" style="${st==='hidden'?'opacity:.6':''}">
+    return `<div class="card compact row" style="gap:10px;${st==='hidden'?'opacity:.6':''}">
+        <span class="ck ${pifSel[i]?'on':''}" onclick="A.togglePifSel(${i})" style="cursor:pointer;flex:0 0 auto"><i class="ti ti-check"></i></span>
         <span style="flex:1;min-width:0"><span class="nm" style="font-size:13.5px">${it.name}</span> ${badge}<br><span class="sub">${it.type||'—'} · 已有 PIF</span></span>
-        <select class="fld fld--mini" style="width:auto;min-width:118px" onchange="A.setShareState(${i},this.value)">
+        <select class="fld fld--mini" style="width:auto;min-width:118px;flex:0 0 auto" onchange="A.setShareState(${i},this.value)">
           <option value="public" ${st==='public'?'selected':''}>公開可共用</option>
           <option value="building" ${st==='building'?'selected':''}>可共用·建置中</option>
           <option value="hidden" ${st==='hidden'?'selected':''}>隱藏</option>
@@ -1944,7 +1991,7 @@ const A = {
     customers.push({name:nm,email:ml,login:'—',status:'邀請中'}); addOpen=false; render(); A.toast('已建立客戶並寄出邀請');
   },
   setCustTab(t){ custTab=t; scOpen=null; scPage=0; render(); },
-  setElgTab(t){ elgTab=t; scOpen=null; scPage=0; render(); },
+  setElgTab(t){ elgTab=t; scOpen=null; scPage=0; pifSel={}; batch={}; scSel={}; render(); },
   pickData(id){ dataPid=id; render(); },
   toggleTest(k){ const p=byId(dataPid); if(p){ p.t=p.t||{fang:true,chang:true,wen:false}; p.t[k]=!p.t[k]; } render(); },
   setType(id,v){ const p=byId(id); if(p){ p.type=v; p.t=defTests(v); } render(); },
@@ -1953,6 +2000,27 @@ const A = {
   openSharedPIF(){ view='shared-pif'; render(); },
   closeSharedPIF(){ view='app'; custTab='submit'; render(); },
   setShareState(i,st){ const it=sharedPIF[i]; if(!it) return; it.state=st; delete it.hidden; save(); render(); A.toast({public:'已設為公開可共用：',building:'已移到可共用·建置中：',hidden:'已隱藏：'}[st]+it.name); },
+  togglePifSel(i){ if(pifSel[i]) delete pifSel[i]; else pifSel[i]=true; render(); },
+  pifSelAll(on){ pifSel={}; if(on){ sharedPIF.forEach((_,i)=>{ pifSel[i]=true; }); } render(); },
+  toggleSel(id){ if(batch[id]) delete batch[id]; else batch[id]=true; render(); },
+  selAllScope(on){ (selScope||[]).forEach(id=>{ if(on) batch[id]=true; else delete batch[id]; }); render(); },
+  _selIds(){ return Object.keys(batch).filter(k=>batch[k]); },
+  batchAllow(){ const list=products.filter(p=>batch[p.id]&&p.status==='applied'); if(!list.length){ A.toast('請先勾選申請項目'); return; } list.forEach(p=>{ p.status='approved'; p.shipSel=true; }); batch={}; save(); render(); A.toast('已允許 '+list.length+' 筆寄送，回送客戶端'); },
+  batchReceive(){ const list=products.filter(p=>batch[p.id]&&p.status==='shipped'); if(!list.length){ A.toast('請先勾選待收件項目'); return; } list.forEach(p=>{ p.status='received'; if(p.invSel===undefined)p.invSel=true; if(!p.feeSel)p.feeSel=5000; }); batch={}; save(); render(); A.toast('已接收 '+list.length+' 筆'); },
+  batchReceiveReport(){ const list=products.filter(p=>batch[p.id]&&p.status==='testing'); if(!list.length){ A.toast('請先勾選送驗中項目'); return; } list.forEach(p=>{ p.status='reporting'; }); batch={}; save(); render(); A.toast('已將 '+list.length+' 筆轉為 PIF 製作中'); },
+  toggleInvVendor(cn){ const its=products.filter(p=>p.status==='received'&&custName(p)===cn); const allOn=its.length>0&&its.every(p=>p.invSel); its.forEach(p=>{ p.invSel=!allOn; }); render(); },
+  toggleGenAll(){ const pool=products.filter(p=>p.status==='paid'); const allOn=pool.length>0&&pool.every(p=>p.genSel!==false); pool.forEach(p=>{ p.genSel = allOn?false:true; }); render(); },
+  shipAll(){ const sel=products.filter(p=>ownedByMe(p)&&(p.status==='approved'||p.status==='pending')); const allOn=sel.length>0&&sel.every(p=>p.shipSel); sel.forEach(p=>{ p.shipSel=!allOn; }); render(); },
+  scToggleSel(id){ if(scSel[id]) delete scSel[id]; else scSel[id]=true; render(); },
+  scSelAll(on){ scSel={}; if(on) showcase.forEach(it=>{ scSel[it.id]=true; }); render(); },
+  scDelSel(){ const ids=Object.keys(scSel).filter(k=>scSel[k]); if(!ids.length){ A.toast('請先勾選新品'); return; } showcase=showcase.filter(it=>!ids.includes(it.id)); scSel={}; save(); render(); A.toast('已刪除 '+ids.length+' 筆新品'); },
+  setShareStateBatch(st){
+    const idx=Object.keys(pifSel).filter(k=>pifSel[k]).map(Number);
+    if(!idx.length){ A.toast('請先勾選項目'); return; }
+    idx.forEach(i=>{ const it=sharedPIF[i]; if(it){ it.state=st; delete it.hidden; } });
+    pifSel={}; save(); render();
+    A.toast('已將 '+idx.length+' 筆設為'+({public:'公開可共用',building:'可共用·建置中',hidden:'隱藏'}[st]));
+  },
   sharePIF(i){ const it=sharedPIF[i]; if(!it) return;
     products.push({id:'s'+Date.now(),name:it.name,alias:'',en:'',spec:'',qty:'',amt:'',func:'',type:it.type,t:defTests(it.type),cust:(me.nameCh||CUST),mine:(me.nameCh===CUST),status:'applied',shared:true});
     render(); A.toast('已共用至計劃：'+it.name); },
