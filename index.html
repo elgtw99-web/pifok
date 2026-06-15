@@ -291,6 +291,7 @@ const CINFO = {
 };
 const custAddr = p => CINFO[custName(p)] || (p.mine ? (me.addrCh||'') : '');
 const ownedByMe = p => !!me.nameCh && (p.cust||CUST)===me.nameCh;
+const shareState = it => it.state || (it.hidden?'hidden':'public');
 function vendorOpts(sel){
   const names=[...new Set([CUST].concat(customers.map(c=>c.name)).concat(products.map(p=>custName(p))))].filter(Boolean);
   return names.map(nm=>`<option ${nm===sel?'selected':''}>${nm}</option>`).join('');
@@ -607,7 +608,7 @@ function custSubmit(){
       <span class="muted" style="font-size:13px;font-weight:600">編輯</span></div>`;
   h += `<div class="lnk" onclick="A.openSharedPIF()" style="margin-bottom:10px">
       <span class="l"><i class="ti ti-files lead"></i>
-      <span><span class="nm">依洛嘉 PIF 共用清單</span><br><span class="sub">可共用 ${sharedPIF.filter(it=>!it.hidden).length} 項</span></span></span>
+      <span><span class="nm">依洛嘉 PIF 共用清單</span><br><span class="sub">可共用 ${sharedPIF.filter(it=>shareState(it)==='public').length} 項</span></span></span>
       <i class="ti ti-chevron-right faint" style="font-size:20px"></i></div>`;
   h += `<div class="lnk" onclick="A.openMyFolder()">
       <span class="l"><i class="ti ti-cloud lead"></i>
@@ -750,10 +751,16 @@ function custBoard(){
     h+=`<div class="empty"><i class="ti ti-clipboard"></i>還沒有產品，請到「送驗」新增</div>`;
   }
   h+=`<div class="sect mt">依洛嘉目前可共用的 PIF 產品</div>`;
-  const visShare=sharedPIF.filter(it=>!it.hidden);
-  h+= collGroup('s','可共用 PIF', visShare.length, `<div class="stack">`+ sharedPIF.map((it,i)=> it.hidden?'':`
+  const pubS=sharedPIF.filter(it=>shareState(it)==='public');
+  h+= collGroup('s','可共用 PIF', pubS.length, `<div class="stack">`+ sharedPIF.map((it,i)=> shareState(it)==='public'?`
       <div class="card compact row" data-nm="${it.name}"><span><span class="nm" style="font-size:13.5px">${it.name}</span><br><span class="sub">${it.type} · 已有 PIF</span></span>
-        <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px" onclick="A.sharePIF(${i})">共用</button></div>`).join('')+`</div>`);
+        <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px" onclick="A.sharePIF(${i})">共用</button></div>`:'').join('')+`</div>`);
+  const bldS=sharedPIF.filter(it=>shareState(it)==='building');
+  if(bldS.length){
+    h+= collGroup('w','可共用·建置中', bldS.length, `<div class="stack">`+ bldS.map(it=>`
+      <div class="card compact row" data-nm="${it.name}"><span><span class="nm" style="font-size:13.5px">${it.name}</span><br><span class="sub">${it.type} · PIF 建置中，敬請期待</span></span>
+        <span class="pill pill--w" style="font-size:11px">建置中</span></div>`).join('')+`</div>`);
+  }
   h+=`<div class="faint" style="font-size:12px;margin-top:12px"><i class="ti ti-lock"></i> 只顯示你自己的產品與依洛嘉可共用清單，看不到其他客戶資料。</div>`;
   return h;
 }
@@ -792,13 +799,20 @@ function boardBody(){
   let h=`<div class="note" style="margin-bottom:12px"><i class="ti ti-lock"></i>這是客戶公共平臺（唯讀）。登入後可查看「自己已寄送樣品」的收發狀態；未登入僅顯示下方可共用的 PIF 明細。</div>`;
   h+=`<div class="sect">可共用 PIF 明細</div>`;
   h+= srchBar('搜尋可共用 PIF…');
-  const visP=sharedPIF.filter(it=>!it.hidden);
-  h+= visP.length ? collGroup('s','可共用 PIF', visP.length,
-      `<div class="stack">`+ visP.map(it=>`
-        <div class="card compact" data-nm="${it.name} ${it.type||''}"><div class="row" style="align-items:center;gap:8px">
-          <span style="flex:1;min-width:0"><span class="nm" style="font-size:13.5px">${it.name}</span><br><span class="sub">${it.type||'—'} · 已有 PIF</span></span>
-          <span class="pill pill--s" style="font-size:11px">可共用</span></div></div>`).join('')+`</div>`)
-    : `<div class="card faint" style="text-align:center;padding:18px">目前沒有可共用的 PIF</div>`;
+  const visP=sharedPIF.filter(it=>shareState(it)==='public');
+  const bldP=sharedPIF.filter(it=>shareState(it)==='building');
+  h+= (visP.length||bldP.length) ? (
+      (visP.length?collGroup('s','可共用 PIF', visP.length,
+        `<div class="stack">`+ visP.map(it=>`
+          <div class="card compact" data-nm="${it.name} ${it.type||''}"><div class="row" style="align-items:center;gap:8px">
+            <span style="flex:1;min-width:0"><span class="nm" style="font-size:13.5px">${it.name}</span><br><span class="sub">${it.type||'—'} · 已有 PIF</span></span>
+            <span class="pill pill--s" style="font-size:11px">可共用</span></div></div>`).join('')+`</div>`):'')
+      + (bldP.length?collGroup('w','可共用·建置中', bldP.length,
+        `<div class="stack">`+ bldP.map(it=>`
+          <div class="card compact" data-nm="${it.name} ${it.type||''}"><div class="row" style="align-items:center;gap:8px">
+            <span style="flex:1;min-width:0"><span class="nm" style="font-size:13.5px">${it.name}</span><br><span class="sub">${it.type||'—'} · PIF 建置中</span></span>
+            <span class="pill pill--w" style="font-size:11px">建置中</span></div></div>`).join('')+`</div>`):'')
+    ) : `<div class="card faint" style="text-align:center;padding:18px">目前沒有可共用的 PIF</div>`;
   h+=`<div class="faint" style="font-size:12px;margin-top:12px"><i class="ti ti-login"></i> 想查自己樣品的收發狀態？請以客戶身分登入。</div>`;
   return h;
 }
@@ -1222,15 +1236,35 @@ function elgPif(){
       </div>`).join('')+`</div>`
     : `<div class="card faint" style="text-align:center;padding:18px">尚無已完成 PIF</div>`;
 
-  const visN=sharedPIF.filter(it=>!it.hidden).length;
-  h += `<div class="row sect mt"><span>可共用 PIF（公開顯示設定）</span><span class="pill pill--s">顯示中 ${visN}／${sharedPIF.length}</span></div>`;
-  h += `<div class="note" style="margin:6px 0 10px"><i class="ti ti-eye"></i>切換每筆是否出現在客戶端「可共用 PIF」與公共平臺。隱藏的只有後臺看得到。</div>`;
-  h += sharedPIF.length ? `<div class="stack">`+ sharedPIF.map((it,i)=>`
-      <div class="card compact row" style="${it.hidden?'opacity:.6':''}">
-        <span><span class="nm" style="font-size:13.5px">${it.name}</span><br><span class="sub">${it.type||'—'} · 已有 PIF${it.hidden?' · 已隱藏':''}</span></span>
-        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" onclick="A.toggleShareVisible(${i})"><i class="ti ti-eye${it.hidden?'-off':''}"></i> ${it.hidden?'顯示':'隱藏'}</button>
-      </div>`).join('')+`</div>`
-    : `<div class="card faint" style="text-align:center;padding:16px">尚無可共用 PIF 項目</div>`;
+  const pub=sharedPIF.filter(it=>shareState(it)==='public');
+  const bld=sharedPIF.filter(it=>shareState(it)==='building');
+  const hid=sharedPIF.filter(it=>shareState(it)==='hidden');
+  h += `<div class="row sect mt"><span>可共用 PIF（公開顯示設定）</span><span class="pill pill--s">公開 ${pub.length} · 建置中 ${bld.length} · 隱藏 ${hid.length}</span></div>`;
+  h += `<div class="note" style="margin:6px 0 10px"><i class="ti ti-eye"></i>每筆可設為「公開可共用 / 可共用·建置中 / 隱藏」。建置中會以「建置中」標籤對客戶顯示但不可共用；隱藏只有後臺看得到。</div>`;
+  const stateRow=(it,i)=>{
+    const st=shareState(it);
+    const badge = st==='public'?'<span class="pill pill--s" style="font-size:10px">公開</span>'
+      : st==='building'?'<span class="pill pill--w" style="font-size:10px">建置中</span>'
+      : '<span class="pill pill--n" style="font-size:10px">隱藏</span>';
+    return `<div class="card compact row" style="${st==='hidden'?'opacity:.6':''}">
+        <span style="flex:1;min-width:0"><span class="nm" style="font-size:13.5px">${it.name}</span> ${badge}<br><span class="sub">${it.type||'—'} · 已有 PIF</span></span>
+        <select class="fld fld--mini" style="width:auto;min-width:118px" onchange="A.setShareState(${i},this.value)">
+          <option value="public" ${st==='public'?'selected':''}>公開可共用</option>
+          <option value="building" ${st==='building'?'selected':''}>可共用·建置中</option>
+          <option value="hidden" ${st==='hidden'?'selected':''}>隱藏</option>
+        </select>
+      </div>`;
+  };
+  if(sharedPIF.length){
+    h += `<div class="sect" style="font-size:13px">公開可共用（${pub.length}）</div>`;
+    h += pub.length ? `<div class="stack">`+ sharedPIF.map((it,i)=>shareState(it)==='public'?stateRow(it,i):'').join('')+`</div>` : `<div class="card faint" style="text-align:center;padding:12px">無</div>`;
+    h += `<div class="sect mt" style="font-size:13px">可共用·建置中（${bld.length}）</div>`;
+    h += bld.length ? `<div class="stack">`+ sharedPIF.map((it,i)=>shareState(it)==='building'?stateRow(it,i):'').join('')+`</div>` : `<div class="card faint" style="text-align:center;padding:12px">尚無建置中項目</div>`;
+    h += `<div class="sect mt" style="font-size:13px">隱藏（${hid.length}）</div>`;
+    h += hid.length ? `<div class="stack">`+ sharedPIF.map((it,i)=>shareState(it)==='hidden'?stateRow(it,i):'').join('')+`</div>` : `<div class="card faint" style="text-align:center;padding:12px">無</div>`;
+  } else {
+    h += `<div class="card faint" style="text-align:center;padding:16px">尚無可共用 PIF 項目</div>`;
+  }
   return h;
 }
 
@@ -1301,9 +1335,14 @@ function sharedPifScreen(){
       <button class="iconbtn" onclick="A.closeSharedPIF()" title="關閉"><i class="ti ti-x"></i></button></div>
     <div class="screen">
       <div class="note" style="margin-bottom:14px"><i class="ti ti-files"></i>這些是依洛嘉已做過 PIF 的產品，點「共用」即可沿用，加入你的計劃清單。</div>
-      <div class="stack">${sharedPIF.map((it,i)=> it.hidden?'':`
-        <div class="card row"><span><span class="nm" style="font-size:15px">${it.name}</span><br><span class="sub">${it.type} · 已有 PIF</span></span>
-          <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px" onclick="A.sharePIF(${i})">共用</button></div>`).join('')}</div>
+      <div class="stack">${sharedPIF.map((it,i)=>{
+        const st=shareState(it);
+        if(st==='hidden') return '';
+        if(st==='building') return `<div class="card row" style="opacity:.85"><span><span class="nm" style="font-size:15px">${it.name}</span><br><span class="sub">${it.type} · PIF 建置中，敬請期待</span></span>
+          <span class="pill pill--w" style="font-size:11px">建置中</span></div>`;
+        return `<div class="card row"><span><span class="nm" style="font-size:15px">${it.name}</span><br><span class="sub">${it.type} · 已有 PIF</span></span>
+          <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px" onclick="A.sharePIF(${i})">共用</button></div>`;
+      }).join('')}</div>
     </div>`;
 }
 function textMode(){
@@ -1625,7 +1664,7 @@ const A = {
   setFunc(id,v){ const p=byId(id); if(p) p.func=v; save(); },
   openSharedPIF(){ view='shared-pif'; render(); },
   closeSharedPIF(){ view='app'; custTab='submit'; render(); },
-  toggleShareVisible(i){ const it=sharedPIF[i]; if(!it) return; it.hidden=!it.hidden; save(); render(); A.toast(it.hidden?('已隱藏：'+it.name):('已顯示：'+it.name)); },
+  setShareState(i,st){ const it=sharedPIF[i]; if(!it) return; it.state=st; delete it.hidden; save(); render(); A.toast({public:'已設為公開可共用：',building:'已移到可共用·建置中：',hidden:'已隱藏：'}[st]+it.name); },
   sharePIF(i){ const it=sharedPIF[i]; if(!it) return;
     products.push({id:'s'+Date.now(),name:it.name,alias:'',en:'',spec:'',qty:'',amt:'',func:'',type:it.type,t:defTests(it.type),cust:(me.nameCh||CUST),mine:(me.nameCh===CUST),status:'applied',shared:true});
     render(); A.toast('已共用至計劃：'+it.name); },
