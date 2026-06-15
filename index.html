@@ -445,7 +445,8 @@ let customers=[
   {name:'絢美學企業社', email:'', login:'臨時', status:'臨時', temp:true, drive:''},
   {name:'鼎圓開發有限公司', email:'', login:'臨時', status:'臨時', temp:true, drive:''},
   {name:'凱德妮斯企業社', email:'', login:'臨時', status:'臨時', temp:true, drive:''},
-  {name:'姝顏生技企業社', email:'', login:'臨時', status:'臨時', temp:true, drive:''}
+  {name:'姝顏生技企業社', email:'', login:'臨時', status:'臨時', temp:true, drive:''},
+  {name:'潔皙生技', email:'', login:'臨時', status:'臨時', temp:true, drive:''}
 ];
 const DEMO_INTRO='<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;font-family:-apple-system,system-ui,sans-serif;color:#2b2b2b}.hero{background:linear-gradient(135deg,#3E6B5E,#9DB6A7);color:#fff;padding:40px 24px;text-align:center}.hero h1{margin:0;font-size:26px}.hero p{margin:8px 0 0;opacity:.9}.sec{padding:24px}.sec h2{font-size:18px;border-left:4px solid #3E6B5E;padding-left:10px}.tag{display:inline-block;background:#EAF2F1;color:#3E6B5E;border-radius:999px;padding:4px 12px;font-size:13px;margin:4px 4px 0 0}</style></head><body><div class="hero"><h1>黑珍珠煥顏時空膠囊</h1><p>Black Pearl Renewal Capsule</p></div><div class="sec"><h2>產品特色</h2><p>單顆獨立精華膠囊，旅行隨身、用量精準，一顆鎖住整日保養。</p><div><span class="tag">黑珍珠萃取</span><span class="tag">煥顏緊緻</span><span class="tag">旅行友善</span></div></div><div class="sec"><h2>適用</h2><p>晚間保養最後一道鎖水步驟，取一顆塗抹全臉。</p></div><div class="sec" style="background:#F7F5EF"><h2>依洛嘉 E.L.G International Trading</h2><p>OEM／ODM 化妝品代工 · 台南市佳里區佳興里宅興二街600號</p></div></body></html>';
 let showcase=[
@@ -531,6 +532,59 @@ let products=[];
       self:(co===ELG_SELF), mine:(co===CUST)}); });
 })();
 products.forEach(p=>{ if(!p.type) p.type=inferType(p.name); if(p.alias===undefined) p.alias=''; });
+(function(){
+  const byc={}; products.forEach(p=>{ (byc[p.cust]=byc[p.cust]||[]).push(p); });
+  const seg=(c,a,b)=>(byc[c]||[]).slice(a,b);
+  const PIF='https://drive.google.com/drive/folders/elg-pif';
+  const done=(arr,drive,charge)=>arr.forEach(p=>{ p.status='completed'; p.batch='已完成'; p.drive=drive||PIF; if(charge!=null)p.charge=charge; });
+  const set=(arr,st,ex)=>arr.forEach(p=>{ p.status=st; Object.assign(p,ex||{}); });
+  // 依洛嘉自有（42）：完成 / 送驗中 / 製作中 / 待送驗，其餘在庫
+  done(seg(ELG_SELF,0,6), PIF, 0);
+  set(seg(ELG_SELF,6,11),'testing',{batch:'送驗中'});
+  set(seg(ELG_SELF,11,14),'reporting',{});
+  set(seg(ELG_SELF,14,18),'paid',{genSel:true});
+  // 晶寶（8）
+  done(seg('晶寶企業行',0,2),'https://drive.google.com/drive/folders/jingbao-pif',10000);
+  set(seg('晶寶企業行',2,4),'testing',{batch:'送驗中'});
+  set(seg('晶寶企業行',4,5),'paid',{genSel:true});
+  set(seg('晶寶企業行',6,7),'applied',{});
+  set(seg('晶寶企業行',7,8),'shipped',{});
+  // 芊奕田（1）完成
+  done(seg('芊奕田生技',0,1),'https://drive.google.com/drive/folders/chianyi-pif',10000);
+  // 夏芮蒂（1）送驗中
+  set(seg('夏芮蒂生物科技有限公司',0,1),'testing',{batch:'送驗中'});
+  // 歐菲莉婭（4）：完成1 / 待送驗1 / 其餘在庫
+  done(seg('歐菲莉婭商行',0,1), PIF);
+  set(seg('歐菲莉婭商行',1,2),'paid',{genSel:true});
+  // 鼎圓（2）送驗中1
+  set(seg('鼎圓開發有限公司',0,1),'testing',{batch:'送驗中'});
+  // 姝顏（4）：完成1 / 申請1
+  done(seg('姝顏生技企業社',0,1), PIF);
+  set(seg('姝顏生技企業社',2,3),'applied',{});
+})();
+(function(){
+  let n=products.length;
+  const T=(f,g,w)=>({fang:!!f,chang:!!g,wen:!!w});
+  // 第一次送驗 12 筆（公司欄空白 → 大多歸晶寶，智能修護面膜暫歸潔皙生技，可在樣品庫手選轉移）
+  const B12=[
+    ['玫瑰微臻霜','','250g','1瓶',1,1,0,'晶寶企業行'],
+    ['超泌肌能賦活精萃因子','','30g','8瓶',1,1,0,'晶寶企業行'],
+    ['蘆薈舒緩晶凍','','500g','1瓶',1,1,0,'晶寶企業行'],
+    ['積雪草修護凍膜','','500g','1瓶',1,1,0,'晶寶企業行'],
+    ['玫瑰臉部精油PLUS','','100ml','2瓶',0,1,0,'晶寶企業行'],
+    ['積雪草舒緩安瓶','','10g','22瓶',1,1,0,'晶寶企業行'],
+    ['黑蝸牛極致保濕安瓶','','10g','22瓶',1,1,0,'晶寶企業行'],
+    ['EGF緊緻彈潤安瓶','','10g','22瓶',1,1,0,'晶寶企業行'],
+    ['微金分子彈潤肌安瓶','','10g','22瓶',1,1,0,'晶寶企業行'],
+    ['綻光煥膚杏仁酸精華','','30g','8瓶',1,1,0,'晶寶企業行'],
+    ['洋甘菊悠活精油','','100ml','2瓶',0,1,0,'晶寶企業行'],
+    ['智能修護面膜','PDRN×YMT DERAMIDE MASK','25g','4片',0,1,0,'潔皙生技']
+  ];
+  B12.forEach(r=>{ const co=r[7];
+    products.push({id:'b1-'+(++n),cust:co,name:r[0],alias:'',en:r[1],spec:r[2],qty:r[3],
+      status:'testing',batch:'第一次送驗',t:T(r[4],r[5],r[6]),type:inferType(r[0]),
+      self:false, mine:(co===CUST)}); });
+})();
 
 const SM={ applied:['等待依洛嘉確認','w'], approved:['可寄送','i'], pending:['待寄送','n'],
   shipped:['已寄出樣品','i'], received:['已收樣','i'], invoiced:['待匯款','w'], reported:['待查帳','w'],
@@ -541,7 +595,7 @@ const money = n => '$'+n.toLocaleString();
 const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 
 /* ---------- persistence ---------- */
-const SEED_VER='2026-06-15-showcase';
+const SEED_VER='2026-06-15-batch1-12';
 function save(){ try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,showcase,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO})); }catch(e){} }
 function load(){
   try{
@@ -1073,7 +1127,7 @@ function elgLibrary(){
     .slice().sort((a,b)=> custName(a).localeCompare(custName(b),'zh-Hant') || order.indexOf(a.status)-order.indexOf(b.status));
   const selN=rows.filter(p=>batch[p.id]).length;
   const opts=order.map(k=>`<option value="${k}">${SM[k][0]}</option>`).join('');
-  let h=`<div class="note" style="margin-bottom:12px"><i class="ti ti-database"></i>樣品庫 · 所有客戶送出／已收款／完成的樣品總表。可上傳 Excel／照片辨識匯入，篩選後勾選批量套用狀態並同步客戶看板。</div>`;
+  let h=`<div class="note" style="margin-bottom:12px"><i class="ti ti-database"></i>樣品庫 · 所有客戶送出／已收款／完成的樣品總表。每筆可直接用「狀態」欄下拉個別調整；或勾選多筆後用上方工具列一次套用狀態，並同步客戶看板。</div>`;
   // 匯入庫：Excel + 照片 OCR
   const impCusts=[...new Set(products.map(p=>custName(p)))].concat(customers.map(c=>c.name)).filter((v,i,a)=>v&&a.indexOf(v)===i);
   const tgt=libImpCust||impCusts[0]||'';
@@ -1150,7 +1204,9 @@ function elgLibrary(){
         <td data-label="數量" style="white-space:nowrap">${p.qty||'—'}</td>
         <td data-label="檢驗項目" style="white-space:nowrap">${testText(p.t)}</td>
         <td data-label="費用" style="white-space:nowrap">${money(feeOf(p.t))}</td>
-        <td data-label="狀態">${pill(p.status)}</td>
+        <td data-label="狀態"><select class="fld fld--mini" style="min-width:120px" onchange="A.setStatus('${p.id}',this.value)">
+          ${order.map(o=>`<option value="${o}" ${p.status===o?'selected':''}>${SM[o][0]}</option>`).join('')}
+        </select></td>
         <td data-label=""><span style="cursor:pointer;color:${confirmDel===p.id?'#C0392B':'var(--faint)'}" title="刪除" onclick="A.delProduct('${p.id}')"><i class="ti ti-trash"></i></span></td>
       </tr>`).join('') : `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">目前篩選沒有符合的樣品</td></tr>`)
     +`</tbody></table></div>`;
