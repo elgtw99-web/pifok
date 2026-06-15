@@ -276,6 +276,7 @@
 
 <script>
 const CUST = '晶寶企業行';
+const ELG_SELF = '依洛嘉國際實業有限公司';
 const ADDR = '台南市佳里區佳興里宅興二街600號 · 洪莉晴 收';
 const ELG_TEL = '06-7228888';
 const FACTORY = 'E.L.G International Trading（依洛嘉）· 台南市佳里區佳興里宅興二街600號';
@@ -285,13 +286,21 @@ const SAMPLE_ME={ nameCh:'晶寶企業行', nameEn:'Jingbao Co., Ltd.', addrCh:'
 const SAMPLE_ME2={ nameCh:'芊奕田生技', nameEn:'Chianyitian Biotech Co., Ltd.', addrCh:'台南市安平區建平一街56號', addrEn:'No.56, Jianping 1st St., Anping Dist., Tainan', phone:'06-2991234' };
 const custName = p => p.cust || CUST;
 const CINFO = {
+  '依洛嘉國際實業有限公司':'台南市佳里區佳興里宅興二街600號',
   '晶寶企業行':'高雄市大寮區琉球里巷尾路89之1號',
   '芊奕田生技':'台南市安平區建平一街56號',
-  '夏芮蒂生物科技有限公司':'花蓮市中美路71-12號1樓'
+  '夏芮蒂生物科技有限公司':'花蓮市中美路71-12號1樓',
+  '歐菲莉婭商行':'高雄市前鎮區新生路802號3樓',
+  '絢美學企業社':'台北市大安區忠孝東路四段208號7樓',
+  '鼎圓開發有限公司':'新北市中和區立德街9號4樓',
+  '凱德妮斯企業社':'基隆市暖暖區碇內街192巷1號2樓',
+  '姝顏生技企業社':'高雄市旗山區上洲里周厝巷1號一樓'
 };
 const custAddr = p => CINFO[custName(p)] || (p.mine ? (me.addrCh||'') : '');
 const ownedByMe = p => !!me.nameCh && (p.cust||CUST)===me.nameCh;
 const shareState = it => it.state || (it.hidden?'hidden':'public');
+const VERIFY_BASE='https://pif.eloga.app/verify';
+const verifyURL = c => `${VERIFY_BASE}?token=${c.verifyToken||''}&c=${encodeURIComponent(c.name)}`;
 function vendorOpts(sel){
   const names=[...new Set([CUST].concat(customers.map(c=>c.name)).concat(products.map(p=>custName(p))))].filter(Boolean);
   return names.map(nm=>`<option ${nm===sel?'selected':''}>${nm}</option>`).join('');
@@ -367,6 +376,17 @@ function agreementHTML(list){
   <p>日期：${ds}　　　　日期：${ds}</p>
   </body></html>`;
 }
+async function aiEnName(name, type){
+  const res=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST", headers:{"Content-Type":"application/json"},
+    body:JSON.stringify({ model:"claude-sonnet-4-6", max_tokens:1000,
+      messages:[{role:"user",content:`你是化妝品標籤／檢驗報告的中英品名翻譯。請把以下中文化妝品品名翻成自然、適合用於檢驗報告與產品標籤的英文品名。只回英文品名本身，不要引號、不要任何說明或標點開頭。\n品類參考：${type||'化妝品'}\n中文品名：${name}`}] })
+  });
+  if(!res.ok) throw new Error('api');
+  const data=await res.json();
+  const txt=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+  return txt.replace(/^["'「」]+|["'「」]+$/g,'').trim();
+}
 function cellText(v){
   if(v===null||v===undefined) return '';
   if(typeof v==='object'){
@@ -402,43 +422,90 @@ let staff=[
 let customers=[
   {name:'晶寶企業行', email:'vic881019@gmail.com', login:'Google', status:'已啟用', drive:'https://drive.google.com/drive/folders/jingbao-pif', driveAuth:true},
   {name:'芊奕田生技', email:'chianyi@line.me', login:'LINE', status:'已啟用', drive:'https://drive.google.com/drive/folders/chianyi-pif', driveAuth:true},
-  {name:'夏芮蒂生技', email:'sharidy@gmail.com', login:'Google', status:'待審核', drive:''}
+  {name:'夏芮蒂生物科技有限公司', email:'sharidy@gmail.com', login:'Google', status:'已啟用', drive:''},
+  {name:'歐菲莉婭商行', email:'', login:'臨時', status:'臨時', temp:true, drive:''},
+  {name:'絢美學企業社', email:'', login:'臨時', status:'臨時', temp:true, drive:''},
+  {name:'鼎圓開發有限公司', email:'', login:'臨時', status:'臨時', temp:true, drive:''},
+  {name:'凱德妮斯企業社', email:'', login:'臨時', status:'臨時', temp:true, drive:''},
+  {name:'姝顏生技企業社', email:'', login:'臨時', status:'臨時', temp:true, drive:''}
 ];
 const ELG_TABS={ '主要管理者':['home','customers','library','receive','apply','data','invoice','pif'], '管理':['home','customers','library','receive','apply','data','invoice','pif'] };
 
 let products=[];
 (function(){
   let n=0;
-  const add=(cust,name,status,spec,qty,extra)=>products.push(Object.assign(
-    {id:'p'+(++n),cust,name,alias:'',spec:spec||'',qty:qty||'',status,batch:''}, extra||{}));
-  // 晶寶 — 已完成 PIF（檢驗費＋PIF 已付 · 白底）
-  ['循環晨韻精油','薑萃天竺葵舒緩精油','曲線緊緻精油','奧秘煥彩素顏霜','幹細胞活膚三合一地漿水','茉莉花萃精油']
-    .forEach(nm=>add(CUST,nm,'completed','','',{batch:'已完成',charge:10000,drive:'https://drive.google.com/drive/folders/jingbao-pif'}));
-  // 晶寶 — 送驗中（只付檢驗費、PIF 未付 · 綠底）
-  ['瓷娃娃馬卡龍精華','玫瑰微臻霜','超泌肌能賦活精萃因子','蘆薈舒緩晶凍','積雪草修護凍膜','玫瑰臉部精油PLUS','積雪草舒緩安瓶','黑蝸牛極致保濕安瓶','EGF緊緻彈潤安瓶','微金分子彈潤肌安瓶','綻光煥膚杏仁酸精華(杏仁酸12趴)','洋甘菊悠活精油']
-    .forEach(nm=>add(CUST,nm,'testing','','',{batch:'送驗中'}));
-  // 晶寶 — 等待依洛嘉確認（尚未付費 · 粉底；規格數量取自圖2第2箱）
-  add(CUST,'光感精萃潔顏露','applied','500g/瓶','1瓶');
-  add(CUST,'玫瑰奢華透光露','applied','500g/瓶','1瓶');
-  add(CUST,'B5精華賦活保濕安瓶','applied','10g/瓶','20瓶');
-  add(CUST,'柔嫩煥光保濕乳','applied','500g/瓶','1瓶');
-  add(CUST,'玫瑰潤膚舒壓霜','applied','500g/瓶','1瓶');
-  add(CUST,'極光煥膚精華(杏仁酸3趴)','applied','500g/瓶','1瓶');
-  add(CUST,'蘆薈凝萃去角質','applied','500g/瓶','1瓶');
-  add(CUST,'玫瑰花萃時光卸淨乳','applied','500g/瓶','1瓶');
-  // 晶寶 — 可寄送（流程示範）
-  add(CUST,'玫瑰舒緩噴霧','approved','100ml','4瓶',{shipSel:true});
-  // 芊奕田生技 — 跨廠商與流程示範（橫跨各階段，方便驗證資料隔離）
-  add('芊奕田生技','薰衣草舒眠精油','applied','30ml','6瓶');
-  add('芊奕田生技','膠原蛋白緊緻面膜','applied','25ml×5','3盒');
-  add('芊奕田生技','保濕修護精華','shipped','30ml','5瓶');
-  add('芊奕田生技','永恆之肌天絲面膜','received','25ml×5','2盒',{batch:'6/11'});
-  add('芊奕田生技','金盞花舒緩面膜','paid','25ml×5','2盒',{batch:'5/28',charge:5000,payNote:'王小姐'});
-  add('芊奕田生技','積雪草修護安瓶','paid','30ml','4瓶',{batch:'5/28',charge:10000,payNote:'王小姐'});
-  add('芊奕田生技','山茶花亮澤護髮油','testing','100ml','3瓶',{batch:'送驗中'});
-  add('芊奕田生技','蜂王漿賦活霜','completed','50g','2瓶',{batch:'已完成',charge:10000,drive:'https://drive.google.com/drive/folders/chianyi-pif'});
+  const IMP=[
+    ['紫草潤色唇膏','Lithospermum Lipstick','3.5g/支','16支',0,0,1,'依洛嘉國際實業有限公司'],
+    ['千面女郎溫感唇膏','Warm-Toned Lipstick','3.5g/支','16支',0,0,1,'依洛嘉國際實業有限公司'],
+    ['奢華黑金潤澤膠原C型眼膜','Luxurious Black Gold Moisturizing Collagen C-shaped Eye Mask','8g/片','6片',0,1,0,'依洛嘉國際實業有限公司'],
+    ['黃金竹炭淨白亮采C型眼膜','Gold Bamboo Charcoal Whitening C-shaped Eye Mask','8g/片','6片',0,1,0,'依洛嘉國際實業有限公司'],
+    ['緊緻撫紋保濕頸膜','Firming & Anti-Wrinkle Moisturizing Neck Mask','20g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
+    ['奢華金彈潤賦活頸膜','Luxurious Gold Elastic Revitalizing Neck Mask','20g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
+    ['S曲線彈力小腹膜','S-Curve Elastic Belly Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
+    ['生物磁超導UP彈力淨白胸膜','Biomagnetic Superconducting UP Elastic Whitening Breast Mask','20g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
+    ['深v美學保濕緊緻胸膜','Deep V Aesthetics Firming Breast Mask','20g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
+    ['蜜誘草本護唇膏','Beeswax Herbal Lip Balm','1.5g/支','32支',0,0,1,'依洛嘉國際實業有限公司'],
+    ['蜜誘粉漾護唇膏','Beeswax Pinky Lip Balm','1.5g/支','32支',0,0,1,'依洛嘉國際實業有限公司'],
+    ['黑珍珠煥顏時空膠囊','Black Pearl Skin Renewal Space-Time Capsule','0.5g/顆','100顆',0,0,1,'依洛嘉國際實業有限公司'],
+    ['Q10逆時潤彈膠囊','Q10 Anti-Time Moisturizing Space-Time Capsule','0.33g/顆','150顆',0,0,1,'依洛嘉國際實業有限公司'],
+    ['EGF活化因子時空膠囊','EGF Activating Factor Space-Time Capsule','0.35g/顆','150顆',0,0,1,'依洛嘉國際實業有限公司'],
+    ['潤澤修護時空膠囊','Moisturizing & Repairing Space-Time Capsule','0.5g/顆','100顆',0,0,1,'依洛嘉國際實業有限公司'],
+    ['高潤極致保濕黑面膜','Intensive Moisturizing Black Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
+    ['親膚極致舒緩黑面膜','Intensive Soothing Black Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
+    ['極細狠黑完美眼線液筆','Extreme Fine Intense Black Perfect Eyeliner Pen','2g/支','15支',0,1,0,'依洛嘉國際實業有限公司'],
+    ['免沖洗閃耀金護髮膠囊','No Rinse Golden Hair Treatment Capsules','0.8g/顆','65顆',0,0,1,'依洛嘉國際實業有限公司'],
+    ['免沖洗幻影黑護髮膠囊','No Rinse Black Hair Treatment Capsules','1g/顆','60顆',0,0,1,'依洛嘉國際實業有限公司'],
+    ['免沖洗甜心粉護髮膠囊','No Rinse Pink Hair Treatment Capsules','0.8g/顆','65顆',0,0,1,'依洛嘉國際實業有限公司'],
+    ['免沖洗水晶紫護髮膠囊','No Rinse Purple Hair Treatment Capsules','0.8g/顆','65顆',0,0,1,'依洛嘉國際實業有限公司'],
+    ['免沖洗草原綠護髮膠囊','No Rinse Grassland Hair Care Capsule','0.8g/顆','65顆',0,0,1,'依洛嘉國際實業有限公司'],
+    ['免沖洗寶石紅護髮膠囊','No Rinse Red Hair Treatment Capsules','0.8g/顆','65顆',0,0,1,'依洛嘉國際實業有限公司'],
+    ['摩洛哥護髮香氛膠囊','Moroccan Hair Care Fragrance Capsule','1g/顆','60顆',0,0,1,'依洛嘉國際實業有限公司'],
+    ['英國油護髮香氛膠囊','British Oil Hair Care Fragrance Capsule','1g/顆','60顆',0,0,1,'依洛嘉國際實業有限公司'],
+    ['蘆薈清爽去角質凝膠','Aloe Refreshing Peeling Gel','100g/瓶','3瓶',1,1,0,'依洛嘉國際實業有限公司'],
+    ['深層卸妝棉','Makeup Remover Deep Cleansing Cotton','60片/包，120g','3包',1,1,0,'依洛嘉國際實業有限公司'],
+    ['玫瑰臉部精油','Rose Face Massage Oil','100ml/瓶','4瓶',0,0,1,'依洛嘉國際實業有限公司'],
+    ['舒緩夜語精油','Soothing Night Whisper Essential Oil','100ml/瓶','4瓶',0,0,1,'依洛嘉國際實業有限公司'],
+    ['日夜雙護草本潤色護唇膏(蜜誘粉橙)','Day & Night Double Care Herbal Lip Balm (Pinky Orange)','1.5g/支','32支',0,0,1,'依洛嘉國際實業有限公司'],
+    ['日夜雙護草本潤色護唇膏(蜜桃牛奶)','Day & Night Double Care Herbal Lip Balm (Peach Milk)','1.5g/支','32支',0,0,1,'依洛嘉國際實業有限公司'],
+    ['保濕波亮冰面膜','Moisturizing Brightening Ice Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
+    ['水潤保濕面膜','Hydrating Moisturizing Face Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
+    ['二裂酵母&靈芝抗老面膜','Bifida Ferment and Ganoderma Anti-Aging Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
+    ['修護舒緩面膜','Repairing Soothing Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
+    ['乳液型保濕修護面膜','Emulsion Type Moisturizing Repairing Face Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
+    ['透亮美白面膜','Brightening Whitening Face Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
+    ['氣泡活氧面膜','Bubble Oxygen Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
+    ['滋潤保濕按摩霜','Moisturizing Massage Cream','100g/瓶','3瓶',1,1,0,'依洛嘉國際實業有限公司'],
+    ['1%水','','250g/瓶','1瓶',1,0,0,'依洛嘉國際實業有限公司'],
+    ['0.5%水','','250g/瓶','1瓶',1,0,0,'依洛嘉國際實業有限公司'],
+    ['B5精華賦活保濕安瓶','','10g/瓶','20瓶',1,1,0,'晶寶企業行'],
+    ['光感精萃潔顏露','','500g/瓶','1瓶',1,1,0,'晶寶企業行'],
+    ['玫瑰奢華透光露','','500g/瓶','1瓶',1,1,0,'晶寶企業行'],
+    ['柔嫩煥光保濕乳','','500g/瓶','1瓶',1,1,0,'晶寶企業行'],
+    ['玫瑰潤膚舒壓霜','','500g/瓶','1瓶',1,1,0,'晶寶企業行'],
+    ['極光煥膚精華','','500g/瓶','1瓶',1,1,0,'晶寶企業行'],
+    ['蘆薈凝萃去角質','','500g/瓶','1瓶',1,1,0,'晶寶企業行'],
+    ['玫瑰花萃時光卸淨乳','','500g/瓶','1瓶',1,1,0,'晶寶企業行'],
+    ['永恆之肌-隱形天絲面膜','Timeless Skin-Invisible Tencel Mask','25g/片','5片',0,1,0,'芊奕田生技'],
+    ['蘋果光靚膚精華','','30g/瓶','10瓶',1,1,0,'夏芮蒂生物科技有限公司'],
+    ['雙效美白精華','','30g/瓶','8瓶',1,1,0,'歐菲莉婭商行'],
+    ['深度保濕精華面膜','','25g/片','5片',0,1,0,'歐菲莉婭商行'],
+    ['3重亮白舒緩面膜','','25g/片','5片',0,1,0,'歐菲莉婭商行'],
+    ['4D二裂酵母益生菌舒緩保濕面膜','','25g/片','5片',0,1,0,'歐菲莉婭商行'],
+    ['複萃舒緩私密處膜','','12g/片','10片',0,1,1,'絢美學企業社'],
+    ['白玉蝸牛潤澤修護面膜','','25g/片','6片',0,1,1,'鼎圓開發有限公司'],
+    ['白玉蝸牛修復精華','White Jade Snail Repair Essence','500g/瓶','1瓶',1,1,1,'鼎圓開發有限公司'],
+    ['植萃4D玻尿酸修護精華水','Botanical 4D HA Repair Essence Water','500g/瓶','1瓶',1,1,1,'凱德妮斯企業社'],
+    ['玻尿酸極致保濕面膜(天絲面膜)','','25g/片','5片',0,1,0,'姝顏生技企業社'],
+    ['胜肽緊緻煥白面膜','','25g/片','5片',0,1,0,'姝顏生技企業社'],
+    ['藍銅胜肽緊緻面膜','','25g/片','5片',0,1,0,'姝顏生技企業社'],
+    ['玫瑰玻尿酸保濕面膜','','25g/片','5片',0,1,0,'姝顏生技企業社'],
+  ];
+  IMP.forEach(r=>{ const co=r[7];
+    products.push({id:'p'+(++n),cust:co,name:r[0],alias:'',en:r[1],spec:r[2],qty:r[3],
+      status:'received',batch:'匯入清單',t:{fang:!!r[4],chang:!!r[5],wen:!!r[6]},
+      self:(co===ELG_SELF), mine:(co===CUST)}); });
 })();
-products.forEach(p=>{ if(p.cust===CUST) p.mine=true; if(!p.type) p.type=inferType(p.name); if(!p.t) p.t=defTests(p.type); if(p.alias===undefined) p.alias=''; });
+products.forEach(p=>{ if(!p.type) p.type=inferType(p.name); if(p.alias===undefined) p.alias=''; });
 
 const SM={ applied:['等待依洛嘉確認','w'], approved:['可寄送','i'], pending:['待寄送','n'],
   shipped:['已寄出樣品','i'], received:['已收樣','i'], invoiced:['待匯款','w'], reported:['待查帳','w'],
@@ -449,7 +516,7 @@ const money = n => '$'+n.toLocaleString();
 const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 
 /* ---------- persistence ---------- */
-const SEED_VER='2026-06-15-twocust-isolation';
+const SEED_VER='2026-06-15-import-64-temp';
 function save(){ try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO})); }catch(e){} }
 function load(){
   try{
@@ -949,7 +1016,11 @@ function elgLibrary(){
       <tr class="${batch[p.id]?'sel':''}" data-nm="${p.name}">
         <td data-label=""><span class="ck ${batch[p.id]?'on':''}" data-ckid="${p.id}" onclick="A.toggleBatch('${p.id}')" style="cursor:pointer"><i class="ti ti-check"></i></span></td>
         <td data-label="客戶" style="white-space:nowrap">${custName(p)}</td>
-        <td data-label="品名"><span class="nm" style="font-size:13.5px">${p.name}</span>${p.alias?`<br><span class="sub">配方名：${p.alias}</span>`:''}${p.cancelReq?`<br><span class="sub" style="color:var(--w)">客戶申請撤銷中</span>`:''}</td>
+        <td data-label="品名"><span class="nm" style="font-size:13.5px">${p.name}</span>${p.alias?`<br><span class="sub">配方名：${p.alias}</span>`:''}${p.cancelReq?`<br><span class="sub" style="color:var(--w)">客戶申請撤銷中</span>`:''}
+          <div style="display:flex;gap:6px;align-items:center;margin-top:5px">
+            <input class="fld fld--mini" style="flex:1;min-width:0" value="${(p.en||'').replace(/"/g,'&quot;')}" placeholder="英文名（檢驗用）" onchange="A.setField('${p.id}','en',this.value)">
+            <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 9px" title="AI 生成英文名" onclick="A.genEnName('${p.id}')"><i class="ti ti-sparkles"></i> AI</button>
+          </div></td>
         <td data-label="規格" style="white-space:nowrap">${p.spec||'—'}</td>
         <td data-label="數量" style="white-space:nowrap">${p.qty||'—'}</td>
         <td data-label="檢驗項目" style="white-space:nowrap">${testText(p.t)}</td>
@@ -975,7 +1046,7 @@ function elgCustomers(){
         return `<span class="pill pill--${SM[k][1]}" style="font-size:11px">${SM[k][0]} ${n}</span>`;
       }).join(' ');
       return `<div class="card" data-nm="${nm}" onclick="A.openCust('${nm}')" style="cursor:pointer">
-        <div class="row"><span class="nm" style="font-size:15px"><i class="ti ti-building-store"></i> ${nm}</span>
+        <div class="row"><span class="nm" style="font-size:15px"><i class="ti ti-building-store"></i> ${nm}${nm===ELG_SELF?' <span class="pill pill--s" style="font-size:10px">自有</span>':''}</span>
           <span class="muted" style="font-size:13px">${its.length} 件 <i class="ti ti-chevron-right faint"></i></span></div>
         <div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:8px">${chips||'<span class="faint" style="font-size:12px">尚無送驗商品</span>'}</div>
         ${cobj&&cobj.drive?`<div class="sub" style="margin-top:6px"><i class="ti ti-cloud"></i> ${cobj.driveAuth?'雲端硬碟已授權客戶':'雲端硬碟已設、未授權'}</div>`:''}
@@ -1034,7 +1105,11 @@ function elgCustomers(){
     <tbody>`+ (sorted.length ? sorted.map(p=>`
       <tr class="${batch[p.id]?'sel':''}">
         <td data-label=""><span class="ck ${batch[p.id]?'on':''}" data-ckid="${p.id}" onclick="A.toggleBatch('${p.id}')" style="cursor:pointer"><i class="ti ti-check"></i></span></td>
-        <td data-label="品名"><span class="nm" style="font-size:13.5px">${p.name}</span>${p.alias?`<br><span class="sub">配方名：${p.alias}</span>`:''}${p.cancelReq?`<br><span class="sub" style="color:var(--w)">客戶申請撤銷中</span>`:''}</td>
+        <td data-label="品名"><span class="nm" style="font-size:13.5px">${p.name}</span>${p.alias?`<br><span class="sub">配方名：${p.alias}</span>`:''}${p.cancelReq?`<br><span class="sub" style="color:var(--w)">客戶申請撤銷中</span>`:''}
+          <div style="display:flex;gap:6px;align-items:center;margin-top:5px">
+            <input class="fld fld--mini" style="flex:1;min-width:0" value="${(p.en||'').replace(/"/g,'&quot;')}" placeholder="英文名（檢驗用）" onchange="A.setField('${p.id}','en',this.value)">
+            <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 9px" title="AI 生成英文名" onclick="A.genEnName('${p.id}')"><i class="ti ti-sparkles"></i> AI</button>
+          </div></td>
         <td data-label="規格"><input class="fld fld--mini" value="${p.spec||''}" onchange="A.setField('${p.id}','spec',this.value)"></td>
         <td data-label="數量"><input class="fld fld--mini" value="${p.qty||''}" onchange="A.setField('${p.id}','qty',this.value)"></td>
         <td data-label="檢驗項目" style="white-space:nowrap">${testText(p.t)}</td>
@@ -1092,7 +1167,7 @@ function elgData(){
         <div class="stack">`+ its.map(x=>`
           <div class="selrow ${x.genSel!==false?'on':''}" onclick="A.toggleGen('${x.id}')">
             <span class="ck"><i class="ti ti-check"></i></span>
-            <span style="flex:1"><span class="nm">${x.name}</span><br><span class="sub">${testText(x.t)} · ${x.spec||''} · ${money(feeOf(x.t))}</span></span>
+            <span style="flex:1"><span class="nm">${x.name}</span><br><span class="sub">${testText(x.t)} · ${x.spec||''} · ${(x.en||'').trim()?('EN: '+x.en):'<span style="color:var(--w)">缺英文名</span>'}</span></span>
           </div>`).join('') + `</div>`;
     }).join('')}
     <label class="lbl" style="margin-top:16px">設定檢驗項目（選擇產品）</label>
@@ -1135,6 +1210,8 @@ function elgData(){
     <label class="lbl" style="margin-top:16px">功能性測試（手寫輸入 · 選填）</label>
     <textarea class="fld" style="height:64px;line-height:1.5" placeholder="如需功能性測試，描述項目／方法" onchange="A.setFunc('${p.id}',this.value)">${p.func||''}</textarea>
     <button class="btn btn--ghost" style="margin-top:16px" onclick="A.openAddItems('eloga')"><i class="ti ti-plus"></i> 新增品項（手動／辨識）</button>
+    ${(()=>{ const missN=sel.filter(x=>!(x.en||'').trim()).length; return missN?`<button class="btn btn--ghost" style="margin-top:10px;color:var(--accent)" onclick="A.genEnMissing()"><i class="ti ti-sparkles"></i> AI 補齊缺漏英文名（${missN} 筆）</button>
+    <div class="faint" style="font-size:12px;margin-top:6px;text-align:center">清單需有英文名；客戶沒填的可由 AI 生成，產生前請核對。</div>`:`<div class="faint" style="font-size:12px;margin-top:10px;text-align:center"><i class="ti ti-check"></i> 已勾選項目皆有英文名</div>`; })()}
     <button class="btn" style="margin-top:10px" ${sel.length?'':'disabled'} onclick="A.exportSongyan()">
       <i class="ti ti-file-stack"></i> 生成合作協議＋樣品清單並送驗（已勾選 ${sel.length} 筆）</button>
     <div class="faint" style="font-size:12px;margin-top:8px;text-align:center">同時產出：給實驗室的樣品清單 Excel（依客戶合併）＋ 依洛嘉與微化檢驗的合作協議 Word；並把這些項目轉為「送驗中」。</div>
@@ -1283,7 +1360,7 @@ function parseLines(text){
     });
 }
 const dval=(id,def)=>{ const e=document.getElementById(id); return e? e.value : def; };
-function syncDrafts(){ drafts=drafts.map((d,i)=>({ name:dval('d_n_'+i,d.name), alias:dval('d_a_'+i,d.alias||''), en:d.en, spec:dval('d_s_'+i,d.spec), qty:dval('d_q_'+i,d.qty) })); }
+function syncDrafts(){ drafts=drafts.map((d,i)=>({ name:dval('d_n_'+i,d.name), alias:dval('d_a_'+i,d.alias||''), en:dval('d_e_'+i,d.en||''), spec:dval('d_s_'+i,d.spec), qty:dval('d_q_'+i,d.qty) })); }
 
 function addItemsScreen(){
   const seg=(id,ic,lbl)=>`<button class="${addMode===id?'on':''}" onclick="A.setAddMode('${id}')"><i class="ti ti-${ic}"></i> ${lbl}</button>`;
@@ -1306,6 +1383,7 @@ function addItemsScreen(){
           <button class="iconbtn" onclick="A.rmDraft(${i})" title="移除"><i class="ti ti-trash"></i></button>
         </div>
         <input class="fld" id="d_a_${i}" value="${d.alias||''}" placeholder="別名／配方名（不輸出）" style="margin-top:8px" onchange="A.syncSave()">
+        <input class="fld" id="d_e_${i}" value="${d.en||''}" placeholder="英文名（檢驗清單用 · 沒填依洛嘉會協助 AI 生成）" style="margin-top:8px" onchange="A.syncSave()">
         <div style="display:flex;gap:8px;margin-top:8px">
           <input class="fld" id="d_s_${i}" value="${d.spec}" placeholder="型號規格" style="flex:1" onchange="A.syncSave()">
           <input class="fld" id="d_q_${i}" value="${d.qty}" placeholder="數量" style="flex:1" onchange="A.syncSave()">
@@ -1412,11 +1490,22 @@ function customerSection(){
   const off=customers.filter(c=>c.status==='已停用');
   const card=(c)=>{
     const i=customers.indexOf(c);
-    const sc=c.status==='已啟用'?'s':(c.status==='待審核'?'w':'n');
+    const sc=c.status==='已啟用'?'s':(c.status==='待審核'||c.status==='臨時'?'w':'n');
     let act='';
     if(c.status==='待審核') act=`<div style="display:flex;gap:8px;margin-top:10px">
         <button class="btn btn--ok btn--sm" onclick="A.approveCust(${i})"><i class="ti ti-check"></i> 審核通過</button>
         <button class="btn btn--ghost btn--sm" onclick="A.disableCust(${i})">拒絕</button></div>`;
+    else if(c.status==='臨時') act=`
+      <div class="sub" style="margin-top:8px;color:var(--w)"><i class="ti ti-user-question"></i> 臨時帳號（匯入自動建立，尚未驗證）</div>
+      ${c.verifyToken?`<div class="card" style="background:var(--n-bg);border:0;margin-top:8px;padding:10px">
+          <div class="sub" style="margin-bottom:4px">驗證連結（傳給客戶 · 以 Google 信箱驗證後轉為正式帳號）</div>
+          <input class="fld fld--mini" readonly value="${verifyURL(c)}" onclick="this.select()">
+          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
+            <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" onclick="A.copyVerify(${i})"><i class="ti ti-copy"></i> 複製連結</button>
+            <button class="btn btn--ok btn--sm" style="width:auto;padding:0 12px" onclick="A.simVerify(${i})"><i class="ti ti-brand-google"></i> （示範）客戶完成驗證</button>
+          </div></div>`
+        :`<button class="btn btn--sm" style="margin-top:8px;width:auto;padding:0 14px" onclick="A.genVerifyLink(${i})"><i class="ti ti-link"></i> 產生驗證連結</button>`}
+      <button class="btn btn--ghost btn--sm" style="margin-top:8px;width:auto;padding:0 14px;color:#C0392B;border-color:#E7C3BD" onclick="A.delCustomer(${i})"><i class="ti ti-trash"></i> ${confirmDel==='ca'+i?'確認刪除？':'刪除帳號'}</button>`;
     else if(c.status==='已啟用') act=`<div style="display:flex;gap:8px;margin-top:10px">
         <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.disableCust(${i})"><i class="ti ti-ban"></i> 停用</button>
         <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;color:#C0392B;border-color:#E7C3BD" onclick="A.delCustomer(${i})"><i class="ti ti-trash"></i> ${confirmDel==='ca'+i?'確認刪除？':'刪除帳號'}</button></div>
@@ -1425,7 +1514,7 @@ function customerSection(){
     else act=`<div style="display:flex;gap:8px;margin-top:10px">
         <button class="btn btn--sm" style="width:auto;padding:0 14px" onclick="A.enableCust(${i})"><i class="ti ti-rotate"></i> 重新啟用</button>
         <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;color:#C0392B;border-color:#E7C3BD" onclick="A.delCustomer(${i})"><i class="ti ti-trash"></i> ${confirmDel==='ca'+i?'確認刪除？':'刪除帳號'}</button></div>`;
-    const contractBlock = (c.status==='待審核') ? '' : `
+    const contractBlock = (c.status==='待審核'||c.status==='臨時') ? '' : `
       <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13.5px;font-weight:600">
           <input type="checkbox" ${c.contract?'checked':''} onclick="A.toggleContract(${i})"> 合約制（送驗自動從預付餘額扣款）</label>
@@ -1444,6 +1533,12 @@ function customerSection(){
     </div>
     <div class="note" style="margin-bottom:12px"><i class="ti ti-user-check"></i>客戶以 Google／LINE 自由註冊，管理者在此審核或停用。</div>`;
   if(pend.length){ h+=`<div class="sect">客戶申請（待審核）</div><div class="stack">`+pend.map(card).join('')+`</div>`; }
+  const temp=customers.filter(c=>c.status==='臨時');
+  if(temp.length){
+    h+=`<div class="row sect mt"><span>臨時帳號（匯入未註冊 · 待客戶 Google 驗證）</span><span class="pill pill--w">${temp.length}</span></div>`;
+    h+=`<div class="note" style="margin:6px 0 10px"><i class="ti ti-link"></i>這些公司是從匯入清單自動建立、尚未註冊。產生驗證連結傳給客戶，客戶以 Google 信箱驗證後即轉為正式帳號。</div>`;
+    h+=`<div class="stack">`+temp.map(card).join('')+`</div>`;
+  }
   const reg=active.concat(off);
   h+=`<div class="sect mt">已註冊帳號（${reg.length}）· 公司名</div>`;
   h+= reg.length ? `<div class="stack">`+reg.map(card).join('')+`</div>`
@@ -1505,6 +1600,19 @@ const A = {
   openCust(nm){ custView=nm; batch={}; confirmDel=null; render(); },
   setStatus(id,st){ const p=byId(id); if(p) p.status=st; render(); },
   setField(id,f,v){ const p=byId(id); if(p){ p[f]=v; save(); } },
+  async genEnName(id){
+    const p=byId(id); if(!p) return;
+    A.toast('AI 生成英文名中…');
+    try{ const en=await aiEnName(p.name,p.type); if(en){ p.en=en; save(); render(); A.toast('已生成英文名：'+en); } else A.toast('生成失敗，請手動填'); }
+    catch(e){ A.toast('AI 連線失敗，請稍後再試或手動填'); }
+  },
+  async genEnMissing(){
+    const list=products.filter(p=>p.status==='paid' && p.genSel!==false && !(p.en||'').trim());
+    if(!list.length){ A.toast('送驗清單沒有缺英文名的項目'); return; }
+    A.toast('AI 生成 '+list.length+' 筆英文名中…');
+    for(const p of list){ try{ const en=await aiEnName(p.name,p.type); if(en) p.en=en; }catch(e){} }
+    save(); render(); A.toast('已完成 '+list.length+' 筆英文名生成，請核對');
+  },
   toggleGrp(el){ const g=el.closest('.grp'); if(g) g.classList.toggle('collapsed'); },
   listSearch(v){ const scr=document.querySelector('.screen'); if(!scr) return; const q=(v||'').trim();
     scr.classList.toggle('searching', !!q);
@@ -1607,6 +1715,10 @@ const A = {
     const nm=c.name; customers.splice(i,1); confirmDel=null; save(); render();
     A.toast('已刪除客戶帳號：'+nm+'（其樣品仍保留，可在樣品庫處理）');
   },
+  genVerifyLink(i){ const c=customers[i]; if(!c) return; c.verifyToken=Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4); save(); render(); A.toast('已產生驗證連結，可複製傳給客戶'); },
+  copyVerify(i){ const c=customers[i]; if(!c) return; const url=verifyURL(c);
+    try{ navigator.clipboard.writeText(url); A.toast('已複製驗證連結'); }catch(e){ A.toast('請手動複製連結'); } },
+  simVerify(i){ const c=customers[i]; if(!c) return; c.status='已啟用'; c.temp=false; c.login='Google'; delete c.verifyToken; save(); render(); A.toast(c.name+'：已完成 Google 驗證，轉為正式帳號'); },
   openCustAdd(){ custAddOpen=true; render(); },
   closeCustAdd(){ custAddOpen=false; render(); },
   addCustomer(){
