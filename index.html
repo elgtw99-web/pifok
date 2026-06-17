@@ -628,6 +628,12 @@ const SM={ applied:['等待依洛嘉確認','w'], approved:['可寄送','i'], pe
 const pill = s => `<span class="pill pill--${SM[s][1]}">${SM[s][0]}</span>`;
 const byId = id => products.find(p=>p.id===id);
 const money = n => '$'+n.toLocaleString();
+const PIF_PLANS=[
+  {id:'shared',  label:'共用合約價',          amt:10000, desc:'共用合約客戶適用'},
+  {id:'rename',  label:'換名檢驗費',          amt:5000,  desc:'只換名、不重新送驗'},
+  {id:'oem',     label:'代工客戶公定檢測費',  amt:10000, desc:'單筆訂單10萬元以上代工客戶'},
+  {id:'full',    label:'PIF 處理費（含檢測）',amt:20000, desc:'含全套檢測費用'},
+];
 const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 
 /* ---------- persistence ---------- */
@@ -697,6 +703,7 @@ function render(){
         : (role==='customer'?('客戶：'+(me.nameCh||'')):('依洛嘉後臺 · '+elgRole));
       dev.innerHTML=`<div class="devmenu">
         <div class="devhd">測試身分 · 目前：${cur} <i class="ti ti-x" onclick="A.toggleDev()"></i></div>
+        ${(typeof FB!=='undefined'&&FB.on&&FB.user)?`<button onclick="A.devLogoutSwitch()" style="color:#C0392B"><i class="ti ti-logout"></i> 先登出 Firebase 再切換</button>`:''}
         <button onclick="A.devGo('customer')"><i class="ti ti-user"></i> 客戶端（${SAMPLE_ME.nameCh}）</button>
         <button onclick="A.devGo('customer2')"><i class="ti ti-user"></i> 客戶端（${SAMPLE_ME2.nameCh}）</button>
         <button onclick="A.devGo('admin')"><i class="ti ti-shield-check"></i> 依洛嘉後臺 · 主要管理者</button>
@@ -917,7 +924,8 @@ function custBilling(){
     h += present.map(k=>{
       const grp=recent.filter(p=>p.status===k);
       const body=`<div class="stack">`+ grp.map(p=>`
-        <div class="card compact row" data-nm="${p.name}"><span><span class="nm" style="font-size:13.5px">${p.name}</span><br><span class="sub">${p.batch||''} 批次 · ${money(p.charge||0)}</span></span>
+        <div class="card compact row" data-nm="${p.name}"><span><span class="nm" style="font-size:13.5px">${p.name}</span><br>
+          <span class="sub">${p.batch||''} 批次 · ${p.pifPlanLabel?p.pifPlanLabel+'　':''}${money(p.charge||0)}</span></span>
         ${p.status==='completed'?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" onclick="A.openDrive('${p.id}')"><i class="ti ti-download"></i> PIF</button>`:''}</div>`).join('')+`</div>`;
       return collGroup(SM[k][1], SM[k][0], grp.length, body);
     }).join('');
@@ -968,9 +976,10 @@ function custBoard(){
 /* ===================== ELOGA ===================== */
 function elgHeader(){
   const gear = (elgRole==='主要管理者') ? `<button class="hbtn" onclick="A.openAccounts()"><i class="ti ti-settings"></i> 帳號</button>` : '';
+  const userInfo = (typeof FB!=='undefined'&&FB.on&&FB.user) ? `<span class="muted" style="font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${FB.user.email}</span>` : '';
   return `<div class="hd">
     <div><h1 style="font-size:20px">依洛嘉後臺</h1><p style="margin:5px 0 0;font-size:12px" class="muted">${elgRole} · 可檢視與管理全部客戶</p></div>
-    <div style="display:flex;align-items:center;gap:12px">${gear}<button class="iconbtn" onclick="A.logout()" title="登出"><i class="ti ti-logout"></i></button></div>
+    <div style="display:flex;align-items:center;gap:8px">${gear}${userInfo}<button class="hbtn" onclick="A.logout()" style="color:#C0392B;border-color:#E7C3BD"><i class="ti ti-logout"></i> 登出</button></div>
   </div>`;
 }
 function elgApp(){
@@ -1162,8 +1171,8 @@ function elgHome(){
         <div class="mv">${c(st)}</div><div class="ml">${lbl}</div></div>`).join('')+`</div>`;
   h+=`<div class="sect mt">客戶帳號</div>
     <div class="dash">
-      <div class="metric"><div class="mi" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-users"></i></div><div class="mv">${reg}</div><div class="ml">已註冊</div></div>
-      <div class="metric ${pend?'':''}" ${elgRole==='主要管理者'?'onclick="A.openAccounts()"':''}><div class="mi" style="background:var(--w-bg);color:var(--w)"><i class="ti ti-user-plus"></i></div><div class="mv">${pend}</div><div class="ml">客戶申請</div></div>
+      <div class="metric" style="cursor:pointer" onclick="A.openAccounts('customer')"><div class="mi" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-users"></i></div><div class="mv">${reg}</div><div class="ml">已註冊</div></div>
+      <div class="metric" style="cursor:pointer" onclick="A.openAccounts('customer')"><div class="mi" style="background:var(--w-bg);color:var(--w)"><i class="ti ti-user-plus"></i></div><div class="mv">${pend}</div><div class="ml">客戶申請</div></div>
     </div>`;
   return h;
 }
@@ -1530,10 +1539,17 @@ function elgPif(){
   h += making.length ? `<div class="stack">`+ making.map(p=>`
       <div class="card">
         <div class="row"><span><span class="nm">${p.name}</span><br><span class="sub">${custName(p)}</span></span><span class="pill pill--s">PIF製作中</span></div>
-        <label class="lbl" style="margin-top:12px">PIF Google 雲端資料夾連結（可留空，預設客戶資料夾）</label>
+        <label class="lbl" style="margin-top:12px">PIF 費用方案（回傳給客戶的金額）</label>
+        <select class="fld" id="pf_${p.id}" style="margin-bottom:2px" onchange="A.setPifPlan('${p.id}',this.value)">
+          ${PIF_PLANS.map(pl=>`<option value="${pl.id}" ${(p.pifPlan||'shared')===pl.id?'selected':''}>${pl.label}　${money(pl.amt)}　—　${pl.desc}</option>`).join('')}
+        </select>
+        <div class="sub" style="margin:4px 0 10px">
+          ${(()=>{ const pl=PIF_PLANS.find(x=>x.id===(p.pifPlan||'shared'))||PIF_PLANS[0]; return `選定方案：<b>${pl.label}</b> · 回傳客戶金額：<span style="color:var(--s);font-weight:700">${money(pl.amt)}</span>`; })()}
+        </div>
+        <label class="lbl">PIF Google 雲端資料夾連結（可留空，預設客戶資料夾）</label>
         <input class="fld" id="dl_${p.id}" placeholder="貼上共享資料夾連結">
         <button class="btn btn--ok btn--sm" style="margin-top:10px" onclick="A.complete('${p.id}')">
-          <i class="ti ti-circle-check"></i> 標記已完成 PIF</button>
+          <i class="ti ti-circle-check"></i> 標記已完成 PIF（費用回傳客戶）</button>
       </div>`).join('')+`</div>`
     : `<div class="empty" style="padding:24px"><i class="ti ti-clipboard-check"></i>目前沒有製作中的 PIF</div>`;
 
@@ -1543,6 +1559,7 @@ function elgPif(){
       <div class="card">
         <span class="nm" style="font-size:13px;line-height:1.25">${p.name}</span>
         <span class="sub" style="font-size:11px">${custName(p)}</span>
+        ${p.pifPlanLabel?`<span class="sub" style="font-size:11px;color:var(--s)">${p.pifPlanLabel}　${money(p.charge||0)}</span>`:`<span class="sub" style="font-size:11px">${p.charge?money(p.charge):'—'}</span>`}
         <span class="pill pill--s" style="font-size:10px;align-self:flex-start"><i class="ti ti-circle-check"></i> PIF 已完成</span>
       </div>`).join('')+`</div>`
     : `<div class="card faint" style="text-align:center;padding:18px">尚無已完成 PIF</div>`;
@@ -2002,8 +2019,17 @@ const A = {
     libDrafts=[]; save(); render(); A.toast('已確認匯入 '+rows.length+' 筆 · '+cset.size+' 個客戶（'+SM[libImpStatus][0]+'）');
   },
   toggleDev(){ devOpen=!devOpen; render(); },
+  devLogoutSwitch(){
+    devOpen=false;
+    try{ if(typeof FB!=='undefined'&&FB.on&&FB.user){ FB.auth.signOut(); } }catch(e){}
+    FB.user=null; FB.role=null; FB.ready=false; fbDetach();
+    A.toast('已登出 Firebase，現在可以自由切換測試身分');
+    render();
+  },
   devGo(which){
-    if(typeof FB!=='undefined' && FB.on && FB.user){ A.toast('已雲端登入，請先登出再用測試切換'); devOpen=false; render(); return; }
+    if(typeof FB!=='undefined' && FB.on && FB.user){
+      A.toast('已雲端登入，請先按「先登出 Firebase 再切換」'); devOpen=true; render(); return;
+    }
     devOpen=false;
     if(which==='customer'){ role='customer'; Object.assign(me,SAMPLE_ME); me.filled=true; custTab='submit'; view='app'; }
     else if(which==='customer2'){ role='customer'; Object.assign(me,SAMPLE_ME2); me.filled=true; custTab='submit'; view='app'; }
@@ -2048,8 +2074,11 @@ const A = {
     me.nameCh=g('m_nch')||me.nameCh; me.nameEn=g('m_nen'); me.addrCh=g('m_ach'); me.addrEn=g('m_aen'); me.phone=g('m_tel');
     me.filled=true; view='app'; custTab='submit'; render(); A.toast('廠商資料已儲存');
   },
-  logout(){ try{ if(typeof FB!=='undefined' && FB.on && FB.user){ FB.auth.signOut(); FB.user=null; FB.role=null; FB.ready=false; } }catch(e){} role='customer'; view='entry'; render(); },
-  openAccounts(){ view='eloga-accounts'; acctTab='staff'; addOpen=false; wipeOpen=false; render(); },
+  logout(){
+    try{ if(typeof FB!=='undefined' && FB.on && FB.user){ FB.auth.signOut(); fbDetach(); FB.user=null; FB.role=null; FB.ready=false; } }catch(e){}
+    role='customer'; me={}; view='entry'; render();
+  },
+  openAccounts(tab){ view='eloga-accounts'; acctTab=tab||'staff'; addOpen=false; custAddOpen=false; wipeOpen=false; render(); },
   scSearch(v){ scQ=v; scPage=0; render(); },
   scGo(n){ scPage=n; render(); },
   scOpenItem(id){ scOpen=id; render(); },
@@ -2336,12 +2365,16 @@ const A = {
   },
   confirmPay(id){ const p=byId(id); if(p) p.status='paid'; render(); A.toast('已確認收到貨款，待生成送驗合約'); },
   receiveReport(id){ const p=byId(id); if(p) p.status='reporting'; render(); A.toast('已收到檢驗報告，轉 PIF 製作中'); },
+  setPifPlan(id,planId){ const p=byId(id); if(p){ p.pifPlan=planId; render(); } },
   complete(id){
     const el=document.getElementById('dl_'+id);
-    const p=byId(id); const c=customers.find(x=>x.name===custName(p));
+    const p=byId(id); if(!p) return;
+    const c=customers.find(x=>x.name===custName(p));
     p.drive=(el&&el.value.trim())||(c&&c.drive)||'https://drive.google.com';
+    const plan=PIF_PLANS.find(x=>x.id===(p.pifPlan||'shared'))||PIF_PLANS[0];
+    p.charge=plan.amt; p.pifPlanLabel=plan.label;
     p.status='completed';
-    render(); A.toast('已標記完成 PIF，客戶端可下載');
+    render(); A.toast('已完成 PIF：'+p.name+'　費用 '+money(plan.amt)+' 回傳客戶');
   },
   openDrive(id){ const p=byId(id); const c=customers.find(x=>x.name===custName(p)); const url=p.drive||(c&&c.drive); if(url) window.open(url,'_blank'); else A.toast('尚未設定雲端硬碟連結'); },
 
