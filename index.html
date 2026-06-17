@@ -641,14 +641,15 @@ products.forEach(p=>{ if(!p.type) p.type=inferType(p.name); if(p.alias===undefin
 (function(){
   // 依「晶寶付款清單」校正狀態：兩欄打勾=已完成 / 只付檢驗費=送驗中 / 未付=已收樣待付
   let n=products.length;
-  const JB_DONE=['循環晨韻精油','薑萃天竺葵舒緩精油','曲線緊緻精油','瓷娃娃馬卡龍精華','幹細胞活膚三合一地漿水','茉莉花萃精油'];
-  const JB_TEST=['奧秘煥彩素顏霜','玫瑰微臻霜','超泌肌能賦活精萃因子','蘆薈舒緩晶凍','積雪草修護凍膜','玫瑰臉部精油PLUS','積雪草舒緩安瓶','黑蝸牛極致保濕安瓶','EGF緊緻彈潤安瓶','微金分子彈潤肌安瓶','綻光煥膚杏仁酸精華','洋甘菊悠活精油'];
-  // 補上系統內缺少的品項（白底已完成）
+  const JB_DONE=['循環晨韻精油','薑萃天竺葵舒緩精油','曲線緊緻精油Plus','瓷娃娃馬卡龍精華','幹細胞活膚三合一地漿水','茉莉花萃精油','奧秘煥彩素顏霜'];
+  const JB_TEST=['玫瑰微臻霜','超泌肌能賦活精萃因子','蘆薈舒緩晶凍','積雪草修護凍膜','玫瑰臉部精油PLUS','積雪草舒緩安瓶','黑蝸牛極致保濕安瓶','EGF緊緻彈潤安瓶','微金分子彈潤肌安瓶','綻光煥膚杏仁酸精華','洋甘菊悠活精油'];
+  // 補上系統內缺少的品項（PIF已完成但不在匯入清單裡的）
   JB_DONE.forEach(nm=>{
     if(!products.some(p=>p.cust===CUST && p.name===nm)){
       const ty=inferType(nm);
-      products.push(Object.assign({id:'jb-'+(++n),cust:CUST,name:nm,alias:'',en:'',spec:'',qty:'',status:'completed',batch:'已完成',type:ty,t:defTests(ty),mine:true},
-        {charge:10000,drive:'https://drive.google.com/drive/folders/jingbao-pif'}));
+      products.push({id:'jb-'+(++n),cust:CUST,name:nm,alias:'',en:'',spec:'',qty:'',
+        status:'completed',batch:'已完成',type:ty,t:defTests(ty),mine:true,
+        charge:10000,drive:'https://drive.google.com/drive/folders/jingbao-pif'});
     }
   });
   // 依品名套用狀態
@@ -675,7 +676,7 @@ const PIF_PLANS=[
 const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 
 /* ---------- persistence ---------- */
-const SEED_VER='2026-06-17-jb-correction';
+const SEED_VER='2026-06-17-jb-pif-files';
 function save(){
   if(typeof FB!=='undefined' && FB.on && FB.user && FB.role && FB.role!=='pending'){ clearTimeout(FB.syncT); FB.syncT=setTimeout(fbSync,400); return; }
   try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,showcase,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO})); }catch(e){}
