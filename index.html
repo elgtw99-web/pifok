@@ -1439,7 +1439,7 @@ function elgInvoice(){
   const issued=P('invoiced');
   const toCheck=P('reported');
   const testing=P('testing');
-  const testingUnpaid=testing.filter(p=>!p.paidAmt||p.paidAmt===0);
+  const testingUnpaid=products.filter(p=>p.status==='completed' && (!p.paidAmt||p.paidAmt===0) && custName(p)!==ELG_SELF);
 
   const allPaid=products.filter(p=>['paid','testing','reporting','completed'].includes(p.status)&&p.payRecords&&p.payRecords.length);
   const totalCollected=allPaid.reduce((s,p)=>(p.payRecords||[]).reduce((a,r)=>a+r.amt,s),0);
@@ -1461,8 +1461,8 @@ function elgInvoice(){
     const tCusts=[...new Set(testingUnpaid.map(p=>custName(p)))];
     h+=`<div class="card" style="border-color:var(--w);margin-bottom:16px">
       <div class="row" style="margin-bottom:8px">
-        <span><span class="nm" style="font-size:15px"><i class="ti ti-history"></i> 補錄請款（送驗中品項）</span><br>
-        <span class="sub">這些品項已在送驗中但尚未有收款記錄。補錄後不影響送驗流程，金額會計入收款匯總。</span></span>
+        <span><span class="nm" style="font-size:15px"><i class="ti ti-history"></i> 補錄收款（已完成 PIF 未收款）</span><br>
+        <span class="sub">這些 PIF 已完成但尚未有收款記錄，可在此補錄實際收款資料。</span></span>
         <span class="pill pill--w">${testingUnpaid.length}</span>
       </div>
       ${tCusts.map(cn=>{
@@ -1578,9 +1578,15 @@ function elgPif(){
   const making=P('reporting');
   let h=`<div class="note" style="margin-bottom:12px"><i class="ti ti-flask"></i>送驗中收到檢驗報告 → 轉 PIF 製作中；製作完成上傳雲端 → 標記已完成。</div>`;
   h += `<div class="row sect"><span>送驗中（待收檢驗報告）</span><span class="pill pill--s">${testing.length}</span></div>`;
-  if(testing.length) h+= selBar(testing.map(p=>p.id), [{label:'批量：收到報告轉製作',ic:'file-check',fn:'A.batchReceiveReport()',cls:'btn--ok'}]);
+  if(testing.length) h+= selBar(testing.map(p=>p.id), [
+    {label:'批量：收到報告轉製作',ic:'file-check',fn:'A.batchReceiveReport()',cls:'btn--ok'},
+    {label:'送到可共用 PIF（公開）',ic:'world-share',fn:"A.batchAddSharedPIF('public')",cls:'btn--ghost'},
+    {label:'送到可共用 PIF（建置中）',ic:'eye-off',fn:"A.batchAddSharedPIF('building')",cls:'btn--ghost'},
+  ]);
   h += testing.length ? `<div class="stack">`+ testing.map(p=>`
-      <div class="card"><div class="row" style="gap:10px">${selCk(p.id)}<span style="flex:1;min-width:0"><span class="nm">${p.name}</span><br><span class="sub">${custName(p)} · ${p.batch||''}</span></span><span class="pill pill--s">送驗中</span></div>
+      <div class="card"><div class="row" style="gap:10px">${selCk(p.id)}<span style="flex:1;min-width:0"><span class="nm">${p.name}</span><br><span class="sub">${custName(p)} · ${p.batch||''}</span></span>
+        ${sharedPIF.some(s=>s.name===p.name)?`<span class="pill pill--s" style="font-size:10px;flex:none"><i class="ti ti-check"></i> 已在共用</span>`:`<span class="pill pill--s" style="font-size:10px;flex:none">送驗中</span>`}
+      </div>
         <button class="btn btn--sm" style="margin-top:10px" onclick="A.receiveReport('${p.id}')"><i class="ti ti-file-check"></i> 收到檢驗報告（轉 PIF 製作中）</button>
       </div>`).join('')+`</div>`
     : `<div class="card faint" style="text-align:center;padding:16px">目前沒有送驗中項目</div>`;
@@ -1610,51 +1616,62 @@ function elgPif(){
       <i class="ti ti-${pifAddOpen?'x':'plus'}"></i> ${pifAddOpen?'取消':'手動新增 PIF'}</button></div>`;
   if(pifAddOpen){
     const pd=pifDraft;
+    const parsed=pd.parsed||[]; // 已解析的品名清單
     h += `<div class="card" style="border-color:var(--accent);margin-bottom:14px">
-      <p class="nm" style="font-size:15px;margin-bottom:10px"><i class="ti ti-clipboard-plus"></i> 手動新增已完成 PIF</p>
-      <label class="lbl">PIF 品名（必填）</label>
-      <input class="fld" id="pa_name" value="${pd.name.replace(/"/g,'&quot;')}" placeholder="例：玫瑰微臻霜" style="margin-bottom:10px">
+      <p class="nm" style="font-size:15px;margin-bottom:6px"><i class="ti ti-clipboard-list"></i> 批量新增已完成 PIF</p>
+      <p class="sub" style="margin-bottom:12px">把品名清單貼進來（一行一個，支援有數字編號、破折號、空白等格式），系統自動辨識，再統一選客戶、費用方案、Drive 連結與收款資訊。</p>
+
       <label class="lbl">歸屬客戶（必填）</label>
       <select class="fld" id="pa_cust" style="margin-bottom:10px">
         ${custOpts.map(c=>`<option value="${c}" ${pd.cust===c?'selected':''}>${c}</option>`).join('')}
       </select>
-      <label class="lbl">費用方案</label>
+      <label class="lbl">費用方案（全批套用）</label>
       <select class="fld" id="pa_plan" style="margin-bottom:10px">
         ${PIF_PLANS.map(pl=>`<option value="${pl.id}" ${pd.plan===pl.id?'selected':''}>${pl.label}　${money(pl.amt)}</option>`).join('')}
       </select>
-      <label class="lbl">PIF Google Drive 資料夾連結</label>
+      <label class="lbl">PIF Google Drive 資料夾連結（全批套用）</label>
       <input class="fld" id="pa_drive" value="${pd.drive.replace(/"/g,'&quot;')}" placeholder="https://drive.google.com/drive/folders/…" style="margin-bottom:10px">
+
       <div style="border-top:1px solid var(--line);margin:12px 0 12px;padding-top:12px">
-        <p class="nm" style="font-size:13.5px;margin-bottom:10px"><i class="ti ti-cash"></i> 已收款記錄（選填）</p>
+        <p class="nm" style="font-size:13.5px;margin-bottom:8px"><i class="ti ti-cash"></i> 已收款資訊（全批套用，選填）</p>
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
-          <div style="flex:1;min-width:110px">
-            <label class="lbl">收款日期</label>
-            <input class="fld fld--mini" id="pa_pay_date" type="date" value="${new Date().toISOString().slice(0,10)}">
-          </div>
-          <div style="flex:1;min-width:110px">
-            <label class="lbl">實收金額</label>
-            <input class="fld fld--mini" id="pa_pay_amt" type="number" placeholder="例：10000">
-          </div>
-          <div style="flex:1;min-width:110px">
-            <label class="lbl">付款方式</label>
-            <select class="fld fld--mini" id="pa_pay_method">
-              ${PAY_METHODS.map(m=>`<option>${m}</option>`).join('')}
-            </select>
-          </div>
+          <div style="flex:1;min-width:110px"><label class="lbl">收款日期</label>
+            <input class="fld fld--mini" id="pa_pay_date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
+          <div style="flex:1;min-width:110px"><label class="lbl">實收金額（每筆）</label>
+            <input class="fld fld--mini" id="pa_pay_amt" type="number" placeholder="例：10000"></div>
+          <div style="flex:1;min-width:110px"><label class="lbl">付款方式</label>
+            <select class="fld fld--mini" id="pa_pay_method">${PAY_METHODS.map(m=>`<option>${m}</option>`).join('')}</select></div>
         </div>
-        <label class="lbl">收款備註（選填）</label>
-        <input class="fld fld--mini" id="pa_pay_note" placeholder="例：末五碼 12345" style="margin-bottom:0">
       </div>
-      <label class="lbl">備註（選填）</label>
-      <input class="fld" id="pa_note" value="${pd.note.replace(/"/g,'&quot;')}" placeholder="例：第一批送驗" style="margin-bottom:12px">
+
+      <label class="lbl">貼入品名清單</label>
+      <textarea id="pa_paste" class="fld" style="height:130px;line-height:1.7;margin-bottom:8px"
+        placeholder="例：&#10;循環晨韻精油&#10;薑萃天竺葵舒緩精油&#10;曲線緊緻精油Plus&#10;瓷娃娃馬卡龍精華&#10;幹細胞活膚三合一地漿水&#10;茉莉花萃精油&#10;奧秘煥彩素顏霜">${(pd.paste||'').replace(/</g,'&lt;')}</textarea>
+      <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;margin-bottom:12px" onclick="A.parsePifPaste()">
+        <i class="ti ti-wand"></i> 辨識品名</button>
+
+      ${parsed.length ? `
+      <div style="border:1px solid var(--accent);border-radius:10px;padding:12px;margin-bottom:12px">
+        <div class="row" style="margin-bottom:8px">
+          <span class="nm" style="font-size:13.5px">辨識結果（${parsed.length} 筆）· 可直接編輯</span>
+          <span class="sub" style="font-size:12px;cursor:pointer;color:var(--accent)" onclick="A.clearPifPaste()">清除</span>
+        </div>
+        ${parsed.map((nm,i)=>`
+          <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
+            <span class="sub" style="width:22px;text-align:right;flex:none">${i+1}</span>
+            <input class="fld fld--mini" style="flex:1" value="${nm.replace(/"/g,'&quot;')}"
+              oninput="A.updatePifItem(${i},this.value)">
+            <button onclick="A.removePifItem(${i})" style="border:0;background:none;cursor:pointer;color:var(--faint);font-size:15px;flex:none"><i class="ti ti-x"></i></button>
+          </div>`).join('')}
+        <button class="btn btn--ok btn--sm" style="margin-top:8px;width:auto;padding:0 18px" onclick="A.addManualPifBatch()">
+          <i class="ti ti-circle-check"></i> 全部新增（${parsed.length} 筆）</button>
+      </div>` : ''}
+
       <label class="row" style="gap:10px;align-items:center;margin-bottom:14px;cursor:pointer">
         <span class="ck ${pd.toPublic?'on':''}" onclick="A.togglePifPublic()"><i class="ti ti-check"></i></span>
         <span style="font-size:13.5px">同步到「可共用 PIF」公共平臺（依洛嘉自有產品適用）</span>
       </label>
-      <div style="display:flex;gap:8px">
-        <button class="btn btn--ok btn--sm" style="width:auto;padding:0 18px" onclick="A.addManualPif()"><i class="ti ti-circle-check"></i> 新增已完成 PIF</button>
-        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.togglePifAdd()">取消</button>
-      </div>
+      <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.togglePifAdd()">取消</button>
     </div>`;
   }
   // 搜尋 + 篩選
@@ -2398,8 +2415,53 @@ const A = {
     ids.forEach(id=>{ const p=byId(id); if(p) p.status=st; });
     batch={}; save(); render(); A.toast('已批次改為：'+SM[st][0]);
   },
-  togglePifAdd(){ pifAddOpen=!pifAddOpen; if(pifAddOpen){ const c=customers[0]; pifDraft={name:'',cust:c?c.name:ELG_SELF,drive:'',plan:'shared',note:'',toPublic:false}; } render(); },
+  togglePifAdd(){ pifAddOpen=!pifAddOpen; if(pifAddOpen){ const c=customers[0]; pifDraft={cust:c?c.name:ELG_SELF,drive:'',plan:'shared',toPublic:false,paste:'',parsed:[]}; } render(); },
   togglePifPublic(){ pifDraft.toPublic=!pifDraft.toPublic; render(); },
+  parsePifPaste(){
+    const el=document.getElementById('pa_paste'); if(!el) return;
+    const raw=el.value||''; pifDraft.paste=raw;
+    const lines=raw.split(/\n/).map(l=>l
+      .replace(/^\s*[\d一二三四五六七八九十百]+[.、。\-\s]+/,'') // 去數字/符號前綴
+      .replace(/\s+/g,' ').trim()
+    ).filter(l=>l.length>=2 && l.length<=40); // 過濾空行和明顯非品名
+    pifDraft.parsed=[...new Set(lines)]; // 去重
+    render();
+    if(!pifDraft.parsed.length) A.toast('辨識不到品名，請確認格式（一行一個品名）');
+    else A.toast('辨識到 '+pifDraft.parsed.length+' 筆，請確認後按「全部新增」');
+  },
+  updatePifItem(i,v){ if(pifDraft.parsed) pifDraft.parsed[i]=v; },
+  removePifItem(i){ if(pifDraft.parsed){ pifDraft.parsed.splice(i,1); render(); } },
+  clearPifPaste(){ pifDraft.parsed=[]; pifDraft.paste=''; render(); },
+  addManualPifBatch(){
+    const g=id=>((document.getElementById(id)||{}).value||'').trim();
+    const cust=g('pa_cust'); if(!cust){ A.toast('請選客戶'); return; }
+    const planId=g('pa_plan')||'shared';
+    const drive=g('pa_drive');
+    const plan=PIF_PLANS.find(x=>x.id===planId)||PIF_PLANS[0];
+    const payAmt=Number(g('pa_pay_amt'))||0;
+    const payDate=g('pa_pay_date')||new Date().toLocaleDateString('zh-TW');
+    const payMethod=((document.getElementById('pa_pay_method')||{}).value)||'匯款';
+    const names=(pifDraft.parsed||[]).filter(n=>n.trim());
+    if(!names.length){ A.toast('請先辨識品名'); return; }
+    const custEmail=(customers.find(c=>c.name===cust)||{}).email||'';
+    let added=0;
+    names.forEach(name=>{
+      if(products.some(p=>p.name===name&&p.cust===cust&&p.status==='completed')){ return; } // 跳過重複
+      const payRecords=payAmt>0?[{date:payDate,amt:payAmt,method:payMethod,note:'批量新增'}]:[];
+      products.push({ id:'mp'+Date.now()+Math.random().toString(36).slice(2,6),
+        name, alias:'', en:'', spec:'', qty:'', type:inferType(name),
+        cust, status:'completed', batch:'已完成', drive, charge:plan.amt,
+        pifPlan:planId, pifPlanLabel:plan.label,
+        customerEmail:custEmail, self:(cust===ELG_SELF), mine:(cust===CUST),
+        t:{fang:false,chang:false,wen:false},
+        payRecords, paidAmt:payAmt });
+      if(pifDraft.toPublic) sharedPIF.push({id:'sp'+Date.now()+added, name, type:inferType(name)||'化妝品', state:'public'});
+      added++;
+    });
+    pifAddOpen=false; pifDraft={cust:'',drive:'',plan:'shared',toPublic:false,paste:'',parsed:[]};
+    save(); render();
+    A.toast('已新增 '+added+' 筆 PIF'+(payAmt?' · 每筆收款 '+money(payAmt):''));
+  },
   addManualPif(){
     const g=id=>((document.getElementById(id)||{}).value||'').trim();
     const name=g('pa_name'), cust=g('pa_cust'), drive=g('pa_drive'), note=g('pa_note');
@@ -2437,6 +2499,24 @@ const A = {
   _selIds(){ return Object.keys(batch).filter(k=>batch[k]); },
   batchAllow(){ const list=products.filter(p=>batch[p.id]&&p.status==='applied'); if(!list.length){ A.toast('請先勾選申請項目'); return; } list.forEach(p=>{ p.status='approved'; p.shipSel=true; }); batch={}; save(); render(); A.toast('已允許 '+list.length+' 筆寄送，回送客戶端'); },
   batchReceive(){ const list=products.filter(p=>batch[p.id]&&p.status==='shipped'); if(!list.length){ A.toast('請先勾選待收件項目'); return; } list.forEach(p=>{ p.status='received'; if(p.invSel===undefined)p.invSel=true; if(!p.feeSel)p.feeSel=5000; }); batch={}; save(); render(); A.toast('已接收 '+list.length+' 筆'); },
+  batchAddSharedPIF(state){
+    const ids=Object.keys(batch).filter(k=>batch[k]);
+    if(!ids.length){ A.toast('請先勾選送驗中的品項'); return; }
+    let added=0, skip=0;
+    ids.forEach(id=>{
+      const p=byId(id); if(!p) return;
+      // 已在共用清單就跳過（更新狀態）
+      const ex=sharedPIF.find(s=>s.name===p.name);
+      if(ex){ ex.state=state; skip++; }
+      else{
+        sharedPIF.push({id:'sp'+Date.now()+added, name:p.name, type:p.type||inferType(p.name)||'化妝品', state});
+        added++;
+      }
+    });
+    batch={}; save(); render();
+    const stLabel=state==='public'?'公開可共用':'建置中';
+    A.toast(`已送到可共用 PIF（${stLabel}）：新增 ${added} 筆${skip?'、更新 '+skip+' 筆':''}，可到「可共用 PIF」區塊調整`);
+  },
   batchReceiveReport(){ const list=products.filter(p=>batch[p.id]&&p.status==='testing'); if(!list.length){ A.toast('請先勾選送驗中項目'); return; } list.forEach(p=>{ p.status='reporting'; }); batch={}; save(); render(); A.toast('已將 '+list.length+' 筆轉為 PIF 製作中'); },
   toggleInvVendor(cn){ const its=products.filter(p=>p.status==='received'&&custName(p)===cn); const allOn=its.length>0&&its.every(p=>p.invSel); its.forEach(p=>{ p.invSel=!allOn; }); render(); },
   toggleGenAll(){ const pool=products.filter(p=>p.status==='paid'); const allOn=pool.length>0&&pool.every(p=>p.genSel!==false); pool.forEach(p=>{ p.genSel = allOn?false:true; }); render(); },
@@ -2612,7 +2692,7 @@ const A = {
     p.paidAmt=(p.paidAmt||0)+amt;
     p.charge=amt;
     p.payMethod=method;
-    // 保留 testing 狀態，不改變送驗流程
+    // 保留 completed 狀態，不改變 PIF 流程
     save(); render();
     A.toast('已補錄收款：'+p.name+' '+money(amt)+'（'+method+'）');
   },
