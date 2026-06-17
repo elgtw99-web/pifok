@@ -1570,10 +1570,32 @@ function elgInvoice(){
     h += icusts.map(cn=>{
       const its=issued.filter(p=>custName(p)===cn);
       const tot=its.reduce((s,p)=>s+(p.charge||0),0);
-      return `<div class="card" style="margin-bottom:12px">
-        <div class="row" style="margin-bottom:6px"><span class="nm" style="font-size:15px"><i class="ti ti-receipt-2"></i> ${cn}</span><span class="pill pill--w">待匯款</span></div>
-        ${its.map(p=>`<div class="miniline"><span>${p.name}</span><span>${money(p.charge||0)}</span></div>`).join('')}
-        <div class="total"><span class="muted">${cn} 收款單合計</span><span class="amt">${money(tot)}</span></div>
+      return `<div class="card" style="margin-bottom:12px;border-color:var(--w)">
+        <div class="row" style="margin-bottom:6px">
+          <span class="nm" style="font-size:15px"><i class="ti ti-receipt-2"></i> ${cn}</span>
+          <span class="pill pill--w">待匯款</span>
+        </div>
+        ${its.map(p=>`
+          <div class="miniline" style="align-items:center">
+            <span style="flex:1">${p.name}</span>
+            <span style="margin-right:10px">${money(p.charge||0)}</span>
+            <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 8px;font-size:12px;color:#C0392B;border-color:#E7C3BD" onclick="A.voidInvoiceItem('${p.id}')" title="撤回此筆收款單">
+              <i class="ti ti-arrow-back-up"></i> 撤回
+            </button>
+          </div>`).join('')}
+        <div class="total" style="margin-top:8px">
+          <span class="muted">${cn} 收款單合計</span>
+          <span class="amt">${money(tot)}</span>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;color:#C0392B;border-color:#E7C3BD" onclick="A.voidInvoiceAll('${cn}')">
+            <i class="ti ti-x"></i> 整張撤回（全部退回待請款）
+          </button>
+          <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px" onclick="A.markAllReported('${cn}')">
+            <i class="ti ti-check"></i> 客戶已匯款（整批轉查帳）
+          </button>
+        </div>
+        <div class="note" style="margin-top:8px"><i class="ti ti-info-circle"></i>撤回後品項回到「待開收款單」，可修改費用或廠商後重新開單。</div>
       </div>`;
     }).join('');
   } else {
@@ -2781,6 +2803,21 @@ const A = {
       p.payRecords.push({date:ds, amt:0, method:'免收款', note:'依洛嘉自有品項免收款'});
     });
     save(); render(); A.toast('已將 '+items.length+' 筆依洛嘉自有品項標記為免收款，可直接進入送驗流程');
+  },
+  voidInvoiceItem(id){
+    const p=byId(id); if(!p) return;
+    p.status='received'; p.invSel=true;
+    save(); render(); A.toast('已撤回：'+p.name+'　退回待請款，可重新調整後開單');
+  },
+  voidInvoiceAll(cn){
+    const its=P('invoiced').filter(p=>custName(p)===cn);
+    its.forEach(p=>{ p.status='received'; p.invSel=true; });
+    save(); render(); A.toast('已撤回 '+its.length+' 筆（'+cn+'）退回待請款');
+  },
+  markAllReported(cn){
+    const its=P('invoiced').filter(p=>custName(p)===cn);
+    its.forEach(p=>{ p.status='reported'; });
+    save(); render(); A.toast(cn+' '+its.length+' 筆已轉為待查帳');
   },
   issueInvoiceFor(cn){
     const sel=P('received').filter(p=>custName(p)===cn && p.invSel);
