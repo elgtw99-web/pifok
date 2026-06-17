@@ -1749,21 +1749,41 @@ function elogaAccounts(){
   return h;
 }
 function staffSection(){
-  let h = `<div class="stack" style="margin-top:16px">`+ staff.map(x=>`
-    <div class="card row"><span><span class="nm" style="font-size:15px">${x.name}</span><br><span class="sub">${x.email}</span></span>
-      <span class="pill pill--${x.role==='主要管理者'?'s':'i'}">${x.role}</span></div>`).join('')+`</div>`;
-  if(addOpen){
-    h += `<div class="card" style="margin-top:12px;border-color:var(--accent)">
-      <label class="lbl">姓名</label><input id="s_name" class="fld" placeholder="姓名" style="margin-bottom:10px">
-      <label class="lbl">Email（即帳號）</label><input id="s_mail" class="fld" placeholder="name@eloga.com" style="margin-bottom:10px">
-      <label class="lbl">角色</label>
-      <select id="s_role" class="fld" style="margin-bottom:12px"><option>主要管理者</option><option>前臺</option><option>管理</option></select>
-      <button class="btn btn--sm" onclick="A.addStaff()"><i class="ti ti-user-plus"></i> 建立帳號</button>
-    </div>`;
-  } else {
-    h += `<button class="btn btn--ghost" style="margin-top:14px" onclick="A.openAdd()"><i class="ti ti-plus"></i> 新增內部帳號</button>`;
+  let h=`<div class="sect" style="margin-bottom:10px">內部帳號（${staff.length}）</div>`;
+  h+=`<div class="stack">`+staff.map((x,i)=>`
+    <div class="card compact row" style="gap:10px">
+      <span style="flex:1;min-width:0">
+        <span class="nm" style="font-size:14px">${x.name||x.email}</span><br>
+        <span class="sub">${x.email}</span>
+        ${x.uid?`<br><span class="sub" style="font-size:11px;color:var(--faint)">已登入驗證 ✓</span>`:
+          `<br><span class="sub" style="font-size:11px;color:var(--w)">待對方用此 Gmail 登入後自動開通</span>`}
+      </span>
+      <span class="pill pill--${x.role==='主要管理者'?'s':'i'}" style="flex:none">${x.role}</span>
+      ${elgRole==='主要管理者'&&!x.uid?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 10px;color:#C0392B;border-color:#E7C3BD" onclick="A.delStaff(${i})"><i class="ti ti-trash"></i></button>`:''}
+    </div>`).join('')+`</div>`;
+  if(elgRole==='主要管理者'){
+    if(addOpen){
+      h+=`<div class="card" style="margin-top:12px;border-color:var(--accent)">
+        <p class="nm" style="font-size:14px"><i class="ti ti-mail"></i> 邀請新內部帳號</p>
+        <p class="sub" style="margin:4px 0 10px">填入對方的 Google 帳號 Gmail。對方直接用那個 Gmail 登入系統，會自動開通為內部帳號。</p>
+        <label class="lbl">姓名（選填）</label>
+        <input id="s_name" class="fld" placeholder="例：小美" style="margin-bottom:10px">
+        <label class="lbl">Gmail（必填）</label>
+        <input id="s_mail" class="fld" type="email" placeholder="example@gmail.com" style="margin-bottom:10px">
+        <label class="lbl">角色</label>
+        <select id="s_role" class="fld" style="margin-bottom:14px">
+          <option>主要管理者</option><option selected>管理</option>
+        </select>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn--sm" style="width:auto;padding:0 16px" onclick="A.addStaff()"><i class="ti ti-user-plus"></i> 加入邀請名單</button>
+          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.closeAdd()">取消</button>
+        </div>
+      </div>`;
+    } else {
+      h+=`<button class="btn btn--ghost" style="margin-top:14px" onclick="A.openAdd()"><i class="ti ti-plus"></i> 邀請新內部帳號</button>`;
+    }
   }
-  h += `<div class="note" style="margin-top:14px"><i class="ti ti-shield-lock"></i>主要管理者可建立帳號並分配權限：前臺只能收件，管理可開請款、查帳。</div>`;
+  h+=`<div class="note" style="margin-top:14px"><i class="ti ti-info-circle"></i>填入 Gmail → 儲存 → 對方用那個 Gmail 登入系統 → 自動開通。無需回報 UID。</div>`;
   return h;
 }
 function customerSection(){
@@ -1827,18 +1847,23 @@ function customerSection(){
     : `<div class="card faint" style="text-align:center;padding:18px">尚無已註冊帳號</div>`;
   if(custAddOpen){
     h += `<div class="card" style="margin-top:14px;border-color:var(--accent)">
-      <p class="nm" style="font-size:15px;margin-bottom:10px"><i class="ti ti-building-plus"></i> 手動新增客戶</p>
-      <label class="lbl">公司名（廠商名）</label><input id="c_name" class="fld" placeholder="例：晶寶企業行" style="margin-bottom:10px">
-      <label class="lbl">Email（選填）</label><input id="c_mail" class="fld" placeholder="name@example.com" style="margin-bottom:10px">
+      <p class="nm" style="font-size:15px;margin-bottom:6px"><i class="ti ti-building-plus"></i> 代註冊新客戶</p>
+      <p class="sub" style="margin-bottom:12px">填入公司名與客戶 Gmail，客戶直接用那個 Gmail 登入就能進入客戶端，不需要另外申請。</p>
+      <label class="lbl">公司名（廠商名）</label>
+      <input id="c_name" class="fld" placeholder="例：晶寶企業行" style="margin-bottom:10px">
+      <label class="lbl">客戶 Gmail（必填 · 用此信箱登入即自動開通）</label>
+      <input id="c_mail" class="fld" type="email" placeholder="example@gmail.com" style="margin-bottom:10px">
       <label class="lbl">登入方式</label>
-      <select id="c_login" class="fld" style="margin-bottom:12px"><option>手動</option><option>Google</option><option>LINE</option><option>匯入</option></select>
+      <select id="c_login" class="fld" style="margin-bottom:12px">
+        <option>Google</option><option>LINE</option><option>手動</option>
+      </select>
       <div style="display:flex;gap:8px">
-        <button class="btn btn--sm" style="width:auto;padding:0 16px" onclick="A.addCustomer()"><i class="ti ti-check"></i> 建立客戶</button>
+        <button class="btn btn--sm" style="width:auto;padding:0 16px" onclick="A.addCustomer()"><i class="ti ti-check"></i> 建立客戶帳號</button>
         <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" onclick="A.closeCustAdd()">取消</button>
       </div>
     </div>`;
   } else {
-    h += `<button class="btn btn--ghost" style="margin-top:14px" onclick="A.openCustAdd()"><i class="ti ti-plus"></i> 手動新增客戶</button>`;
+    h += `<button class="btn btn--ghost" style="margin-top:14px" onclick="A.openCustAdd()"><i class="ti ti-plus"></i> 代註冊新客戶（填 Gmail 直接開通）</button>`;
   }
   return h;
 }
@@ -2097,15 +2122,23 @@ const A = {
   openAdd(){ addOpen=true; render(); },
   addStaff(){
     const g=id=>((document.getElementById(id)||{}).value||'').trim();
-    const nm=g('s_name'), ml=g('s_mail'), rl=(document.getElementById('s_role')||{}).value||'管理';
-    if(!nm||!ml){ A.toast('請填姓名與 Email'); return; }
-    staff.push({name:nm,email:ml,role:rl}); addOpen=false; render(); A.toast('已建立內部帳號：'+rl);
+    const nm=g('s_name'), ml=g('s_mail').toLowerCase(), rl=(document.getElementById('s_role')||{}).value||'管理';
+    if(!ml||!ml.includes('@')){ A.toast('請填入有效的 Gmail'); return; }
+    if(staff.some(s=>s.email===ml)){ A.toast('這個 Gmail 已在名單中'); return; }
+    staff.push({name:nm||ml, email:ml, role:rl, uid:null});
+    addOpen=false; save(); render(); A.toast('已加入邀請名單：'+ml+'（對方用此 Gmail 登入後自動開通）');
   },
+  delStaff(i){ const s=staff[i]; if(!s||s.uid){ A.toast('已登入驗證的帳號不可刪除'); return; } staff.splice(i,1); save(); render(); A.toast('已移除邀請：'+(s.email||s.name)); },
+  closeAdd(){ addOpen=false; render(); },
   addCustomer(){
     const g=id=>((document.getElementById(id)||{}).value||'').trim();
-    const nm=g('c_name'), ml=g('c_mail');
+    const nm=g('c_name'), ml=g('c_mail').toLowerCase(), ln=(document.getElementById('c_login')||{}).value||'Google';
     if(!nm){ A.toast('請填廠商名稱'); return; }
-    customers.push({name:nm,email:ml,login:'—',status:'邀請中'}); addOpen=false; render(); A.toast('已建立客戶並寄出邀請');
+    if(!ml||!ml.includes('@')){ A.toast('請填入有效的 Gmail'); return; }
+    if(customers.some(c=>c.email===ml)){ A.toast('這個 Gmail 已有帳號：'+customers.find(c=>c.email===ml).name); return; }
+    customers.push({name:nm, email:ml, login:ln, status:'已啟用', drive:'', driveAuth:false});
+    custAddOpen=false; save(); render();
+    A.toast('已代註冊「'+nm+'」，客戶用 '+ml+' 登入即可進入系統');
   },
   setCustTab(t){ custTab=t; scOpen=null; scPage=0; render(); },
   setElgTab(t){ elgTab=t; scOpen=null; scPage=0; pifSel={}; batch={}; scSel={}; render(); },
@@ -2373,13 +2406,31 @@ function fbStart(){
         FB.role='eloga'; role='eloga'; elgRole=(sd.data()&&sd.data().role)||'主要管理者'; zone='back'; elgTab='home'; view='app';
         attachAdmin(); render();
       } else {
-        const q=await FB.db.collection('customers').where('email','==',user.email).limit(1).get();
-        if(!q.empty){
-          const c=q.docs[0].data(); FB.role='customer'; role='customer'; custTab='submit';
-          me=Object.assign({}, me, {nameCh:c.name, nameEn:c.nameEn||'', addrCh:CINFO[c.name]||me.addrCh||'', email:user.email, filled:true});
-          attachCustomer(user.email); view='app'; render();
+        // 方式 B：查 email 是否在邀請名單（staff 集合 by email）
+        const sq=await FB.db.collection('staff').where('email','==',user.email.toLowerCase()).limit(1).get();
+        if(!sq.empty){
+          const inv=sq.docs[0].data(); const invId=sq.docs[0].id;
+          // 把 uid 補進去、升格為正式員工 doc（UID 為 document ID）
+          await FB.db.collection('staff').doc(user.uid).set({
+            name: inv.name||user.displayName||user.email,
+            email: user.email.toLowerCase(),
+            role: inv.role||'管理',
+            uid: user.uid
+          });
+          // 刪掉原本以 email 為 key 的邀請 doc
+          if(invId!==user.uid) await FB.db.collection('staff').doc(invId).delete();
+          FB.role='eloga'; role='eloga'; elgRole=inv.role||'管理'; zone='back'; elgTab='home'; view='app';
+          attachAdmin(); render(); A.toast('帳號已自動開通，歡迎 '+(inv.name||user.email));
         } else {
-          FB.role='pending'; role='guest'; view='fb-pending'; render();
+          // 查是否為已知客戶
+          const q=await FB.db.collection('customers').where('email','==',user.email).limit(1).get();
+          if(!q.empty){
+            const c=q.docs[0].data(); FB.role='customer'; role='customer'; custTab='submit';
+            me=Object.assign({}, me, {nameCh:c.name, nameEn:c.nameEn||'', addrCh:CINFO[c.name]||me.addrCh||'', email:user.email, filled:true});
+            attachCustomer(user.email); view='app'; render();
+          } else {
+            FB.role='pending'; role='guest'; view='fb-pending'; render();
+          }
         }
       }
     }catch(e){ A.toast('登入後讀取失敗：'+e.message); console.warn(e); }
