@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='8' fill='%234a6741'/><text x='16' y='23' text-anchor='middle' font-size='20' font-family='serif' fill='white'>依</text></svg>">
 <title>依洛嘉送驗系統 · 流程原型</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.7.0/tabler-icons.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
@@ -3242,10 +3243,9 @@ function fbInit(){
 }
 function fbHandleRedirect(){
   if(!FB.on) return;
-  FB.auth.getRedirectResult().then(result=>{
-    // redirect result is handled by onAuthStateChanged
-  }).catch(e=>{
-    if(e.code!=='auth/no-auth-event') console.warn('redirect result',e);
+  FB.auth.getRedirectResult().catch(e=>{
+    if(e.code!=='auth/no-auth-event'&&e.code!=='auth/operation-not-supported-in-this-environment')
+      console.warn('redirect result',e);
   });
 }
 function stripId(o){ const c=Object.assign({},o); delete c.id; return c; }
@@ -3406,8 +3406,14 @@ A.googleSignIn=function(){
   if(!FB.on){ A.toast('Firebase 尚未載入，請檢查網路'); return; }
   const p=new firebase.auth.GoogleAuthProvider();
   p.setCustomParameters({prompt:'select_account'});
-  A.toast('正在跳轉到 Google 登入頁面…');
-  FB.auth.signInWithRedirect(p).catch(e=>A.toast('登入失敗：'+e.message));
+  FB.auth.signInWithPopup(p).catch(e=>{
+    if(e.code==='auth/popup-blocked'||e.code==='auth/operation-not-supported-in-this-environment'){
+      // popup 被擋，改用 redirect
+      FB.auth.signInWithRedirect(p).catch(e2=>A.toast('登入失敗：'+e2.message));
+    } else {
+      A.toast('登入失敗：'+e.message);
+    }
+  });
 };
 A.fbLogout=function(){ try{ if(FB.on&&FB.user) FB.auth.signOut(); }catch(e){} FB.user=null; FB.role=null; FB.ready=false; role='customer'; me={}; view='entry'; render(); };
 A.fbUploadSeed=function(){ fbUploadSeed(); };
