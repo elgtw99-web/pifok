@@ -641,23 +641,48 @@ products.forEach(p=>{ if(!p.type) p.type=inferType(p.name); if(p.alias===undefin
 (function(){
   // 依「晶寶付款清單」校正狀態：兩欄打勾=已完成 / 只付檢驗費=送驗中 / 未付=已收樣待付
   let n=products.length;
-  const JB_DONE=['循環晨韻精油','薑萃天竺葵舒緩精油','曲線緊緻精油Plus','瓷娃娃馬卡龍精華','幹細胞活膚三合一地漿水','茉莉花萃精油','奧秘煥彩素顏霜'];
-  const JB_TEST=['玫瑰微臻霜','超泌肌能賦活精萃因子','蘆薈舒緩晶凍','積雪草修護凍膜','玫瑰臉部精油PLUS','積雪草舒緩安瓶','黑蝸牛極致保濕安瓶','EGF緊緻彈潤安瓶','微金分子彈潤肌安瓶','綻光煥膚杏仁酸精華','洋甘菊悠活精油'];
-  // 補上系統內缺少的品項（PIF已完成但不在匯入清單裡的）
-  JB_DONE.forEach(nm=>{
-    if(!products.some(p=>p.cust===CUST && p.name===nm)){
-      const ty=inferType(nm);
-      products.push({id:'jb-'+(++n),cust:CUST,name:nm,alias:'',en:'',spec:'',qty:'',
+  const DRIVE_JB='https://drive.google.com/drive/folders/jingbao-pif';
+  // 7 筆已完成 PIF（對應 Google Drive 實際檔案）直接硬編，確保一定存在
+  const JB_DONE_DATA=[
+    {name:'循環晨韻精油',       date:'2026-05-25', en:'Cycling Morning Rhyme Essential Oil'},
+    {name:'薑萃天竺葵舒緩精油', date:'2026-05-26', en:'Ginger Geranium Soothing Essential Oil'},
+    {name:'曲線緊緻精油Plus',   date:'2026-05-26', en:'Firming Slimming Essential Oil Plus'},
+    {name:'瓷娃娃馬卡龍精華',   date:'2026-05-20', en:'Porcelain Doll Macaron Essence'},
+    {name:'幹細胞活膚三合一地漿水',date:'2026-05-29',en:'Stem Cell Revitalizing 3-in-1 Earth Water'},
+    {name:'茉莉花萃精油',       date:'2026-05-29', en:'Jasmine Extract Essential Oil'},
+    {name:'奧秘煥彩素顏霜',     date:'2026-05-29', en:'Secret Radiance Bare-Face Cream'},
+  ];
+  JB_DONE_DATA.forEach(d=>{
+    if(!products.some(p=>p.cust===CUST && p.name===d.name)){
+      const ty=inferType(d.name);
+      products.push({id:'jb-'+(++n),cust:CUST,name:d.name,alias:'',en:d.en,spec:'',qty:'',
         status:'completed',batch:'已完成',type:ty,t:defTests(ty),mine:true,
-        charge:10000,drive:'https://drive.google.com/drive/folders/jingbao-pif'});
+        charge:10000,drive:DRIVE_JB,pifPlan:'shared',pifPlanLabel:'共用合約價',
+        customerEmail:'vic881019@gmail.com',
+        payRecords:[{date:d.date,amt:10000,method:'匯款',note:'PIF 完成付款'}],
+        paidAmt:10000});
     }
   });
+  const JB_DONE=JB_DONE_DATA.map(d=>d.name);
+  const JB_TEST=['玫瑰微臻霜','超泌肌能賦活精萃因子','蘆薈舒緩晶凍','積雪草修護凍膜','玫瑰臉部精油PLUS','積雪草舒緩安瓶','黑蝸牛極致保濕安瓶','EGF緊緻彈潤安瓶','微金分子彈潤肌安瓶','綻光煥膚杏仁酸精華','洋甘菊悠活精油'];
   // 依品名套用狀態
   products.forEach(p=>{ if(p.cust!==CUST) return;
-    if(JB_DONE.includes(p.name)){ p.status='completed'; p.batch='已完成'; if(!p.drive)p.drive='https://drive.google.com/drive/folders/jingbao-pif'; if(p.charge==null)p.charge=10000; }
-    else if(JB_TEST.includes(p.name)){ p.status='testing'; if(!p.batch||p.batch==='匯入清單')p.batch='送驗中'; }
-    else { p.status='received'; }  // 未付（粉色）→ 已收樣待付
+    if(JB_DONE.includes(p.name)){
+      p.status='completed'; p.batch='已完成';
+      if(!p.drive) p.drive=DRIVE_JB;
+      if(p.charge==null) p.charge=10000;
+      if(!p.pifPlanLabel) p.pifPlanLabel='共用合約價';
+    }
+    else if(JB_TEST.includes(p.name)){ p.status='testing'; if(!p.batch||p.batch==='匯入清單')p.batch='第一次送驗'; }
+    else { p.status='received'; }
   });
+  // 補一筆待查帳示範（讓查帳功能可見）
+  if(!products.some(p=>p.cust===CUST && p.status==='reported')){
+    const ty=inferType('玫瑰微臻霜');
+    products.push({id:'jb-rep-1',cust:CUST,name:'玫瑰微臻霜（待查帳示範）',alias:'',en:'',spec:'250g',qty:'1瓶',
+      status:'reported',batch:'第一次送驗',type:ty,t:{fang:true,chang:true,wen:false},mine:true,
+      charge:10000,payNote:'末五碼 12345',customerEmail:'vic881019@gmail.com'});
+  }
 })();
 
 const SM={ applied:['等待依洛嘉確認','w'], approved:['可寄送','i'], pending:['待寄送','n'],
@@ -676,9 +701,9 @@ const PIF_PLANS=[
 const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 
 /* ---------- persistence ---------- */
-const SEED_VER='2026-06-17-jb-pif-files';
+const SEED_VER='2026-06-17-hardcode-pif';
 function save(){
-  if(typeof FB!=='undefined' && FB.on && FB.user && FB.role && FB.role!=='pending'){ clearTimeout(FB.syncT); FB.syncT=setTimeout(fbSync,400); return; }
+  if(FB_SYNC_READY && typeof FB!=='undefined' && FB.on && FB.user && FB.role && FB.role!=='pending'){ clearTimeout(FB.syncT); FB.syncT=setTimeout(fbSync,400); }
   try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,showcase,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO})); }catch(e){}
 }
 function load(){
@@ -1205,13 +1230,19 @@ function elgHome(){
     ['completed','已完成 PIF','circle-check','pif']
   ];
   let h=`<div class="note" style="margin-bottom:14px"><i class="ti ti-layout-dashboard"></i>全流程總覽 · 點任一階段直接前往處理。</div>`;
-  if(typeof FB!=='undefined' && FB.on && FB.user && !FB.seeded){
-    h+=`<div class="card" style="border-color:var(--w);margin-bottom:16px">
-      <p class="nm" style="font-size:15px"><i class="ti ti-cloud-upload"></i> 雲端尚無資料，請先上傳</p>
-      <p class="sub" style="margin:6px 0 12px">已用 Google 登入，但 Firestore 是空的。請先將本機資料上傳到雲端，之後所有變更會自動同步。</p>
-      <button class="btn btn--ok btn--sm" style="width:auto;padding:0 18px" onclick="A.fbUploadSeed()"><i class="ti ti-cloud-upload"></i> 首次上傳資料到雲端</button>
-      <span style="margin-left:10px;font-size:12px" class="muted">（若出現「權限不足」，請先更新 Firestore 安全規則）</span>
-    </div>`;
+  if(typeof FB!=='undefined' && FB.on && FB.user){
+    if(!FB_SYNC_READY){
+      h+=`<div class="card" style="border-color:var(--accent);margin-bottom:16px">
+        <div class="row"><span class="nm" style="font-size:14px"><i class="ti ti-cloud-check"></i> Google 已登入 · 資料暫存本機</span><span class="pill pill--s" style="font-size:11px">身分驗證中</span></div>
+        <p class="sub" style="margin:6px 0 0">目前 Firestore 規則尚未開放，系統正常以本機資料運作。等規則設好後，到帳號管理開啟雲端同步。</p>
+      </div>`;
+    } else if(FB.cloudEmpty){
+      h+=`<div class="card" style="border-color:var(--w);margin-bottom:16px">
+        <p class="nm" style="font-size:15px"><i class="ti ti-cloud-upload"></i> 雲端尚無資料，請先上傳</p>
+        <p class="sub" style="margin:6px 0 12px">Firestore 是空的，請將本機資料首次上傳到雲端。</p>
+        <button class="btn btn--ok btn--sm" style="width:auto;padding:0 18px" onclick="A.fbUploadSeed()"><i class="ti ti-cloud-upload"></i> 首次上傳資料到雲端</button>
+      </div>`;
+    }
   }
   h+=`<div class="dash">`+ cards.map(([st,lbl,ic,tab])=>{
     const n=c(st);
@@ -1849,7 +1880,7 @@ function elogaAccounts(){
       <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--line)">
         <div class="card" style="border-color:var(--accent);margin-bottom:14px">
           <p class="nm" style="font-size:15px"><i class="ti ti-cloud"></i> 雲端同步（Firebase）</p>
-          <p class="sub" style="margin:4px 0 10px">${(typeof FB!=='undefined'&&FB.on&&FB.user)?('已雲端登入：'+(FB.user.email||'')+'　·　資料即時同步到雲端、多裝置共用'):'目前未雲端登入（資料存在本機）。請從入口頁用 Google 登入。'}</p>
+          <p class="sub" style="margin:4px 0 10px">${FB_SYNC_READY?((typeof FB!=='undefined'&&FB.on&&FB.user)?('已雲端登入：'+(FB.user.email||'')+'　·　資料即時同步到雲端'):'Firebase 同步已開啟，請登入'):'目前「身分驗證模式」：Google 登入只驗身分，資料存在本機。Firestore 規則設好後，把程式碼中 FB_SYNC_READY 改為 true 啟用同步。'}</p>
           ${(typeof FB!=='undefined'&&FB.on&&FB.user)?`<div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn--sm" style="width:auto;padding:0 16px" onclick="A.fbUploadSeed()"><i class="ti ti-cloud-upload"></i> 首次上傳資料到雲端</button>
             <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" onclick="A.fbLogout()"><i class="ti ti-logout"></i> 雲端登出</button>
@@ -2628,6 +2659,11 @@ document.addEventListener('focusin', e=>{ const t=e.target&&e.target.tagName; if
 document.addEventListener('focusout', ()=>{ const f=document.getElementById('fab'); if(f) f.classList.remove('hide'); });
 
 /* ===================== FIREBASE 雲端層 ===================== */
+// ===== Firebase 同步開關 =====
+// 目前設為 false：Google 登入只做身分驗證，資料全走本機 localStorage
+// Firestore 規則設好 + 首次上傳後，改為 true 啟用雲端同步
+const FB_SYNC_READY = false;
+
 const firebaseConfig = {
   apiKey: "AIzaSyDYZv3jPSYlpfD5SznvF8OfkQsILQTFJ8I",
   authDomain: "pifok-20e32.firebaseapp.com",
@@ -2636,7 +2672,7 @@ const firebaseConfig = {
   messagingSenderId: "457227684194",
   appId: "1:457227684194:web:86fd2fb78885f350db843b"
 };
-let FB={on:false,db:null,auth:null,user:null,role:null,unsub:[],last:{},ready:false,syncT:null,seeded:false};
+let FB={on:false,db:null,auth:null,user:null,role:null,unsub:[],last:{},ready:false,syncT:null,seeded:false,cloudEmpty:false};
 let SEED_SNAPSHOT=null;
 function fbInit(){
   try{
@@ -2647,23 +2683,29 @@ function fbInit(){
   }catch(e){ FB.on=false; console.warn('Firebase init failed',e); }
 }
 function stripId(o){ const c=Object.assign({},o); delete c.id; return c; }
-function fbDetach(){ FB.unsub.forEach(u=>{try{u();}catch(e){}}); FB.unsub=[]; FB.seeded=false; }
+function fbDetach(){ FB.unsub.forEach(u=>{try{u();}catch(e){}}); FB.unsub=[]; FB.seeded=false; FB.cloudEmpty=false; }
 function snapApply(name, arr, docs){
-  // 如果 Firestore 回傳空（首次還沒上傳），保留本機種子不清空
-  if(docs.length===0 && arr.length>0 && !FB.seeded) return;
+  // products 空（Firestore 尚未上傳）→ 保留本機種子，不清空
+  if(name==='products' && docs.length===0 && arr.length>0){ FB.cloudEmpty=true; return; }
+  if(name==='products' && docs.length>0){ FB.cloudEmpty=false; FB.seeded=true; }
+  // 其他集合若 products 尚未上傳也先保留
+  if(FB.cloudEmpty && docs.length===0 && arr.length>0) return;
   arr.length=0; const m={};
   docs.forEach(d=>{ const o=Object.assign({}, d.data()); o.id=d.id; arr.push(o); m[d.id]=JSON.stringify(stripId(o)); });
   FB.last[name]=m;
-  if(docs.length>0) FB.seeded=true;
 }
 function emailMap(){ const m={}; customers.forEach(c=>{ if(c.name) m[c.name]=c.email||''; }); m[ELG_SELF]=''; return m; }
 function attachAdmin(){
   fbDetach();
+  // 目前 Firestore 規則尚未開放，只做身分驗證，資料完全走本機種子
+  // 等 Firestore 規則設好後，將下方 FB_SYNC_READY 改為 true 啟用同步
+  if(!FB_SYNC_READY) return;
   const C=(name,arr)=>FB.unsub.push(FB.db.collection(name).onSnapshot(s=>{ snapApply(name,arr,s.docs); FB.ready=true; render(); }, e=>console.warn(name,e)));
   C('products',products); C('customers',customers); C('staff',staff); C('sharedPIF',sharedPIF); C('showcase',showcase);
 }
 function attachCustomer(email){
   fbDetach();
+  if(!FB_SYNC_READY) return;
   FB.unsub.push(FB.db.collection('products').where('customerEmail','==',email).onSnapshot(s=>{ snapApply('products',products,s.docs); FB.ready=true; render(); }, e=>console.warn(e)));
   FB.unsub.push(FB.db.collection('customers').where('email','==',email).onSnapshot(s=>{ snapApply('customers',customers,s.docs); render(); }, e=>console.warn(e)));
   FB.unsub.push(FB.db.collection('sharedPIF').where('state','in',['public','building']).onSnapshot(s=>{ snapApply('sharedPIF',sharedPIF,s.docs); render(); }, e=>console.warn(e)));
