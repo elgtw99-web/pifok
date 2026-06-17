@@ -487,7 +487,9 @@ let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addT
 pifAddOpen=false, pifDraft={name:'',cust:'',drive:'',plan:'shared',note:'',toPublic:false}, pifDetailOpen=null, retroCust='', pifGroupClosed={}, invTab='recv', invDetailOpen=null;
 let sharedPIF=[];
 let staff=[];
-let customers=[];
+let customers=[
+  {name:'測試客戶', email:'elgtw888@gmail.com', login:'Google', status:'已啟用', drive:'', driveAuth:false},
+];
 const DEMO_INTRO='';
 let showcase=[];
 let invoiceRecs=[]; // 收款單：每張獨立單號、明細、狀態
@@ -560,6 +562,7 @@ function render(){
   else if(view==='board') html=boardScreen();
   else if(view==='add-items') html=addItemsScreen();
   else if(view==='shared-pif') html=sharedPifScreen();
+  else if(view==='cust-self-register') html=custSelfRegisterScreen();
   else if(view==='fb-pending') html=fbPendingScreen();
   else html = (role==='customer') ? custApp() : elgApp();
   app.innerHTML=html;
@@ -645,7 +648,11 @@ function customerLogin(){
       <h2>客戶登入</h2><p class="muted">選擇你慣用的帳號登入</p></div>
     <button class="btn btn--ghost" style="margin-bottom:12px" onclick="A.googleSignIn()"><i class="ti ti-brand-google" style="color:#4285F4"></i> 使用 Google 登入（雲端）</button>
     <button class="btn linebtn" onclick="A.toast('LINE 登入稍後支援，請先用 Google 登入')"><i class="ti ti-brand-line"></i> 使用 LINE 登入</button>
-    <div class="note" style="margin-top:18px"><i class="ti ti-info-circle"></i>用 Google 登入後，依洛嘉會以你的信箱對應到你的帳號；尚未開通的信箱會顯示「帳號待開通」。</div>
+    <div class="note" style="margin-top:18px"><i class="ti ti-info-circle"></i>帳號由依洛嘉開通後才能登入。若尚未有帳號，請點下方申請，依洛嘉審核後會通知你。</div>
+    <div style="margin-top:18px;padding-top:18px;border-top:1px solid var(--line)">
+      <p class="muted" style="font-size:13px;margin-bottom:10px">還沒有帳號？</p>
+      <button class="btn btn--ghost" style="margin-bottom:0" onclick="A.openCustSelfRegister()"><i class="ti ti-user-plus"></i> 申請客戶帳號</button>
+    </div>
     <div class="note" style="margin-top:10px"><i class="ti ti-flask"></i>離線測試：<span style="cursor:pointer;text-decoration:underline" onclick="A.loginCustomer('Google')">用範例客戶進入（不連雲端）</span></div>
   </div>`;
 }
@@ -2468,8 +2475,22 @@ const A = {
     render();
   },
   openBoard(){ role='guest'; view='board'; render(); },
-  approveCust(i){ customers[i].status='已啟用'; render(); A.toast('已審核通過：'+customers[i].name); },
-  disableCust(i){ customers[i].status='已停用'; render(); A.toast('已停用：'+customers[i].name); },
+  openCustSelfRegister(){ view='cust-self-register'; render(); },
+  submitCustRegister(){
+    const g=id=>((document.getElementById(id)||{}).value||'').trim();
+    const name=g('sr_name'), email=g('sr_email').toLowerCase();
+    const contact=g('sr_contact'), phone=g('sr_phone'), note=g('sr_note');
+    if(!name){ A.toast('請填公司名稱'); return; }
+    if(!email||!email.includes('@')){ A.toast('請填有效的 Gmail'); return; }
+    if(customers.some(c=>c.email===email)){ A.toast('這個 Gmail 已有帳號，請直接登入'); view='customer-login'; render(); return; }
+    // 加入待審核名單
+    customers.push({name, email, contact, phone, note, login:'Google', status:'待審核', appliedAt:new Date().toLocaleDateString('zh-TW')});
+    save();
+    view='customer-login'; render();
+    A.toast('申請已送出！依洛嘉審核後會通知你，謝謝。');
+  },
+  approveCust(i){ customers[i].status='已啟用'; save(); render(); A.toast('已審核通過：'+customers[i].name); },
+  disableCust(i){ customers[i].status='已停用'; save(); render(); A.toast('已停用：'+customers[i].name); },
   enableCust(i){ customers[i].status='已啟用'; render(); A.toast('已重新啟用：'+customers[i].name); },
   delCustomer(i){
     const c=customers[i]; if(!c) return;
@@ -3366,17 +3387,53 @@ function fbSync(){
     if(ops>0 && ops<=450) batch.commit().catch(e=>console.warn('sync',e));
   }catch(e){ console.warn('fbSync',e); }
 }
+function custSelfRegisterScreen(){
+  return `<div class="full">
+    <button class="back" onclick="A.goLogin('customer')"><i class="ti ti-arrow-left"></i> 返回登入</button>
+    <div class="logintop">
+      <div class="logo sm" style="background:var(--accent-tint);color:var(--accent)"><i class="ti ti-user-plus"></i></div>
+      <h2>申請客戶帳號</h2>
+      <p class="muted">填寫基本資料後送出，依洛嘉審核通過後會以 LINE 客服通知你開通。</p>
+    </div>
+    <label class="lbl">公司名稱（必填）</label>
+    <input id="sr_name" class="fld" placeholder="例：晶寶企業行" style="margin-bottom:12px">
+    <label class="lbl">聯絡人姓名</label>
+    <input id="sr_contact" class="fld" placeholder="姓名" style="margin-bottom:12px">
+    <label class="lbl">Gmail（登入用，必填）</label>
+    <input id="sr_email" class="fld" type="email" placeholder="example@gmail.com" style="margin-bottom:12px">
+    <label class="lbl">聯絡電話</label>
+    <input id="sr_phone" class="fld" type="tel" placeholder="0912-345-678" style="margin-bottom:12px">
+    <label class="lbl">備註（選填）</label>
+    <textarea id="sr_note" class="fld" placeholder="說明你的需求或來源" style="height:80px;margin-bottom:16px"></textarea>
+    <button class="btn" onclick="A.submitCustRegister()"><i class="ti ti-send"></i> 送出申請</button>
+    <div class="note" style="margin-top:14px"><i class="ti ti-info-circle"></i>申請後請耐心等候依洛嘉通知，審核通過後才能用 Gmail 登入系統。</div>
+  </div>`;
+}
 function fbPendingScreen(){
   const u=FB.user||{};
+  const alreadyApplied=customers.some(c=>c.email===u.email&&c.status==='待審核');
   return `<div class="full">
     <div class="brand"><div class="logo">依</div><h1>帳號待開通</h1></div>
     <div class="card" style="margin-top:20px">
       <p class="nm" style="font-size:15px"><i class="ti ti-user-question"></i> 這個 Google 帳號尚未開通</p>
       <p class="sub" style="margin:8px 0">登入信箱：<b>${u.email||''}</b></p>
-      <p class="sub" style="margin:8px 0">若你是依洛嘉管理者，請到 Firebase 主控台 Firestore 建立 <b>staff/你的UID</b>：</p>
-      <div class="card" style="background:var(--n-bg);border:0;margin:8px 0"><div class="sub">你的 UID（複製）</div>
-        <input class="fld fld--mini" readonly value="${u.uid||''}" onclick="this.select()"></div>
-      <p class="sub" style="margin:8px 0">若你是客戶，請聯絡依洛嘉以 LINE 客服開通帳號。</p>
+      ${alreadyApplied
+        ? `<div class="card" style="background:var(--s-bg);border-color:var(--s);margin:10px 0">
+            <p class="sub" style="color:var(--s)"><i class="ti ti-clock"></i> 你的申請已送出，請等待依洛嘉審核通過後再登入。</p>
+           </div>`
+        : `<div style="border-top:1px solid var(--line);margin-top:14px;padding-top:14px">
+            <p class="sub" style="margin-bottom:10px">如果你是客戶，可以直接送出申請，依洛嘉審核後會通知你：</p>
+            <button class="btn btn--ghost" style="margin-bottom:10px" onclick="A.fbLogout();A.openCustSelfRegister()">
+              <i class="ti ti-user-plus"></i> 申請客戶帳號
+            </button>
+           </div>`}
+      <div style="border-top:1px solid var(--line);margin-top:14px;padding-top:14px">
+        <p class="sub" style="margin:8px 0">若你是依洛嘉管理者，請到 Firestore 建立 <b>staff/你的UID</b>：</p>
+        <div class="card" style="background:var(--n-bg);border:0;margin:8px 0">
+          <div class="sub">你的 UID（複製）</div>
+          <input class="fld fld--mini" readonly value="${u.uid||''}" onclick="this.select()">
+        </div>
+      </div>
       <div style="display:flex;gap:8px;margin-top:10px">
         <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.reloadPage()"><i class="ti ti-refresh"></i> 我已開通，重新整理</button>
         <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.fbLogout()"><i class="ti ti-logout"></i> 登出</button>
