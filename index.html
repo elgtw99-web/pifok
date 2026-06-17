@@ -314,7 +314,12 @@ const CINFO = {
   '姝顏生技企業社':'高雄市旗山區上洲里周厝巷1號一樓'
 };
 const custAddr = p => CINFO[custName(p)] || (p.mine ? (me.addrCh||'') : '');
-const ownedByMe = p => !!me.nameCh && (p.cust||CUST)===me.nameCh;
+const ownedByMe = p => {
+  if(!me.nameCh && !me.email) return false;
+  if(me.nameCh && (p.cust||CUST)===me.nameCh) return true;
+  if(me.email && p.customerEmail && p.customerEmail.toLowerCase()===me.email.toLowerCase()) return true;
+  return false;
+};
 const shareState = it => it.state || (it.hidden?'hidden':'public');
 const VERIFY_BASE='https://pif.eloga.app/verify';
 const SUPPORT_URL='https://lin.ee/sydzl5i';
@@ -2775,7 +2780,16 @@ const A = {
   toggleSel(id){ if(batch[id]) delete batch[id]; else batch[id]=true; render(); },
   selAllScope(on){ (selScope||[]).forEach(id=>{ if(on) batch[id]=true; else delete batch[id]; }); render(); },
   _selIds(){ return Object.keys(batch).filter(k=>batch[k]); },
-  batchAllow(){ const list=products.filter(p=>batch[p.id]&&p.status==='applied'); if(!list.length){ A.toast('請先勾選申請項目'); return; } list.forEach(p=>{ p.status='approved'; p.shipSel=true; }); batch={}; save(); render(); A.toast('已允許 '+list.length+' 筆寄送，回送客戶端'); },
+  batchAllow(){
+    const list=products.filter(p=>batch[p.id]&&p.status==='applied');
+    if(!list.length){ A.toast('請先勾選申請項目'); return; }
+    const em=emailMap();
+    list.forEach(p=>{
+      p.status='approved'; p.shipSel=true;
+      if(!p.customerEmail) p.customerEmail=em[custName(p)]||'';
+    });
+    batch={}; save(); render(); A.toast('已允許 '+list.length+' 筆寄送，回送客戶端');
+  },
   batchReceive(){ const list=products.filter(p=>batch[p.id]&&p.status==='shipped'); if(!list.length){ A.toast('請先勾選待收件項目'); return; } list.forEach(p=>{ p.status='received'; if(p.invSel===undefined)p.invSel=true; if(!p.feeSel)p.feeSel=5000; }); batch={}; save(); render(); A.toast('已接收 '+list.length+' 筆'); },
   batchAddSharedPIF(state){
     const ids=Object.keys(batch).filter(k=>batch[k]);
@@ -3249,11 +3263,30 @@ function attachAdmin(){
 }
 function attachCustomer(email){
   fbDetach();
-  if(!FB_SYNC_READY) return;
-  FB.unsub.push(FB.db.collection('products').where('customerEmail','==',email).onSnapshot(s=>{ snapApply('products',products,s.docs); FB.ready=true; render(); }, e=>console.warn(e)));
-  FB.unsub.push(FB.db.collection('customers').where('email','==',email).onSnapshot(s=>{ snapApply('customers',customers,s.docs); render(); }, e=>console.warn(e)));
-  FB.unsub.push(FB.db.collection('sharedPIF').where('state','in',['public','building']).onSnapshot(s=>{ snapApply('sharedPIF',sharedPIF,s.docs); render(); }, e=>console.warn(e)));
-  FB.unsub.push(FB.db.collection('showcase').onSnapshot(s=>{ snapApply('showcase',showcase,s.docs); render(); }, e=>console.warn(e)));
+  if(!FB_SYNC_READY){
+    FB.ready=true; render(); return;
+  }
+  // 訂閱 Firestore，若回傳空則保留本機資料（Firestore 尚未同步）
+  FB.unsub.push(FB.db.collection('products').where('customerEmail','==',email).onSnapshot(s=>{
+    if(s.docs.length>0){
+      snapApply('products',products,s.docs); FB.ready=true; render();
+    } else {
+      // Firestore 空的 → 用本機資料，只顯示屬於這個客戶的品項
+      FB.ready=true; FB.cloudEmpty=true; render();
+    }
+  }, e=>{ FB.ready=true; render(); console.warn(e); }));
+  FB.unsub.push(FB.db.collection('customers').where('email','==',email).onSnapshot(s=>{
+    if(s.docs.length>0) snapApply('customers',customers,s.docs);
+    render();
+  }, e=>console.warn(e)));
+  FB.unsub.push(FB.db.collection('sharedPIF').where('state','in',['public','building']).onSnapshot(s=>{
+    if(s.docs.length>0) snapApply('sharedPIF',sharedPIF,s.docs);
+    render();
+  }, e=>console.warn(e)));
+  FB.unsub.push(FB.db.collection('showcase').onSnapshot(s=>{
+    if(s.docs.length>0) snapApply('showcase',showcase,s.docs);
+    render();
+  }, e=>console.warn(e)));
 }
 function fbStart(){
   if(!FB.on) return;
