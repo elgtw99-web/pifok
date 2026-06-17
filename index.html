@@ -478,13 +478,14 @@ function parseCompany(t){
   return { cname:nm.trim(), caddr:ad.trim() };
 }
 let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='', wipeOpen=false, ocrBusy=false, custAddOpen=false, pendingRestore=null, scQ='', scPage=0, scOpen=null, scDraft={name:'',en:'',tagline:'',cover:'',html:'',link:''}, pifSel={}, scSel={}, selScope=[],
-pifAddOpen=false, pifDraft={name:'',cust:'',drive:'',plan:'shared',note:'',toPublic:false}, pifDetailOpen=null, retroCust='';
+pifAddOpen=false, pifDraft={name:'',cust:'',drive:'',plan:'shared',note:'',toPublic:false}, pifDetailOpen=null, retroCust='', pifGroupClosed={}, invTab='recv';
 let sharedPIF=[];
 let staff=[];
 let customers=[];
 const DEMO_INTRO='';
 let showcase=[];
 const ELG_TABS={ '主要管理者':['home','customers','library','receive','apply','data','invoice','pif','showcase','summary'], '管理':['home','customers','library','receive','apply','data','invoice','pif','showcase','summary'] };
+const TAB_LABEL={ home:'總覽', customers:'客戶', library:'樣品庫', receive:'收件', apply:'申請', data:'送驗資料', invoice:'帳款明細', pif:'完成 PIF', showcase:'新品介紹', summary:'收款匯總' };
 
 let products=[];
 
@@ -851,7 +852,7 @@ function elgHeader(){
   </div>`;
 }
 function elgApp(){
-  const TI={ home:['layout-dashboard','總覽'], customers:['users','客戶'], library:['database','樣品庫'], receive:['package-import','收件'], apply:['list-check','申請'], data:['file-spreadsheet','送驗資料'], invoice:['receipt-2','請款'], pif:['clipboard-check','完成 PIF'], showcase:['sparkles','新品介紹'], summary:['chart-bar','收款匯總'] };
+  const TI={ home:['layout-dashboard','總覽'], customers:['users','客戶'], library:['database','樣品庫'], receive:['package-import','收件'], apply:['list-check','申請'], data:['file-spreadsheet','送驗資料'], invoice:['receipt-2','帳款明細'], pif:['clipboard-check','完成 PIF'], showcase:['sparkles','新品介紹'], summary:['chart-bar','收款匯總'] };
   const allowed = ELG_TABS[elgRole]||ELG_TABS['主要管理者'];
   if(!allowed.includes(elgTab)) elgTab=allowed[0];
   const tabs=allowed.map(id=>tab(elgTab,id,TI[id][0],TI[id][1],'A.setElgTab')).join('');
@@ -1440,23 +1441,39 @@ function elgInvoice(){
   const toCheck=P('reported');
   const testing=P('testing');
   const testingUnpaid=products.filter(p=>p.status==='completed' && (!p.paidAmt||p.paidAmt===0) && custName(p)!==ELG_SELF);
-
   const allPaid=products.filter(p=>['paid','testing','reporting','completed'].includes(p.status)&&p.payRecords&&p.payRecords.length);
   const totalCollected=allPaid.reduce((s,p)=>(p.payRecords||[]).reduce((a,r)=>a+r.amt,s),0);
   const byMethod={}; allPaid.forEach(p=>(p.payRecords||[]).forEach(r=>{ byMethod[r.method]=(byMethod[r.method]||0)+r.amt; }));
-
-  if(!recv.length && !issued.length && !toCheck.length && !testingUnpaid.length)
-    return `<div class="empty"><i class="ti ti-receipt-off"></i>目前沒有待請款／已開單／待查帳的項目</div>`;
-
   const custs=[...new Set(recv.map(p=>custName(p)))];
   recv.forEach(p=>{ if(p.invSel===undefined) p.invSel=true; if(!p.feeSel) p.feeSel=10000; });
 
-  let h=`<div class="dash" style="margin-bottom:14px">
-    <div class="metric"><div class="mi" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-cash"></i></div><div class="mv">${money(totalCollected)}</div><div class="ml">總收款</div></div>
-    ${Object.keys(byMethod).map(m=>`<div class="metric"><div class="mi"><i class="ti ti-${m==='匯款'?'building-bank':m==='合約扣款'?'file-invoice':m==='信用卡'?'credit-card':'coins'}"></i></div><div class="mv" style="font-size:14px">${money(byMethod[m])}</div><div class="ml">${m}</div></div>`).join('')}
+  // 頂部統計
+  let h=`<div class="dash" style="margin-bottom:16px">
+    <div class="metric"><div class="mi" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-cash"></i></div><div class="mv">${money(totalCollected)}</div><div class="ml">已收總計</div></div>
+    <div class="metric" onclick="A.setInvTab('recv')" style="cursor:pointer"><div class="mi" style="background:var(--w-bg);color:var(--w)"><i class="ti ti-inbox"></i></div><div class="mv">${recv.length}</div><div class="ml">待開收款單</div></div>
+    <div class="metric" onclick="A.setInvTab('issued')" style="cursor:pointer"><div class="mi"><i class="ti ti-send"></i></div><div class="mv">${issued.length}</div><div class="ml">已開單待匯款</div></div>
+    <div class="metric" onclick="A.setInvTab('check')" style="cursor:pointer"><div class="mi" style="background:var(--w-bg);color:var(--w)"><i class="ti ti-search"></i></div><div class="mv">${toCheck.length}</div><div class="ml">待查帳</div></div>
+    <div class="metric" onclick="A.setInvTab('retro')" style="cursor:pointer"><div class="mi"><i class="ti ti-history"></i></div><div class="mv">${testingUnpaid.length}</div><div class="ml">補錄收款</div></div>
   </div>`;
 
-  // ===== 補錄請款（送驗中未收款品項）=====
+  // 分頁導覽
+  const tabs=[
+    {id:'recv',  label:'開請款單', badge:recv.length, color:'var(--w)'},
+    {id:'issued',label:'已開單',   badge:issued.length},
+    {id:'check', label:'查帳',     badge:toCheck.length, color:'var(--w)'},
+    {id:'retro', label:'補錄收款', badge:testingUnpaid.length},
+  ];
+  h+=`<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:16px;border-bottom:2px solid var(--line);padding-bottom:10px">
+    ${tabs.map(t=>`<button onclick="A.setInvTab('${t.id}')"
+      style="padding:6px 16px;border:0;border-radius:20px;font-size:13px;font-family:inherit;cursor:pointer;
+             background:${invTab===t.id?'var(--accent)':'var(--n-bg)'};
+             color:${invTab===t.id?'#fff':'var(--ink)'};font-weight:${invTab===t.id?'700':'400'}">
+      ${t.label}${t.badge?` <span style="background:${invTab===t.id?'rgba(255,255,255,.3)':t.color||'var(--line2)'};color:${invTab===t.id?'#fff':'var(--ink)'};border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;margin-left:4px">${t.badge}</span>`:''}
+    </button>`).join('')}
+  </div>`;
+
+  // ===== 補錄請款（已完成 PIF 未收款）=====
+  if(invTab==='retro'){
   if(testingUnpaid.length){
     const tCusts=[...new Set(testingUnpaid.map(p=>custName(p)))];
     const activeCust=(retroCust && tCusts.includes(retroCust))?retroCust:(tCusts[0]||'');
@@ -1521,8 +1538,13 @@ function elgInvoice(){
         </div>`;
       }).join('')}
     </div>`;
+  } else {
+    h+=`<div class="card faint" style="text-align:center;padding:20px">目前所有已完成 PIF 都已有收款記錄</div>`;
   }
+  } // end invTab==='retro'
 
+  // ===== 開請款單 =====
+  if(invTab==='recv'){
   h+=`<div class="note" style="margin-bottom:14px"><i class="ti ti-users"></i>依客戶分開開單：勾選樣品、選費用方案，確認合計後開收款單回傳給客戶。</div>`;
   h += `<div class="row sect"><span>開收款單（已收樣）</span><span class="pill pill--i">${recv.length}</span></div>`;
   h += recv.length ? custs.map(cn=>{
@@ -1563,8 +1585,11 @@ function elgInvoice(){
           : `<button class="btn btn--sm" style="margin-top:10px" ${tot?'':'disabled'} data-inv-btn="${cn}" onclick="A.issueInvoiceFor('${cn}')"><i class="ti ti-send"></i> 開收款單給 ${cn}（合計 ${money(tot)}）</button>`}
     </div>`;
   }).join('') : `<div class="card faint" style="text-align:center;padding:16px">沒有待開單的樣品</div>`;
+  } // end invTab==='recv'
 
-  h += `<div class="row sect mt"><span>已開收款單（待客戶匯款）</span><span class="pill pill--i">${issued.length}</span></div>`;
+  // ===== 已開單 =====
+  if(invTab==='issued'){
+  h += `<div class="row sect"><span>已開收款單（待客戶匯款）</span><span class="pill pill--i">${issued.length}</span></div>`;
   if(issued.length){
     const icusts=[...new Set(issued.map(p=>custName(p)))];
     h += icusts.map(cn=>{
@@ -1601,8 +1626,11 @@ function elgInvoice(){
   } else {
     h += `<div class="card faint" style="text-align:center;padding:16px">尚無已開出的收款單</div>`;
   }
+  } // end invTab==='issued'
 
-  h += `<div class="row sect mt"><span>收款查帳（客戶已回報匯款）</span><span class="pill pill--w">${toCheck.length}</span></div>`;
+  // ===== 查帳 =====
+  if(invTab==='check'){
+  h += `<div class="row sect"><span>收款查帳（客戶已回報匯款）</span><span class="pill pill--w">${toCheck.length}</span></div>`;
   h += toCheck.length ? `<div class="stack">`+ toCheck.map(p=>`
       <div class="card" style="border-color:var(--w)">
         <div class="row"><span><span class="nm">${p.name}</span><br>
@@ -1625,6 +1653,8 @@ function elgInvoice(){
           <i class="ti ti-checkbook"></i> 確認收到貨款</button>
       </div>`).join('')+`</div>`
     : `<div class="card faint" style="text-align:center;padding:16px">沒有待查帳項目</div>`;
+  } // end invTab==='check'
+
   return h;
 }
 function elgPif(){
@@ -1728,51 +1758,96 @@ function elgPif(){
       <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.togglePifAdd()">取消</button>
     </div>`;
   }
-  // 搜尋 + 篩選
+  // 搜尋
   const doneQ=(libQ||'').trim().toLowerCase();
   const doneFilt=doneQ ? doneAll.filter(p=>(p.name+(custName(p)||'')).toLowerCase().includes(doneQ)) : doneAll;
-  const doneSel=Object.keys(batch).filter(k=>batch[k]&&doneAll.some(p=>p.id===k));
+
+  // 頂部批次工具列
   if(doneAll.length){
     h+=selBar(doneAll.map(p=>p.id),[
-      {label:'批次移回製作中',ic:'arrow-back-up',fn:'A.batchMovePifBack()',cls:'btn--ghost'},
-      {label:'批次移回送驗中',ic:'flask',fn:"A.batchSetStatus('testing')",cls:'btn--ghost'},
-      {label:'批次更換客戶',ic:'building-store',fn:'A.batchChangeCust()',cls:'btn--ghost'},
+      {label:'批次更換客戶',ic:'building-store',fn:'A.batchChangeCust()',cls:'btn--ok'},
+      {label:'移回製作中',ic:'arrow-back-up',fn:'A.batchMovePifBack()',cls:'btn--ghost'},
+      {label:'移回送驗中',ic:'flask',fn:"A.batchSetStatus('testing')",cls:'btn--ghost'},
     ]);
-    h+=srchBar('搜尋已完成 PIF…');
+    if(doneQ||doneAll.length>6) h+=srchBar('搜尋已完成 PIF…');
   }
-  h += doneFilt.length ? `<div class="stack">`+doneFilt.map(p=>{
-    const paid=(p.payRecords||[]).reduce((s,r)=>s+r.amt,0);
-    const charge=p.charge||0;
-    const diff=charge-paid;
-    const plans=p.pifPlans||[p.pifPlan||'shared'];
-    return `<div class="card compact">
-      <div class="row" style="gap:8px;align-items:flex-start">
-        <span class="ck ${batch[p.id]?'on':''}" onclick="A.toggleSel('${p.id}')" style="cursor:pointer;flex:none;margin-top:2px"><i class="ti ti-check"></i></span>
-        <span style="flex:1;min-width:0">
-          <span class="nm" style="font-size:13.5px">${p.name}</span>
-          <span class="sub" style="font-size:11.5px;margin-left:6px">${custName(p)}</span>
-        </span>
-        <span style="text-align:right;flex:none">
-          <span style="font-weight:700;font-size:14px;color:${diff>0?'var(--w)':'var(--s)'}">${money(paid)}</span>
-          ${diff>0?`<br><span style="font-size:10.5px;color:var(--w)">欠 ${money(diff)}</span>`:paid>0?`<br><span style="font-size:10.5px;color:var(--s)">已付清</span>`:''}
-        </span>
-        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 10px;flex:none" onclick="A.togglePifDetail('${p.id}')">
-          <i class="ti ti-${pifDetailOpen===p.id?'chevron-up':'chevron-down'}"></i> ${paid>0?'收款':'補錄'}</button>
-        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 8px;flex:none;color:#C0392B;border-color:#E7C3BD" onclick="A.delCompletedPif('${p.id}')" title="刪除此筆">
-          <i class="ti ti-trash"></i>${confirmDel==='pif'+p.id?' 確認?':''}</button>
-      </div>
-      <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px">
-        ${PIF_PLANS.map(pl=>{
-          const on=plans.includes(pl.id);
-          return `<button onclick="A.togglePifPlanDone('${p.id}','${pl.id}')"
-            style="border:1.5px solid ${on?'var(--accent)':'var(--line2)'};background:${on?'var(--accent-tint)':'var(--surface)'};color:${on?'var(--accent)':'var(--muted)'};border-radius:6px;padding:3px 10px;cursor:pointer;font-size:11.5px;font-family:inherit;font-weight:${on?'700':'400'}">
-            ${pl.label} ${money(pl.amt)}</button>`;
-        }).join('')}
-      </div>
-      ${pifDetailOpen===p.id?`<div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">${payRecordPanel(p,false)}</div>`:''}
-    </div>`;
-  }).join('')+`</div>`
-  : `<div class="card faint" style="text-align:center;padding:18px">${doneAll.length?'找不到符合的 PIF':'尚無已完成 PIF'}</div>`;
+
+  if(doneFilt.length){
+    // 依客戶分組
+    const custGroups=[...new Set(doneFilt.map(p=>custName(p)))];
+    h+=custGroups.map(cn=>{
+      const items=doneFilt.filter(p=>custName(p)===cn);
+      const totalCharge=items.reduce((s,p)=>s+(p.charge||0),0);
+      const totalPaid=items.reduce((s,p)=>(p.payRecords||[]).reduce((a,r)=>a+r.amt,s),0);
+      const diff=totalCharge-totalPaid;
+      const allPaid=diff===0&&totalPaid>0;
+      const custBatchIds=items.map(p=>p.id);
+      const custSelN=custBatchIds.filter(id=>batch[id]).length;
+      const groupOpen=!pifGroupClosed[cn];
+
+      return `<div class="card" style="margin-bottom:12px;padding:0;overflow:hidden">
+        <!-- 客戶組標題 -->
+        <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--n-bg);border-bottom:${groupOpen?'1px solid var(--line)':'0'};cursor:pointer" onclick="A.togglePifGroup('${cn}')">
+          <span class="ck ${custSelN===items.length&&items.length>0?'on':custSelN>0?'partial':''}"
+            onclick="event.stopPropagation();A.togglePifGroupSel('${cn}')"
+            style="cursor:pointer;flex:none"><i class="ti ti-check"></i></span>
+          <span style="flex:1;min-width:0">
+            <span class="nm" style="font-size:14px">${cn}</span>
+            <span class="sub" style="font-size:12px;margin-left:8px">${items.length} 筆</span>
+          </span>
+          <span style="text-align:right;margin-right:8px">
+            <span style="font-weight:700;color:${allPaid?'var(--s)':diff>0?'var(--w)':'var(--ink)'}">
+              ${allPaid?'✓ 已付清':diff>0?'欠 '+money(diff):money(totalPaid)}
+            </span>
+            <br><span class="sub" style="font-size:11px">應收 ${money(totalCharge)}</span>
+          </span>
+          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 10px;flex:none;font-size:12px" onclick="event.stopPropagation();A.batchChangeCustFor(${JSON.stringify(custBatchIds)})">
+            <i class="ti ti-building-store"></i> 換客戶</button>
+          <i class="ti ti-chevron-${groupOpen?'up':'down'}" style="color:var(--muted);flex:none"></i>
+        </div>
+        <!-- 品項清單（折疊） -->
+        ${groupOpen?`<div style="padding:8px 10px">
+          ${items.map(p=>{
+            const paid=(p.payRecords||[]).reduce((s,r)=>s+r.amt,0);
+            const charge=p.charge||0;
+            const diff=charge-paid;
+            const plans=p.pifPlans||[p.pifPlan||'shared'];
+            const payColor=diff>0?'var(--w)':paid>0?'var(--s)':'var(--faint)';
+            return `<div style="display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--line)">
+              <span class="ck ${batch[p.id]?'on':''}" onclick="A.toggleSel('${p.id}')" style="cursor:pointer;flex:none"><i class="ti ti-check"></i></span>
+              <span style="flex:1;min-width:0;font-size:13px;font-weight:600">${p.name}</span>
+              <!-- 費用方案（緊湊） -->
+              <div style="display:flex;flex-wrap:wrap;gap:3px;justify-content:flex-end">
+                ${PIF_PLANS.map(pl=>{
+                  const on=plans.includes(pl.id);
+                  return `<button onclick="A.togglePifPlanDone('${p.id}','${pl.id}')"
+                    style="border:1.5px solid ${on?'var(--accent)':'var(--line2)'};background:${on?'var(--accent-tint)':'transparent'};
+                    color:${on?'var(--accent)':'var(--muted)'};border-radius:5px;padding:2px 7px;cursor:pointer;
+                    font-size:11px;font-family:inherit;white-space:nowrap;font-weight:${on?'700':'400'}">
+                    ${pl.label.replace('客戶公定','').replace('PIF 處理費','含檢測').replace('共用合約','合約').replace('換名','換名')} ${money(pl.amt)}</button>`;
+                }).join('')}
+              </div>
+              <!-- 收款狀態 -->
+              <span style="font-size:12px;font-weight:700;color:${payColor};white-space:nowrap;min-width:70px;text-align:right">
+                ${paid>0?money(paid):diff>0?'未收款':'—'}
+                ${diff>0&&paid>0?`<br><span style="font-size:10px">欠${money(diff)}</span>`:''}
+              </span>
+              <!-- 操作 -->
+              <div style="display:flex;gap:4px;flex:none">
+                <button class="btn btn--ghost btn--sm" style="width:32px;padding:0" onclick="A.togglePifDetail('${p.id}')" title="${paid>0?'收款記錄':'補錄收款'}">
+                  <i class="ti ti-${pifDetailOpen===p.id?'chevron-up':paid>0?'receipt':'plus'}"></i></button>
+                <button class="btn btn--ghost btn--sm" style="width:32px;padding:0;color:#C0392B;border-color:#E7C3BD" onclick="A.delCompletedPif('${p.id}')" title="刪除">
+                  <i class="ti ti-${confirmDel==='pif'+p.id?'check':'trash'}"></i></button>
+              </div>
+            </div>
+            ${pifDetailOpen===p.id?`<div style="padding:10px 4px 4px">${payRecordPanel(p,false)}</div>`:''}`;
+          }).join('')}
+        </div>`:''}
+      </div>`;
+    }).join('');
+  } else {
+    h+=`<div class="card faint" style="text-align:center;padding:18px">${doneAll.length?'找不到符合的 PIF':'尚無已完成 PIF'}</div>`;
+  }
 
   const pub=sharedPIF.filter(it=>shareState(it)==='public');
   const bld=sharedPIF.filter(it=>shareState(it)==='building');
@@ -2449,6 +2524,32 @@ const A = {
   openSharedPIF(){ view='shared-pif'; render(); },
   closeSharedPIF(){ view='app'; custTab='submit'; render(); },
   setShareState(i,st){ const it=sharedPIF[i]; if(!it) return; it.state=st; delete it.hidden; save(); render(); A.toast({public:'已設為公開可共用：',building:'已移到可共用·建置中：',hidden:'已隱藏：'}[st]+it.name); },
+  togglePifGroup(cn){ pifGroupClosed[cn]=!pifGroupClosed[cn]; render(); },
+  togglePifGroupSel(cn){
+    const ids=products.filter(p=>p.status==='completed'&&custName(p)===cn).map(p=>p.id);
+    const allOn=ids.every(id=>batch[id]);
+    ids.forEach(id=>{ if(allOn) delete batch[id]; else batch[id]=true; });
+    render();
+  },
+  batchChangeCustFor(ids){
+    window._bccIds=ids;
+    const custOpts=[...new Set([...customers.map(c=>c.name), ELG_SELF])].filter(Boolean);
+    const overlay=document.createElement('div');
+    overlay.id='bcc_overlay';
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px';
+    overlay.innerHTML=`<div style="background:var(--surface);border-radius:16px;padding:24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+      <p style="font-size:16px;font-weight:700;margin:0 0 6px">更換客戶</p>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 14px">${ids.length} 筆，更換後統一套用。</p>
+      <select id="bcc_sel" style="width:100%;padding:10px 12px;border:1.5px solid var(--line2);border-radius:8px;font-size:14px;font-family:inherit;background:var(--surface);margin-bottom:16px">
+        ${custOpts.map(c=>`<option>${c}</option>`).join('')}
+      </select>
+      <div style="display:flex;gap:8px">
+        <button onclick="A.confirmBatchCust()" style="flex:1;padding:10px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">確認更換</button>
+        <button onclick="document.getElementById('bcc_overlay').remove()" style="flex:1;padding:10px;border:1.5px solid var(--line2);border-radius:8px;background:var(--surface);font-size:14px;cursor:pointer;font-family:inherit">取消</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+  },
   togglePifDetail(id){ pifDetailOpen=(pifDetailOpen===id?null:id); render(); },
   batchChangeCust(){
     const ids=Object.keys(batch).filter(k=>batch[k]);
@@ -2761,6 +2862,7 @@ const A = {
   openMyFolder(){ const c=customers.find(x=>x.name===me.nameCh); if(c&&c.drive&&c.driveAuth) window.open(c.drive,'_blank'); else A.toast(c&&c.drive&&!c.driveAuth?'依洛嘉尚未授權存取你的 PIF 雲端資料夾':'依洛嘉尚未提供你的 PIF 雲端資料夾連結'); },
   setCustDrive(i,v){ if(customers[i]){ customers[i].drive=(v||'').trim(); save(); A.toast('已更新客戶 PIF 資料夾連結'); } },
   receive(id){ const p=byId(id); if(p){ p.status='received'; if(p.invSel===undefined)p.invSel=true; if(!p.feeSel)p.feeSel=5000; } render(); A.toast('已收樣，可到「請款」開收款單'); },
+  setInvTab(t){ invTab=t; render(); },
   setRetroCust(cn){ retroCust=cn; render(); },
   retroSetFee(id,amt){ const p=byId(id); if(p){ p.retroFee=Number(amt)||10000; } },
   retroTogglePlan(id,planId,cn){
