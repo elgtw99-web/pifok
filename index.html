@@ -1459,7 +1459,6 @@ function elgInvoice(){
   // ===== 補錄請款（送驗中未收款品項）=====
   if(testingUnpaid.length){
     const tCusts=[...new Set(testingUnpaid.map(p=>custName(p)))];
-    if(retroCust && !tCusts.includes(retroCust)) retroCust='';
     const activeCust=retroCust||(tCusts[0])||'';
     const items=testingUnpaid.filter(p=>custName(p)===activeCust);
     const custTotal=items.reduce((s,p)=>{
@@ -1708,6 +1707,7 @@ function elgPif(){
     h+=selBar(doneAll.map(p=>p.id),[
       {label:'批次移回製作中',ic:'arrow-back-up',fn:'A.batchMovePifBack()',cls:'btn--ghost'},
       {label:'批次移回送驗中',ic:'flask',fn:"A.batchSetStatus('testing')",cls:'btn--ghost'},
+      {label:'批次更換客戶',ic:'building-store',fn:'A.batchChangeCust()',cls:'btn--ghost'},
     ]);
     h+=srchBar('搜尋已完成 PIF…');
   }
@@ -2419,6 +2419,41 @@ const A = {
   closeSharedPIF(){ view='app'; custTab='submit'; render(); },
   setShareState(i,st){ const it=sharedPIF[i]; if(!it) return; it.state=st; delete it.hidden; save(); render(); A.toast({public:'已設為公開可共用：',building:'已移到可共用·建置中：',hidden:'已隱藏：'}[st]+it.name); },
   togglePifDetail(id){ pifDetailOpen=(pifDetailOpen===id?null:id); render(); },
+  batchChangeCust(){
+    const ids=Object.keys(batch).filter(k=>batch[k]);
+    if(!ids.length){ A.toast('請先勾選要更換客戶的品項'); return; }
+    const custOpts=[...new Set([...customers.map(c=>c.name), ELG_SELF])].filter(Boolean);
+    // Build a simple modal overlay
+    const overlay=document.createElement('div');
+    overlay.id='bcc_overlay';
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px';
+    overlay.innerHTML=`<div style="background:var(--surface);border-radius:16px;padding:24px;width:100%;max-width:360px;box-shadow:0 20px 60px rgba(0,0,0,.3)">
+      <p style="font-size:16px;font-weight:700;margin:0 0 6px">批次更換客戶</p>
+      <p style="font-size:13px;color:var(--muted);margin:0 0 14px">已選 ${ids.length} 筆，更換後統一套用至選取品項。</p>
+      <label style="font-size:12px;font-weight:600;color:var(--muted);display:block;margin-bottom:6px">選擇客戶</label>
+      <select id="bcc_sel" style="width:100%;padding:10px 12px;border:1.5px solid var(--line2);border-radius:8px;font-size:14px;font-family:inherit;background:var(--surface);margin-bottom:16px">
+        ${custOpts.map(c=>`<option>${c}</option>`).join('')}
+      </select>
+      <div style="display:flex;gap:8px">
+        <button onclick="A.confirmBatchCust(${JSON.stringify(ids)})" style="flex:1;padding:10px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">確認更換</button>
+        <button onclick="document.getElementById('bcc_overlay').remove()" style="flex:1;padding:10px;border:1.5px solid var(--line2);border-radius:8px;background:var(--surface);font-size:14px;cursor:pointer;font-family:inherit">取消</button>
+      </div>
+    </div>`;
+    document.body.appendChild(overlay);
+  },
+  confirmBatchCust(ids){
+    const sel=document.getElementById('bcc_sel'); if(!sel) return;
+    const newCust=sel.value;
+    const custEmail=(customers.find(c=>c.name===newCust)||{}).email||'';
+    ids.forEach(id=>{
+      const p=byId(id); if(!p) return;
+      p.cust=newCust; p.customerEmail=custEmail;
+      p.mine=(newCust===CUST); p.self=(newCust===ELG_SELF);
+    });
+    document.getElementById('bcc_overlay').remove();
+    batch={}; save(); render();
+    A.toast('已將 '+ids.length+' 筆更換為：'+newCust);
+  },
   batchMovePifBack(){
     const ids=Object.keys(batch).filter(k=>batch[k]);
     if(!ids.length){ A.toast('請先勾選品項'); return; }
