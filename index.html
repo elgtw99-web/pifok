@@ -1205,6 +1205,14 @@ function elgHome(){
     ['completed','已完成 PIF','circle-check','pif']
   ];
   let h=`<div class="note" style="margin-bottom:14px"><i class="ti ti-layout-dashboard"></i>全流程總覽 · 點任一階段直接前往處理。</div>`;
+  if(typeof FB!=='undefined' && FB.on && FB.user && !FB.seeded){
+    h+=`<div class="card" style="border-color:var(--w);margin-bottom:16px">
+      <p class="nm" style="font-size:15px"><i class="ti ti-cloud-upload"></i> 雲端尚無資料，請先上傳</p>
+      <p class="sub" style="margin:6px 0 12px">已用 Google 登入，但 Firestore 是空的。請先將本機資料上傳到雲端，之後所有變更會自動同步。</p>
+      <button class="btn btn--ok btn--sm" style="width:auto;padding:0 18px" onclick="A.fbUploadSeed()"><i class="ti ti-cloud-upload"></i> 首次上傳資料到雲端</button>
+      <span style="margin-left:10px;font-size:12px" class="muted">（若出現「權限不足」，請先更新 Firestore 安全規則）</span>
+    </div>`;
+  }
   h+=`<div class="dash">`+ cards.map(([st,lbl,ic,tab])=>`
       <div class="metric" onclick="A.go('${tab}')"><div class="mi"><i class="ti ti-${ic}"></i></div>
         <div class="mv">${c(st)}</div><div class="ml">${lbl}</div></div>`).join('')+`</div>`;
@@ -2614,7 +2622,7 @@ const firebaseConfig = {
   messagingSenderId: "457227684194",
   appId: "1:457227684194:web:86fd2fb78885f350db843b"
 };
-let FB={on:false,db:null,auth:null,user:null,role:null,unsub:[],last:{},ready:false,syncT:null};
+let FB={on:false,db:null,auth:null,user:null,role:null,unsub:[],last:{},ready:false,syncT:null,seeded:false};
 let SEED_SNAPSHOT=null;
 function fbInit(){
   try{
@@ -2625,11 +2633,14 @@ function fbInit(){
   }catch(e){ FB.on=false; console.warn('Firebase init failed',e); }
 }
 function stripId(o){ const c=Object.assign({},o); delete c.id; return c; }
-function fbDetach(){ FB.unsub.forEach(u=>{try{u();}catch(e){}}); FB.unsub=[]; }
+function fbDetach(){ FB.unsub.forEach(u=>{try{u();}catch(e){}}); FB.unsub=[]; FB.seeded=false; }
 function snapApply(name, arr, docs){
+  // 如果 Firestore 回傳空（首次還沒上傳），保留本機種子不清空
+  if(docs.length===0 && arr.length>0 && !FB.seeded) return;
   arr.length=0; const m={};
   docs.forEach(d=>{ const o=Object.assign({}, d.data()); o.id=d.id; arr.push(o); m[d.id]=JSON.stringify(stripId(o)); });
   FB.last[name]=m;
+  if(docs.length>0) FB.seeded=true;
 }
 function emailMap(){ const m={}; customers.forEach(c=>{ if(c.name) m[c.name]=c.email||''; }); m[ELG_SELF]=''; return m; }
 function attachAdmin(){
