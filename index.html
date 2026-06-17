@@ -1213,9 +1213,23 @@ function elgHome(){
       <span style="margin-left:10px;font-size:12px" class="muted">（若出現「權限不足」，請先更新 Firestore 安全規則）</span>
     </div>`;
   }
-  h+=`<div class="dash">`+ cards.map(([st,lbl,ic,tab])=>`
-      <div class="metric" onclick="A.go('${tab}')"><div class="mi"><i class="ti ti-${ic}"></i></div>
-        <div class="mv">${c(st)}</div><div class="ml">${lbl}</div></div>`).join('')+`</div>`;
+  h+=`<div class="dash">`+ cards.map(([st,lbl,ic,tab])=>{
+    const n=c(st);
+    const isCompleted=(st==='completed');
+    return `<div class="metric" onclick="A.go('${tab}')" style="cursor:pointer${isCompleted&&n?';border:2px solid var(--s)':''}">
+      <div class="mi" style="${isCompleted?'background:var(--s-bg);color:var(--s)':''}"><i class="ti ti-${ic}"></i></div>
+      <div class="mv" style="${isCompleted&&n?'color:var(--s)':''}">${n}</div>
+      <div class="ml">${lbl}</div></div>`;
+  }).join('')+`</div>`;
+  const completedN=products.filter(p=>p.status==='completed').length;
+  if(completedN>0){
+    h+=`<div class="card" style="border-color:var(--s);margin-top:10px;padding:12px 16px;cursor:pointer" onclick="A.go('pif')">
+      <div class="row" style="align-items:center">
+        <span><div class="nm" style="color:var(--s);font-size:28px;font-weight:800;line-height:1">${completedN}</div><div class="sub" style="margin-top:4px">筆已完成 PIF · 點擊查看明細與付款記錄</div></span>
+        <i class="ti ti-circle-check" style="font-size:40px;color:var(--s);opacity:.25"></i>
+      </div>
+    </div>`;
+  }
   h+=`<div class="sect mt">客戶帳號</div>
     <div class="dash">
       <div class="metric" style="cursor:pointer" onclick="A.openAccounts('customer')"><div class="mi" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-users"></i></div><div class="mv">${reg}</div><div class="ml">已註冊</div></div>
