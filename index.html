@@ -478,7 +478,7 @@ function parseCompany(t){
   return { cname:nm.trim(), caddr:ad.trim() };
 }
 let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='', wipeOpen=false, ocrBusy=false, custAddOpen=false, pendingRestore=null, scQ='', scPage=0, scOpen=null, scDraft={name:'',en:'',tagline:'',cover:'',html:'',link:''}, pifSel={}, scSel={}, selScope=[],
-pifAddOpen=false, pifDraft={name:'',cust:'',drive:'',plan:'shared',note:'',toPublic:false}, pifDetailOpen=null;
+pifAddOpen=false, pifDraft={name:'',cust:'',drive:'',plan:'shared',note:'',toPublic:false}, pifDetailOpen=null, retroCust='';
 let sharedPIF=[];
 let staff=[];
 let customers=[];
@@ -1459,33 +1459,61 @@ function elgInvoice(){
   // ===== 補錄請款（送驗中未收款品項）=====
   if(testingUnpaid.length){
     const tCusts=[...new Set(testingUnpaid.map(p=>custName(p)))];
+    if(retroCust && !tCusts.includes(retroCust)) retroCust='';
+    const activeCust=retroCust||tCusts[0]||'';
+    const items=testingUnpaid.filter(p=>custName(p)===activeCust);
+    const custTotal=items.reduce((s,p)=>{
+      const sel=p.retroPlans||['shared'];
+      return s+PIF_PLANS.filter(pl=>sel.includes(pl.id)).reduce((a,pl)=>a+pl.amt,0);
+    },0);
     h+=`<div class="card" style="border-color:var(--w);margin-bottom:16px">
-      <div class="row" style="margin-bottom:8px">
+      <div class="row" style="margin-bottom:10px">
         <span><span class="nm" style="font-size:15px"><i class="ti ti-history"></i> 補錄收款（已完成 PIF 未收款）</span><br>
-        <span class="sub">這些 PIF 已完成但尚未有收款記錄，可在此補錄實際收款資料。</span></span>
+        <span class="sub">PIF 已完成但尚未有收款記錄，選客戶後逐筆補錄。</span></span>
         <span class="pill pill--w">${testingUnpaid.length}</span>
       </div>
-      ${tCusts.map(cn=>{
-        const items=testingUnpaid.filter(p=>custName(p)===cn);
-        return `<div style="border-top:1px solid var(--line);padding-top:10px;margin-top:10px">
-          <div class="nm" style="font-size:13.5px;margin-bottom:8px">${cn}</div>
-          ${items.map(p=>`
-            <div class="card compact" style="margin-bottom:8px">
-              <div class="row" style="margin-bottom:8px">
-                <span style="flex:1"><span class="nm" style="font-size:13px">${p.name}</span><br>
-                <span class="sub" style="font-size:11.5px">${p.batch||''}</span></span>
-                <select class="fld fld--mini" style="width:auto;min-width:140px" onchange="A.retroSetFee('${p.id}',Number(this.value))">
-                  ${PIF_PLANS.map(pl=>`<option value="${pl.amt}" ${(p.retroFee||10000)===pl.amt?'selected':''}>${pl.label} ${money(pl.amt)}</option>`).join('')}
-                </select>
-              </div>
-              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
-                <div><label class="lbl">收款日期</label><input class="fld fld--mini" type="date" id="retro_date_${p.id}" value="${new Date().toISOString().slice(0,10)}" style="width:130px"></div>
-                <div><label class="lbl">付款方式</label><select class="fld fld--mini" id="retro_method_${p.id}" style="width:auto">${PAY_METHODS.map(m=>`<option>${m}</option>`).join('')}</select></div>
-                <div style="flex:1;min-width:100px"><label class="lbl">備註（選填）</label><input class="fld fld--mini" id="retro_note_${p.id}" placeholder="例：末五碼 12345"></div>
-                <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px;flex:none;align-self:flex-end" onclick="A.retroPay('${p.id}')">
-                  <i class="ti ti-check"></i> 補錄收款</button>
-              </div>
-            </div>`).join('')}
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+        <label class="lbl" style="margin:0;white-space:nowrap">選客戶：</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;flex:1">
+          ${tCusts.map(cn=>`<button onclick="A.setRetroCust('${cn}')"
+            style="border:2px solid ${cn===activeCust?'var(--accent)':'var(--line2)'};
+                   background:${cn===activeCust?'var(--accent-tint)':'var(--surface)'};
+                   color:${cn===activeCust?'var(--accent)':'var(--ink)'};
+                   border-radius:20px;padding:5px 14px;cursor:pointer;font-size:13px;font-family:inherit;font-weight:${cn===activeCust?'700':'400'}">
+            ${cn}${cn===activeCust?` <span style="color:var(--s)">✓</span>`:''}
+          </button>`).join('')}
+        </div>
+        <span class="amt" style="color:var(--s);white-space:nowrap">${money(custTotal)}</span>
+      </div>
+      ${items.map(p=>{
+        const sel=p.retroPlans||['shared'];
+        const itemTotal=PIF_PLANS.filter(pl=>sel.includes(pl.id)).reduce((s,pl)=>s+pl.amt,0);
+        return `
+        <div class="card compact" style="margin-bottom:10px">
+          <div class="row" style="margin-bottom:10px">
+            <span style="flex:1"><span class="nm" style="font-size:13px">${p.name}</span><br>
+            <span class="sub" style="font-size:11.5px">${p.batch||''}</span></span>
+            <span class="amt" style="font-size:15px;font-weight:700;color:var(--s)" id="retro_item_${p.id}">${money(itemTotal)}</span>
+          </div>
+          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px">
+            ${PIF_PLANS.map(pl=>`
+              <button onclick="A.retroTogglePlan('${p.id}','${pl.id}','${activeCust}')"
+                style="border:2px solid ${sel.includes(pl.id)?'var(--accent)':'var(--line2)'};
+                       background:${sel.includes(pl.id)?'var(--accent-tint)':'var(--surface)'};
+                       color:${sel.includes(pl.id)?'var(--accent)':'var(--muted)'};
+                       border-radius:8px;padding:6px 12px;cursor:pointer;font-size:12.5px;font-family:inherit;
+                       display:flex;flex-direction:column;align-items:center;gap:2px;min-width:80px;font-weight:${sel.includes(pl.id)?'700':'400'}">
+                <span>${pl.label}</span>
+                <span style="font-size:13px;font-weight:700">${money(pl.amt)}</span>
+              </button>`).join('')}
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
+            <div><label class="lbl">收款日期</label><input class="fld fld--mini" type="date" id="retro_date_${p.id}" value="${new Date().toISOString().slice(0,10)}" style="width:130px"></div>
+            <div><label class="lbl">付款方式</label><select class="fld fld--mini" id="retro_method_${p.id}" style="width:auto">${PAY_METHODS.map(m=>`<option>${m}</option>`).join('')}</select></div>
+            <div style="flex:1;min-width:100px"><label class="lbl">備註（選填）</label><input class="fld fld--mini" id="retro_note_${p.id}" placeholder="例：末五碼 12345"></div>
+            <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px;flex:none;align-self:flex-end" onclick="A.retroPay('${p.id}')">
+              <i class="ti ti-check"></i> 補錄 ${money(itemTotal)}</button>
+          </div>
         </div>`;
       }).join('')}
     </div>`;
@@ -2677,21 +2705,33 @@ const A = {
   openMyFolder(){ const c=customers.find(x=>x.name===me.nameCh); if(c&&c.drive&&c.driveAuth) window.open(c.drive,'_blank'); else A.toast(c&&c.drive&&!c.driveAuth?'依洛嘉尚未授權存取你的 PIF 雲端資料夾':'依洛嘉尚未提供你的 PIF 雲端資料夾連結'); },
   setCustDrive(i,v){ if(customers[i]){ customers[i].drive=(v||'').trim(); save(); A.toast('已更新客戶 PIF 資料夾連結'); } },
   receive(id){ const p=byId(id); if(p){ p.status='received'; if(p.invSel===undefined)p.invSel=true; if(!p.feeSel)p.feeSel=5000; } render(); A.toast('已收樣，可到「請款」開收款單'); },
+  setRetroCust(cn){ retroCust=cn; render(); },
   retroSetFee(id,amt){ const p=byId(id); if(p){ p.retroFee=Number(amt)||10000; } },
+  retroTogglePlan(id,planId,cn){
+    const p=byId(id); if(!p) return;
+    p.retroPlans=p.retroPlans||['shared'];
+    const idx=p.retroPlans.indexOf(planId);
+    if(idx>=0) p.retroPlans.splice(idx,1);
+    else p.retroPlans.push(planId);
+    if(!p.retroPlans.length) p.retroPlans=['shared']; // 至少選一個
+    render();
+  },
   retroPay(id){
     const p=byId(id); if(!p) return;
-    const amt=p.retroFee||10000;
+    const plans=p.retroPlans||['shared'];
+    const amt=PIF_PLANS.filter(pl=>plans.includes(pl.id)).reduce((s,pl)=>s+pl.amt,0)||10000;
     const dateEl=document.getElementById('retro_date_'+id);
     const methodEl=document.getElementById('retro_method_'+id);
     const noteEl=document.getElementById('retro_note_'+id);
     const date=dateEl?dateEl.value:new Date().toLocaleDateString('zh-TW');
     const method=methodEl?methodEl.value:'匯款';
     const note=noteEl?noteEl.value:'';
+    const planLabel=PIF_PLANS.filter(pl=>plans.includes(pl.id)).map(pl=>pl.label).join('＋');
     p.payRecords=p.payRecords||[];
-    p.payRecords.push({date, amt, method, note:note||'補錄收款'});
+    p.payRecords.push({date, amt, method, note:note||('補錄：'+planLabel)});
     p.paidAmt=(p.paidAmt||0)+amt;
-    p.charge=amt;
-    p.payMethod=method;
+    p.charge=amt; p.pifPlanLabel=planLabel;
+    delete p.retroPlans;
     // 保留 completed 狀態，不改變 PIF 流程
     save(); render();
     A.toast('已補錄收款：'+p.name+' '+money(amt)+'（'+method+'）');
