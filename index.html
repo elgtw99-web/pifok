@@ -1459,7 +1459,7 @@ function elgInvoice(){
   // ===== 補錄請款（送驗中未收款品項）=====
   if(testingUnpaid.length){
     const tCusts=[...new Set(testingUnpaid.map(p=>custName(p)))];
-    const activeCust=retroCust||(tCusts[0])||'';
+    const activeCust=(retroCust && tCusts.includes(retroCust))?retroCust:(tCusts[0]||'');
     const items=testingUnpaid.filter(p=>custName(p)===activeCust);
     const custTotal=items.reduce((s,p)=>{
       const sel=p.retroPlans||['shared'];
@@ -1472,14 +1472,21 @@ function elgInvoice(){
         <span class="pill pill--w">${testingUnpaid.length}</span>
       </div>
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
-        <label class="lbl" style="margin:0;white-space:nowrap">選客戶：</label>
-        <select class="fld" style="flex:1;min-width:160px;max-width:300px" onchange="A.setRetroCust(this.value)">
-          ${[...new Set([...tCusts,...customers.map(c=>c.name)])].filter(Boolean).map(cn=>
-            `<option value="${cn}" ${cn===activeCust?'selected':''}>${cn}</option>`
-          ).join('')}
-        </select>
+        <label class="lbl" style="margin:0;white-space:nowrap">客戶：</label>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;flex:1">
+          ${tCusts.map(cn=>`
+            <button onclick="A.setRetroCust('${cn}')"
+              style="border:2px solid ${cn===activeCust?'var(--accent)':'var(--line2)'};
+                     background:${cn===activeCust?'var(--accent-tint)':'var(--surface)'};
+                     color:${cn===activeCust?'var(--accent)':'var(--ink)'};
+                     border-radius:20px;padding:5px 14px;cursor:pointer;font-size:13px;
+                     font-family:inherit;font-weight:${cn===activeCust?'700':'400'}">
+              ${cn}
+            </button>`).join('')}
+        </div>
         <span class="amt" style="color:var(--s);white-space:nowrap">${money(custTotal)}</span>
       </div>
+      <div class="note" style="margin-bottom:12px"><i class="ti ti-info-circle"></i>廠商在新增 PIF 時已確定，補錄收款不可更改。如需更換廠商請到「已完成 PIF 明細」使用「批次更換客戶」。</div>
       ${items.length===0?`<div class="card faint" style="text-align:center;padding:14px">
         <span class="sub">「${activeCust}」目前沒有未收款的已完成 PIF<br>請到「完成 PIF」分頁用「手動新增 PIF」加入品項後再補錄</span>
       </div>`:items.map(p=>{
@@ -1729,6 +1736,8 @@ function elgPif(){
         </span>
         <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 10px;flex:none" onclick="A.togglePifDetail('${p.id}')">
           <i class="ti ti-${pifDetailOpen===p.id?'chevron-up':'chevron-down'}"></i> ${paid>0?'收款':'補錄'}</button>
+        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 8px;flex:none;color:#C0392B;border-color:#E7C3BD" onclick="A.delCompletedPif('${p.id}')" title="刪除此筆">
+          <i class="ti ti-trash"></i>${confirmDel==='pif'+p.id?' 確認?':''}</button>
       </div>
       <div style="display:flex;flex-wrap:wrap;gap:4px;margin-top:8px">
         ${PIF_PLANS.map(pl=>{
@@ -2422,8 +2431,8 @@ const A = {
   batchChangeCust(){
     const ids=Object.keys(batch).filter(k=>batch[k]);
     if(!ids.length){ A.toast('請先勾選要更換客戶的品項'); return; }
+    window._bccIds=ids; // 避開 JSON stringify 在 onclick 裡的引號問題
     const custOpts=[...new Set([...customers.map(c=>c.name), ELG_SELF])].filter(Boolean);
-    // Build a simple modal overlay
     const overlay=document.createElement('div');
     overlay.id='bcc_overlay';
     overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:200;display:flex;align-items:center;justify-content:center;padding:20px';
@@ -2435,13 +2444,14 @@ const A = {
         ${custOpts.map(c=>`<option>${c}</option>`).join('')}
       </select>
       <div style="display:flex;gap:8px">
-        <button onclick="A.confirmBatchCust(${JSON.stringify(ids)})" style="flex:1;padding:10px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">確認更換</button>
+        <button onclick="A.confirmBatchCust()" style="flex:1;padding:10px;border:0;border-radius:8px;background:var(--accent);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">確認更換</button>
         <button onclick="document.getElementById('bcc_overlay').remove()" style="flex:1;padding:10px;border:1.5px solid var(--line2);border-radius:8px;background:var(--surface);font-size:14px;cursor:pointer;font-family:inherit">取消</button>
       </div>
     </div>`;
     document.body.appendChild(overlay);
   },
-  confirmBatchCust(ids){
+  confirmBatchCust(){
+    const ids=window._bccIds||[];
     const sel=document.getElementById('bcc_sel'); if(!sel) return;
     const newCust=sel.value;
     const custEmail=(customers.find(c=>c.name===newCust)||{}).email||'';
@@ -2451,6 +2461,7 @@ const A = {
       p.mine=(newCust===CUST); p.self=(newCust===ELG_SELF);
     });
     document.getElementById('bcc_overlay').remove();
+    window._bccIds=null;
     batch={}; save(); render();
     A.toast('已將 '+ids.length+' 筆更換為：'+newCust);
   },
@@ -2847,6 +2858,13 @@ const A = {
     p.paidAmt=(p.paidAmt||0)+amt;
     p.payMethod=method;
     save(); render(); A.toast('已新增付款記錄：'+money(amt)+'（'+method+'）');
+  },
+  delCompletedPif(id){
+    const p=byId(id); if(!p) return;
+    if(confirmDel!=='pif'+id){ confirmDel='pif'+id; render(); A.toast('再按一次刪除鍵確認刪除：'+p.name); return; }
+    const idx=products.findIndex(x=>x.id===id);
+    if(idx>=0) products.splice(idx,1);
+    confirmDel=null; save(); render(); A.toast('已刪除：'+p.name);
   },
   togglePifPlanDone(id,planId){
     const p=byId(id); if(!p) return;
