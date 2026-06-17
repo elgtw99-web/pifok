@@ -478,7 +478,7 @@ function parseCompany(t){
   return { cname:nm.trim(), caddr:ad.trim() };
 }
 let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='', wipeOpen=false, ocrBusy=false, custAddOpen=false, pendingRestore=null, scQ='', scPage=0, scOpen=null, scDraft={name:'',en:'',tagline:'',cover:'',html:'',link:''}, pifSel={}, scSel={}, selScope=[],
-pifAddOpen=false, pifDraft={name:'',cust:'',drive:'',plan:'shared',note:'',toPublic:false};
+pifAddOpen=false, pifDraft={name:'',cust:'',drive:'',plan:'shared',note:'',toPublic:false}, pifDetailOpen=null;
 let sharedPIF=[
   {name:'SYN三胜肽緊緻撫紋眼霜', type:'液劑霜劑'},
   {name:'杏仁酸植萃亮顏精華', type:'液劑霜劑'},
@@ -1144,8 +1144,8 @@ function elgSummary(){
   // 收集所有有付款記錄的產品
   const allRecs=[];
   products.forEach(p=>{
-    (p.payRecords||[]).forEach(r=>{
-      allRecs.push({...r, pname:p.name, cust:custName(p), pid:p.id, charge:p.charge||0});
+    (p.payRecords||[]).forEach((r,ridx)=>{
+      allRecs.push({...r, pname:p.name, cust:custName(p), pid:p.id, charge:p.charge||0, ridx});
     });
   });
   allRecs.sort((a,b)=>b.date.localeCompare(a.date));
@@ -1196,13 +1196,21 @@ function elgSummary(){
 
   // 明細清單（可按客戶篩選）
   h+=`<div class="row sect"><span>收款明細（${allRecs.length} 筆）</span></div>`;
-  h+= allRecs.length ? `<div class="stack">`+allRecs.map(r=>`
-    <div class="card compact row" style="gap:10px">
-      <span style="flex:1;min-width:0">
-        <span class="nm" style="font-size:13px">${r.pname}</span><br>
-        <span class="sub" style="font-size:11.5px">${r.cust} · ${r.date} · ${r.method}${r.note?' · '+r.note:''}</span>
-      </span>
-      <span class="amt" style="color:var(--s);font-weight:700;flex:none">${money(r.amt)}</span>
+  h+= allRecs.length ? `<div class="stack">`+allRecs.map((r,gi)=>`
+    <div class="card compact">
+      <div class="row" style="gap:8px;align-items:center;flex-wrap:wrap">
+        <span style="flex:1;min-width:0">
+          <span class="nm" style="font-size:13px">${r.pname}</span><br>
+          <span class="sub" style="font-size:11.5px">${r.cust} · ${r.date}</span>
+        </span>
+        <select class="fld fld--mini" style="width:auto;min-width:90px" onchange="A.editPayRecord('${r.pid}',${r.ridx},'method',this.value)">
+          ${PAY_METHODS.map(m=>`<option ${r.method===m?'selected':''}>${m}</option>`).join('')}
+        </select>
+        <input class="fld fld--mini" type="number" style="width:90px;text-align:right" value="${r.amt}"
+          onchange="A.editPayRecord('${r.pid}',${r.ridx},'amt',Number(this.value))">
+        <button onclick="A.delPayRecord('${r.pid}',${r.ridx})" style="border:0;background:none;cursor:pointer;color:var(--faint);font-size:16px" title="刪除"><i class="ti ti-trash"></i></button>
+      </div>
+      ${r.note?`<div class="sub" style="font-size:11px;margin-top:4px">${r.note}</div>`:''}
     </div>`).join('')+`</div>`
   : `<div class="card faint" style="text-align:center;padding:20px">尚無收款記錄<br><span class="sub">在「請款」或「完成 PIF」的付款記錄欄新增後會出現在這裡</span></div>`;
 
@@ -1771,31 +1779,58 @@ function elgPif(){
       </div>
     </div>`;
   }
-  h += doneAll.length ? `<div class="stack">`+ doneAll.map(p=>`
-      <div class="card">
-        <div class="row" style="align-items:flex-start;gap:8px;margin-bottom:10px">
-          <span style="flex:1;min-width:0">
-            <span class="nm" style="font-size:14px">${p.name}</span><br>
-            <span class="sub" style="font-size:11.5px">${custName(p)}</span>
-          </span>
-          <span class="pill pill--s" style="font-size:10px;flex:none"><i class="ti ti-circle-check"></i> 已完成</span>
+  // 搜尋 + 篩選
+  const doneQ=(libQ||'').trim().toLowerCase();
+  const doneFilt=doneQ ? doneAll.filter(p=>(p.name+(custName(p)||'')).toLowerCase().includes(doneQ)) : doneAll;
+  const doneSel=Object.keys(batch).filter(k=>batch[k]&&doneAll.some(p=>p.id===k));
+  if(doneAll.length){
+    h+=selBar(doneAll.map(p=>p.id),[
+      {label:'批次移回製作中',ic:'arrow-back-up',fn:'A.batchMovePifBack()',cls:'btn--ghost'},
+      {label:'批次移回送驗中',ic:'flask',fn:"A.batchSetStatus('testing')",cls:'btn--ghost'},
+    ]);
+    h+=srchBar('搜尋已完成 PIF…');
+  }
+  h += doneFilt.length ? `<div class="tablewrap"><table class="dtable">
+    <thead><tr><th></th><th>品名</th><th>客戶</th><th>費用方案</th><th>已付</th><th>Drive</th><th>操作</th></tr></thead>
+    <tbody>${doneFilt.map(p=>{
+      const pl=PIF_PLANS.find(x=>x.id===(p.pifPlan||'shared'))||PIF_PLANS[0];
+      const paid=(p.payRecords||[]).reduce((s,r)=>s+r.amt,0);
+      const diff=(p.charge||0)-paid;
+      return `<tr>
+        <td data-label="">${selCk(p.id)}</td>
+        <td data-label="品名"><span class="nm" style="font-size:13px">${p.name}</span></td>
+        <td data-label="客戶"><span class="sub">${custName(p)}</span></td>
+        <td data-label="費用方案">
+          <select class="fld fld--mini" style="min-width:140px" onchange="A.setPifPlanDone('${p.id}',this.value)">
+            ${PIF_PLANS.map(q=>`<option value="${q.id}" ${(p.pifPlan||'shared')===q.id?'selected':''}>${q.label} ${money(q.amt)}</option>`).join('')}
+          </select>
+        </td>
+        <td data-label="已付" style="white-space:nowrap">
+          <span style="font-weight:600;color:${diff>0?'var(--w)':'var(--s)'}">${money(paid)}</span>
+          ${diff>0?`<br><span class="sub" style="font-size:11px;color:var(--w)">欠 ${money(diff)}</span>`:''}
+        </td>
+        <td data-label="Drive">
+          <div style="display:flex;gap:4px;align-items:center">
+            <input class="fld fld--mini" style="width:160px" value="${(p.drive||'').replace(/"/g,'&quot;')}" placeholder="貼上連結" onchange="A.setPifDrive('${p.id}',this.value)">
+            ${p.drive?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 8px" onclick="window.open('${p.drive}','_blank')"><i class="ti ti-external-link"></i></button>`:''}
+          </div>
+        </td>
+        <td data-label="操作">
+          <div style="display:flex;gap:4px;flex-wrap:wrap">
+            <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 8px;color:#C0392B;border-color:#E7C3BD" onclick="A.movePifBack('${p.id}')"><i class="ti ti-arrow-back-up"></i></button>
+            <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 8px" onclick="A.setStatus('${p.id}','testing')"><i class="ti ti-flask"></i></button>
+            <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 8px" onclick="A.togglePifDetail('${p.id}')"><i class="ti ti-receipt"></i></button>
+          </div>
+        </td>
+      </tr>
+      ${pifDetailOpen===p.id?`<tr><td colspan="7" style="padding:0">
+        <div style="padding:10px 14px;background:var(--n-bg)">
+          ${payRecordPanel(p,false)}
         </div>
-        <label class="lbl">費用方案</label>
-        <select class="fld fld--mini" style="margin-bottom:8px" onchange="A.setPifPlanDone('${p.id}',this.value)">
-          ${PIF_PLANS.map(pl=>`<option value="${pl.id}" ${(p.pifPlan||'shared')===pl.id?'selected':''}>${pl.label}　${money(pl.amt)}</option>`).join('')}
-        </select>
-        <label class="lbl">PIF 雲端連結</label>
-        <div style="display:flex;gap:6px;margin-bottom:8px">
-          <input class="fld fld--mini" style="flex:1" value="${(p.drive||'').replace(/"/g,'&quot;')}" placeholder="貼上 Google Drive 連結" onchange="A.setPifDrive('${p.id}',this.value)">
-          ${p.drive?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 10px" onclick="window.open('${p.drive}','_blank')"><i class="ti ti-external-link"></i></button>`:''}
-        </div>
-        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
-          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;color:#C0392B;border-color:#E7C3BD" onclick="A.movePifBack('${p.id}')"><i class="ti ti-arrow-back-up"></i> 移回製作中</button>
-          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" onclick="A.setStatus('${p.id}','testing')"><i class="ti ti-flask"></i> 移回送驗中</button>
-        </div>
-        ${payRecordPanel(p, false)}
-      </div>`).join('')+`</div>`
-    : `<div class="card faint" style="text-align:center;padding:18px">尚無已完成 PIF</div>`;
+      </td></tr>`:''}`;
+    }).join('')}
+    </tbody></table></div>`
+  : `<div class="card faint" style="text-align:center;padding:18px">${doneAll.length?'找不到符合的 PIF':'尚無已完成 PIF'}</div>`;
 
   const pub=sharedPIF.filter(it=>shareState(it)==='public');
   const bld=sharedPIF.filter(it=>shareState(it)==='building');
@@ -2472,6 +2507,19 @@ const A = {
   openSharedPIF(){ view='shared-pif'; render(); },
   closeSharedPIF(){ view='app'; custTab='submit'; render(); },
   setShareState(i,st){ const it=sharedPIF[i]; if(!it) return; it.state=st; delete it.hidden; save(); render(); A.toast({public:'已設為公開可共用：',building:'已移到可共用·建置中：',hidden:'已隱藏：'}[st]+it.name); },
+  togglePifDetail(id){ pifDetailOpen=(pifDetailOpen===id?null:id); render(); },
+  batchMovePifBack(){
+    const ids=Object.keys(batch).filter(k=>batch[k]);
+    if(!ids.length){ A.toast('請先勾選品項'); return; }
+    ids.forEach(id=>{ const p=byId(id); if(p&&p.status==='completed'){ p.status='reporting'; p.batch=p.batch||'PIF製作中'; } });
+    batch={}; save(); render(); A.toast('已批次移回 PIF 製作中');
+  },
+  batchSetStatus(st){
+    const ids=Object.keys(batch).filter(k=>batch[k]);
+    if(!ids.length){ A.toast('請先勾選品項'); return; }
+    ids.forEach(id=>{ const p=byId(id); if(p) p.status=st; });
+    batch={}; save(); render(); A.toast('已批次改為：'+SM[st][0]);
+  },
   togglePifAdd(){ pifAddOpen=!pifAddOpen; if(pifAddOpen){ const c=customers[0]; pifDraft={name:'',cust:c?c.name:ELG_SELF,drive:'',plan:'shared',note:'',toPublic:false}; } render(); },
   togglePifPublic(){ pifDraft.toPublic=!pifDraft.toPublic; render(); },
   addManualPif(){
@@ -2719,6 +2767,16 @@ const A = {
     save(); render(); A.toast('已確認收款 '+money(amt)+'（'+method+'），轉待送驗');
   },
   receiveReport(id){ const p=byId(id); if(p) p.status='reporting'; render(); A.toast('已收到檢驗報告，轉 PIF 製作中'); },
+  editPayRecord(id,i,field,val){
+    const p=byId(id); if(!p||!p.payRecords||!p.payRecords[i]) return;
+    const old=p.payRecords[i].amt||0;
+    p.payRecords[i][field]=val;
+    if(field==='amt'){
+      const newAmt=Number(val)||0;
+      p.paidAmt=(p.paidAmt||0)-old+newAmt;
+    }
+    save(); render();
+  },
   delPayRecord(id,i){
     const p=byId(id); if(!p||!p.payRecords) return;
     const removed=p.payRecords.splice(i,1)[0];
