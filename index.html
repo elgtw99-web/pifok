@@ -377,9 +377,12 @@ function payRecordPanel(p, compact){
       <span class="sub" style="font-size:12px"><i class="ti ti-cash"></i> 付款記錄</span>
       <span class="sub" style="font-size:12px">${paid?`已收 ${money(paid)}`:'尚無記錄'}${charged&&diff>0?` · 差額 <span style="color:var(--w)">${money(diff)}</span>`:paid&&diff===0?' · <span style="color:var(--s)">已付清</span>':''}</span>
     </div>
-    ${recs.length?recs.map(r=>`<div class="miniline" style="font-size:12px">
+    ${recs.length?recs.map((r,i)=>`<div class="miniline" style="font-size:12px">
         <span>${r.date} · ${r.method}${r.note?' · '+r.note:''}</span>
-        <span style="color:var(--s);font-weight:700">${money(r.amt)}</span>
+        <span style="display:flex;align-items:center;gap:6px">
+          <span style="color:var(--s);font-weight:700">${money(r.amt)}</span>
+          ${compact?'':` <button onclick="A.delPayRecord('${p.id}',${i})" style="border:0;background:none;cursor:pointer;color:var(--faint);font-size:13px;padding:0" title="刪除這筆記錄"><i class="ti ti-x"></i></button>`}
+        </span>
       </div>`).join(''):'<div class="faint" style="font-size:12px;margin-bottom:6px">尚無完款記錄</div>'}
     ${compact?'':`<div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
       <input class="fld fld--mini" id="pr_amt_${p.id}" type="number" placeholder="金額" style="flex:1;min-width:80px">
@@ -508,7 +511,7 @@ let showcase=[
   {id:'sc3',name:'黃金竹炭淨白亮采C型眼膜',en:'Gold Bamboo Charcoal Eye Mask',tagline:'竹炭淨化＋亮采配方，告別暗沉',cover:'',html:'',link:'',ts:'2026-06-05'},
   {id:'sc4',name:'黑珍珠煥顏時空膠囊',en:'Black Pearl Renewal Capsule',tagline:'單顆精華膠囊，旅行隨身鎖住保養',cover:'',html:DEMO_INTRO,link:'',ts:'2026-06-01'}
 ];
-const ELG_TABS={ '主要管理者':['home','customers','library','receive','apply','data','invoice','pif','showcase'], '管理':['home','customers','library','receive','apply','data','invoice','pif','showcase'] };
+const ELG_TABS={ '主要管理者':['home','customers','library','receive','apply','data','invoice','pif','showcase','summary'], '管理':['home','customers','library','receive','apply','data','invoice','pif','showcase','summary'] };
 
 let products=[];
 (function(){
@@ -639,50 +642,13 @@ products.forEach(p=>{ if(!p.type) p.type=inferType(p.name); if(p.alias===undefin
       self:false, mine:(co===CUST)}); });
 })();
 (function(){
-  // 依「晶寶付款清單」校正狀態：兩欄打勾=已完成 / 只付檢驗費=送驗中 / 未付=已收樣待付
-  let n=products.length;
-  const DRIVE_JB='https://drive.google.com/drive/folders/jingbao-pif';
-  // 7 筆已完成 PIF（對應 Google Drive 實際檔案）直接硬編，確保一定存在
-  const JB_DONE_DATA=[
-    {name:'循環晨韻精油',       date:'2026-05-25', en:'Cycling Morning Rhyme Essential Oil'},
-    {name:'薑萃天竺葵舒緩精油', date:'2026-05-26', en:'Ginger Geranium Soothing Essential Oil'},
-    {name:'曲線緊緻精油Plus',   date:'2026-05-26', en:'Firming Slimming Essential Oil Plus'},
-    {name:'瓷娃娃馬卡龍精華',   date:'2026-05-20', en:'Porcelain Doll Macaron Essence'},
-    {name:'幹細胞活膚三合一地漿水',date:'2026-05-29',en:'Stem Cell Revitalizing 3-in-1 Earth Water'},
-    {name:'茉莉花萃精油',       date:'2026-05-29', en:'Jasmine Extract Essential Oil'},
-    {name:'奧秘煥彩素顏霜',     date:'2026-05-29', en:'Secret Radiance Bare-Face Cream'},
-  ];
-  JB_DONE_DATA.forEach(d=>{
-    if(!products.some(p=>p.cust===CUST && p.name===d.name)){
-      const ty=inferType(d.name);
-      products.push({id:'jb-'+(++n),cust:CUST,name:d.name,alias:'',en:d.en,spec:'',qty:'',
-        status:'completed',batch:'已完成',type:ty,t:defTests(ty),mine:true,
-        charge:10000,drive:DRIVE_JB,pifPlan:'shared',pifPlanLabel:'共用合約價',
-        customerEmail:'vic881019@gmail.com',
-        payRecords:[{date:d.date,amt:10000,method:'匯款',note:'PIF 完成付款'}],
-        paidAmt:10000});
-    }
-  });
-  const JB_DONE=JB_DONE_DATA.map(d=>d.name);
+  // 只做基本狀態校正，不硬編已完成品項——讓使用者在樣品庫手動設定
   const JB_TEST=['玫瑰微臻霜','超泌肌能賦活精萃因子','蘆薈舒緩晶凍','積雪草修護凍膜','玫瑰臉部精油PLUS','積雪草舒緩安瓶','黑蝸牛極致保濕安瓶','EGF緊緻彈潤安瓶','微金分子彈潤肌安瓶','綻光煥膚杏仁酸精華','洋甘菊悠活精油'];
-  // 依品名套用狀態
-  products.forEach(p=>{ if(p.cust!==CUST) return;
-    if(JB_DONE.includes(p.name)){
-      p.status='completed'; p.batch='已完成';
-      if(!p.drive) p.drive=DRIVE_JB;
-      if(p.charge==null) p.charge=10000;
-      if(!p.pifPlanLabel) p.pifPlanLabel='共用合約價';
-    }
-    else if(JB_TEST.includes(p.name)){ p.status='testing'; if(!p.batch||p.batch==='匯入清單')p.batch='第一次送驗'; }
-    else { p.status='received'; }
+  products.forEach(p=>{
+    if(p.cust!==CUST) return;
+    if(JB_TEST.includes(p.name)){ p.status='testing'; if(!p.batch||p.batch==='匯入清單')p.batch='第一次送驗'; }
+    else if(p.status==='received'||p.status==='匯入清單'||!p.status){ p.status='received'; }
   });
-  // 補一筆待查帳示範（讓查帳功能可見）
-  if(!products.some(p=>p.cust===CUST && p.status==='reported')){
-    const ty=inferType('玫瑰微臻霜');
-    products.push({id:'jb-rep-1',cust:CUST,name:'玫瑰微臻霜（待查帳示範）',alias:'',en:'',spec:'250g',qty:'1瓶',
-      status:'reported',batch:'第一次送驗',type:ty,t:{fang:true,chang:true,wen:false},mine:true,
-      charge:10000,payNote:'末五碼 12345',customerEmail:'vic881019@gmail.com'});
-  }
 })();
 
 const SM={ applied:['等待依洛嘉確認','w'], approved:['可寄送','i'], pending:['待寄送','n'],
@@ -701,7 +667,7 @@ const PIF_PLANS=[
 const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 
 /* ---------- persistence ---------- */
-const SEED_VER='2026-06-17-hardcode-pif';
+const SEED_VER='2026-06-17-manual-pif';
 function save(){
   if(FB_SYNC_READY && typeof FB!=='undefined' && FB.on && FB.user && FB.role && FB.role!=='pending'){ clearTimeout(FB.syncT); FB.syncT=setTimeout(fbSync,400); }
   try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,showcase,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO})); }catch(e){}
@@ -1048,7 +1014,7 @@ function elgHeader(){
   </div>`;
 }
 function elgApp(){
-  const TI={ home:['layout-dashboard','總覽'], customers:['users','客戶'], library:['database','樣品庫'], receive:['package-import','收件'], apply:['list-check','申請'], data:['file-spreadsheet','送驗資料'], invoice:['receipt-2','請款'], pif:['clipboard-check','完成 PIF'], showcase:['sparkles','新品介紹'] };
+  const TI={ home:['layout-dashboard','總覽'], customers:['users','客戶'], library:['database','樣品庫'], receive:['package-import','收件'], apply:['list-check','申請'], data:['file-spreadsheet','送驗資料'], invoice:['receipt-2','請款'], pif:['clipboard-check','完成 PIF'], showcase:['sparkles','新品介紹'], summary:['chart-bar','收款匯總'] };
   const allowed = ELG_TABS[elgRole]||ELG_TABS['主要管理者'];
   if(!allowed.includes(elgTab)) elgTab=allowed[0];
   const tabs=allowed.map(id=>tab(elgTab,id,TI[id][0],TI[id][1],'A.setElgTab')).join('');
@@ -1065,6 +1031,7 @@ function elgScreen(){
   if(elgTab==='data') return elgData();
   if(elgTab==='invoice') return elgInvoice();
   if(elgTab==='showcase') return elgShowcase();
+  if(elgTab==='summary') return elgSummary();
   if(elgTab==='board') return boardBody();
   return elgPif();
 }
@@ -1148,6 +1115,74 @@ function elgShowcase(){
   }
   h+= scGrid(true);
   h+=`</div>`;
+  return h;
+}
+function elgSummary(){
+  // 收集所有有付款記錄的產品
+  const allRecs=[];
+  products.forEach(p=>{
+    (p.payRecords||[]).forEach(r=>{
+      allRecs.push({...r, pname:p.name, cust:custName(p), pid:p.id, charge:p.charge||0});
+    });
+  });
+  allRecs.sort((a,b)=>b.date.localeCompare(a.date));
+
+  // 統計
+  const total=allRecs.reduce((s,r)=>s+r.amt,0);
+  const byMethod={};
+  allRecs.forEach(r=>{ byMethod[r.method]=(byMethod[r.method]||0)+r.amt; });
+  const byCust={};
+  allRecs.forEach(r=>{ byCust[r.cust]=(byCust[r.cust]||0)+r.amt; });
+
+  // 應收（有 charge 但無 payRecords 的已完成/送驗中）
+  const unpaid=products.filter(p=>p.charge>0 && ['completed','testing','reporting'].includes(p.status));
+  const totalCharge=unpaid.reduce((s,p)=>s+(p.charge||0),0);
+  const totalPaid=unpaid.reduce((s,p)=>(p.payRecords||[]).reduce((a,r)=>a+r.amt,s),0);
+  const totalDiff=totalCharge-totalPaid;
+
+  let h=`<div class="note" style="margin-bottom:14px"><i class="ti ti-chart-bar"></i>所有產品的收款記錄匯總，可快速查看各客戶收款狀況與差額。</div>`;
+
+  // 總覽數字
+  h+=`<div class="dash" style="margin-bottom:16px">
+    <div class="metric"><div class="mi" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-cash"></i></div><div class="mv">${money(total)}</div><div class="ml">已收總計</div></div>
+    <div class="metric"><div class="mi" style="background:var(--w-bg);color:var(--w)"><i class="ti ti-receipt"></i></div><div class="mv">${money(totalCharge)}</div><div class="ml">應收總計</div></div>
+    <div class="metric"><div class="mi" style="background:var(--n-bg);color:var(--ink)"><i class="ti ti-coin"></i></div><div class="mv" style="${totalDiff>0?'color:var(--w)':'color:var(--s)' }">${money(Math.abs(totalDiff))}</div><div class="ml">${totalDiff>0?'尚欠':'已結清'}</div></div>
+    <div class="metric"><div class="mi"><i class="ti ti-receipt-2"></i></div><div class="mv">${allRecs.length}</div><div class="ml">收款筆數</div></div>
+  </div>`;
+
+  // 依付款方式
+  h+=`<div class="sect">依付款方式</div>`;
+  h+=`<div class="dash" style="margin-bottom:16px">`+Object.keys(byMethod).map(m=>`
+    <div class="metric"><div class="mi"><i class="ti ti-${m==='匯款'?'building-bank':m==='合約扣款'?'file-invoice':m==='信用卡'?'credit-card':'coins'}"></i></div>
+      <div class="mv" style="font-size:16px">${money(byMethod[m])}</div><div class="ml">${m}</div></div>`).join('')+`</div>`;
+
+  // 依客戶
+  h+=`<div class="sect">依客戶收款</div>`;
+  h+=`<div class="stack" style="margin-bottom:16px">`+Object.keys(byCust).sort().map(cn=>{
+    const custProd=products.filter(p=>custName(p)===cn && p.charge>0);
+    const custCharge=custProd.reduce((s,p)=>s+(p.charge||0),0);
+    const custPaid=byCust[cn];
+    const diff=custCharge-custPaid;
+    return `<div class="card compact row">
+      <span style="flex:1"><span class="nm">${cn}</span><br>
+        <span class="sub" style="font-size:11.5px">已收 ${money(custPaid)} / 應收 ${money(custCharge)}</span>
+      </span>
+      <span style="font-weight:700;color:${diff>0?'var(--w)':'var(--s)'}">${diff>0?'-'+money(diff):'已結清'}</span>
+    </div>`;
+  }).join('')+`</div>`;
+
+  // 明細清單（可按客戶篩選）
+  h+=`<div class="row sect"><span>收款明細（${allRecs.length} 筆）</span></div>`;
+  h+= allRecs.length ? `<div class="stack">`+allRecs.map(r=>`
+    <div class="card compact row" style="gap:10px">
+      <span style="flex:1;min-width:0">
+        <span class="nm" style="font-size:13px">${r.pname}</span><br>
+        <span class="sub" style="font-size:11.5px">${r.cust} · ${r.date} · ${r.method}${r.note?' · '+r.note:''}</span>
+      </span>
+      <span class="amt" style="color:var(--s);font-weight:700;flex:none">${money(r.amt)}</span>
+    </div>`).join('')+`</div>`
+  : `<div class="card faint" style="text-align:center;padding:20px">尚無收款記錄<br><span class="sub">在「請款」或「完成 PIF」的付款記錄欄新增後會出現在這裡</span></div>`;
+
   return h;
 }
 function custShowcase(){
@@ -1710,13 +1745,25 @@ function elgPif(){
   }
   h += doneAll.length ? `<div class="stack">`+ doneAll.map(p=>`
       <div class="card">
-        <div class="row" style="align-items:flex-start;gap:8px">
+        <div class="row" style="align-items:flex-start;gap:8px;margin-bottom:10px">
           <span style="flex:1;min-width:0">
             <span class="nm" style="font-size:14px">${p.name}</span><br>
-            <span class="sub" style="font-size:11.5px">${custName(p)}</span><br>
-            ${p.pifPlanLabel?`<span class="sub" style="font-size:11.5px;color:var(--s)">${p.pifPlanLabel}　${money(p.charge||0)}</span>`:`<span class="sub" style="font-size:11.5px">${money(p.charge||0)}</span>`}
+            <span class="sub" style="font-size:11.5px">${custName(p)}</span>
           </span>
-          <span class="pill pill--s" style="font-size:10px;flex:none"><i class="ti ti-circle-check"></i> PIF 已完成</span>
+          <span class="pill pill--s" style="font-size:10px;flex:none"><i class="ti ti-circle-check"></i> 已完成</span>
+        </div>
+        <label class="lbl">費用方案</label>
+        <select class="fld fld--mini" style="margin-bottom:8px" onchange="A.setPifPlanDone('${p.id}',this.value)">
+          ${PIF_PLANS.map(pl=>`<option value="${pl.id}" ${(p.pifPlan||'shared')===pl.id?'selected':''}>${pl.label}　${money(pl.amt)}</option>`).join('')}
+        </select>
+        <label class="lbl">PIF 雲端連結</label>
+        <div style="display:flex;gap:6px;margin-bottom:8px">
+          <input class="fld fld--mini" style="flex:1" value="${(p.drive||'').replace(/"/g,'&quot;')}" placeholder="貼上 Google Drive 連結" onchange="A.setPifDrive('${p.id}',this.value)">
+          ${p.drive?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 10px" onclick="window.open('${p.drive}','_blank')"><i class="ti ti-external-link"></i></button>`:''}
+        </div>
+        <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;color:#C0392B;border-color:#E7C3BD" onclick="A.movePifBack('${p.id}')"><i class="ti ti-arrow-back-up"></i> 移回製作中</button>
+          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" onclick="A.setStatus('${p.id}','testing')"><i class="ti ti-flask"></i> 移回送驗中</button>
         </div>
         ${payRecordPanel(p, false)}
       </div>`).join('')+`</div>`
@@ -2102,7 +2149,18 @@ const A = {
   go(t){ elgTab=t; confirmDel=null; render(); },
   goReceive(){ elgTab='receive'; render(); },
   openCust(nm){ custView=nm; batch={}; confirmDel=null; render(); },
-  setStatus(id,st){ const p=byId(id); if(p) p.status=st; render(); },
+  setStatus(id,st){
+    const p=byId(id); if(!p) return;
+    p.status=st;
+    if(st==='completed'){
+      p.batch='已完成';
+      if(!p.pifPlan) p.pifPlan='shared';
+      if(!p.pifPlanLabel) p.pifPlanLabel='共用合約價';
+      if(!p.charge) p.charge=10000;
+    }
+    save(); render();
+    if(st==='completed') A.toast('已設為完成 PIF，請到「完成 PIF」分頁補上連結與費用');
+  },
   setField(id,f,v){ const p=byId(id); if(p){ p[f]=v; save(); } },
   async genEnName(id){
     const p=byId(id); if(!p) return;
@@ -2621,6 +2679,12 @@ const A = {
     save(); render(); A.toast('已確認收款 '+money(amt)+'（'+method+'），轉待送驗');
   },
   receiveReport(id){ const p=byId(id); if(p) p.status='reporting'; render(); A.toast('已收到檢驗報告，轉 PIF 製作中'); },
+  delPayRecord(id,i){
+    const p=byId(id); if(!p||!p.payRecords) return;
+    const removed=p.payRecords.splice(i,1)[0];
+    if(removed) p.paidAmt=Math.max(0,(p.paidAmt||0)-removed.amt);
+    save(); render(); A.toast('已刪除付款記錄：'+money(removed&&removed.amt||0));
+  },
   addPayRecord(id){
     const p=byId(id); if(!p) return;
     const amt=Number((document.getElementById('pr_amt_'+id)||{}).value||0);
@@ -2629,10 +2693,28 @@ const A = {
     if(!amt||amt<=0){ A.toast('請填入有效金額'); return; }
     const ds=new Date().toLocaleDateString('zh-TW');
     p.payRecords=p.payRecords||[];
+    // 防重複：同一天+金額+方式不重複新增
+    const dup=p.payRecords.find(r=>r.date===ds&&r.amt===amt&&r.method===method);
+    if(dup){ A.toast('相同日期/金額/方式已有記錄，若確定請改備註後再新增'); return; }
     p.payRecords.push({date:ds, amt, method, note});
     p.paidAmt=(p.paidAmt||0)+amt;
     p.payMethod=method;
     save(); render(); A.toast('已新增付款記錄：'+money(amt)+'（'+method+'）');
+  },
+  setPifPlanDone(id,planId){
+    const p=byId(id); if(!p) return;
+    const pl=PIF_PLANS.find(x=>x.id===planId)||PIF_PLANS[0];
+    p.pifPlan=planId; p.pifPlanLabel=pl.label; p.charge=pl.amt;
+    save(); render(); A.toast('費用已更新：'+pl.label+' '+money(pl.amt));
+  },
+  setPifDrive(id,url){
+    const p=byId(id); if(!p) return;
+    p.drive=url.trim(); save();
+  },
+  movePifBack(id){
+    const p=byId(id); if(!p) return;
+    p.status='reporting'; p.batch=p.batch||'PIF製作中';
+    save(); render(); A.toast(p.name+' 已移回 PIF 製作中');
   },
   setPifPlan(id,planId){ const p=byId(id); if(p){ p.pifPlan=planId; render(); } },
   complete(id){
