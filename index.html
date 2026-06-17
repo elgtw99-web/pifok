@@ -649,6 +649,29 @@ products.forEach(p=>{ if(!p.type) p.type=inferType(p.name); if(p.alias===undefin
     if(JB_TEST.includes(p.name)){ p.status='testing'; if(!p.batch||p.batch==='匯入清單')p.batch='第一次送驗'; }
     else if(p.status==='received'||p.status==='匯入清單'||!p.status){ p.status='received'; }
   });
+  // 7 筆已完成 PIF（對應 Google Drive 實際檔案）
+  const DRIVE='https://drive.google.com/drive/folders/jingbao-pif';
+  const PIF7=[
+    {id:'pif-jb-1',name:'循環晨韻精油',        en:'Cycling Morning Rhyme Essential Oil',   date:'2026-05-25'},
+    {id:'pif-jb-2',name:'薑萃天竺葵舒緩精油',  en:'Ginger Geranium Soothing Essential Oil',date:'2026-05-26'},
+    {id:'pif-jb-3',name:'曲線緊緻精油Plus',    en:'Firming Slimming Essential Oil Plus',   date:'2026-05-26'},
+    {id:'pif-jb-4',name:'瓷娃娃馬卡龍精華',    en:'Porcelain Doll Macaron Essence',        date:'2026-05-20'},
+    {id:'pif-jb-5',name:'幹細胞活膚三合一地漿水',en:'Stem Cell Revitalizing 3-in-1 Elixir', date:'2026-05-29'},
+    {id:'pif-jb-6',name:'茉莉花萃精油',        en:'Jasmine Extract Essential Oil',         date:'2026-05-29'},
+    {id:'pif-jb-7',name:'奧秘煥彩素顏霜',      en:'Secret Radiance Bare-Face Cream',       date:'2026-05-29'},
+  ];
+  PIF7.forEach(d=>{
+    if(products.some(p=>p.id===d.id)) return; // 已存在就不重複加
+    products.push({
+      id:d.id, cust:CUST, name:d.name, alias:'', en:d.en, spec:'', qty:'',
+      status:'completed', batch:'已完成', type:inferType(d.name),
+      t:{fang:false,chang:false,wen:false}, mine:true,
+      drive:DRIVE, charge:10000, pifPlan:'shared', pifPlanLabel:'共用合約價',
+      customerEmail:'vic881019@gmail.com',
+      payRecords:[{date:d.date, amt:10000, method:'匯款', note:'PIF 完成付款'}],
+      paidAmt:10000
+    });
+  });
 })();
 
 const SM={ applied:['等待依洛嘉確認','w'], approved:['可寄送','i'], pending:['待寄送','n'],
@@ -667,7 +690,7 @@ const PIF_PLANS=[
 const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 
 /* ---------- persistence ---------- */
-const SEED_VER='2026-06-17-manual-pif';
+const SEED_VER='2026-06-17-pif7-fixed';
 function save(){
   if(FB_SYNC_READY && typeof FB!=='undefined' && FB.on && FB.user && FB.role && FB.role!=='pending'){ clearTimeout(FB.syncT); FB.syncT=setTimeout(fbSync,400); }
   try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,showcase,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO})); }catch(e){}
@@ -1633,9 +1656,14 @@ function elgInvoice(){
         <span class="muted">${cn} 合計</span>
         <span class="amt" style="font-size:20px" data-inv-tot="${cn}">${money(tot)}</span>
       </div>
-      ${isC
-        ? `<button class="btn btn--ok btn--sm" style="margin-top:10px" ${tot?'':'disabled'} onclick="A.settleByContract('${cn}')"><i class="ti ti-wallet"></i> 依合約餘額自動結算（不足改開收款單）</button>`
-        : `<button class="btn btn--sm" style="margin-top:10px" ${tot?'':'disabled'} data-inv-btn="${cn}" onclick="A.issueInvoiceFor('${cn}')"><i class="ti ti-send"></i> 開收款單給 ${cn}（合計 ${money(tot)}）</button>`}
+      ${cn===ELG_SELF
+        ? `<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+            <button class="btn btn--ok btn--sm" style="width:auto;padding:0 16px" onclick="A.waiveInvoice('${cn}')"><i class="ti ti-check"></i> 批量免收款（依洛嘉自有）</button>
+            <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.issueInvoiceFor('${cn}')"><i class="ti ti-send"></i> 正常開單</button>
+           </div>`
+        : isC
+          ? `<button class="btn btn--ok btn--sm" style="margin-top:10px" ${tot?'':'disabled'} onclick="A.settleByContract('${cn}')"><i class="ti ti-wallet"></i> 依合約餘額自動結算（不足改開收款單）</button>`
+          : `<button class="btn btn--sm" style="margin-top:10px" ${tot?'':'disabled'} data-inv-btn="${cn}" onclick="A.issueInvoiceFor('${cn}')"><i class="ti ti-send"></i> 開收款單給 ${cn}（合計 ${money(tot)}）</button>`}
     </div>`;
   }).join('') : `<div class="card faint" style="text-align:center;padding:16px">沒有待開單的樣品</div>`;
 
@@ -2634,6 +2662,18 @@ const A = {
   openMyFolder(){ const c=customers.find(x=>x.name===me.nameCh); if(c&&c.drive&&c.driveAuth) window.open(c.drive,'_blank'); else A.toast(c&&c.drive&&!c.driveAuth?'依洛嘉尚未授權存取你的 PIF 雲端資料夾':'依洛嘉尚未提供你的 PIF 雲端資料夾連結'); },
   setCustDrive(i,v){ if(customers[i]){ customers[i].drive=(v||'').trim(); save(); A.toast('已更新客戶 PIF 資料夾連結'); } },
   receive(id){ const p=byId(id); if(p){ p.status='received'; if(p.invSel===undefined)p.invSel=true; if(!p.feeSel)p.feeSel=5000; } render(); A.toast('已收樣，可到「請款」開收款單'); },
+  waiveInvoice(cn){
+    const items=P('received').filter(p=>custName(p)===cn && p.invSel);
+    if(!items.length){ A.toast('請先勾選要免收款的品項'); return; }
+    const ds=new Date().toLocaleDateString('zh-TW');
+    items.forEach(p=>{
+      p.status='paid'; p.charge=0; p.paidAmt=0;
+      p.paidVia='waived'; p.payMethod='免收款';
+      p.payRecords=p.payRecords||[];
+      p.payRecords.push({date:ds, amt:0, method:'免收款', note:'依洛嘉自有品項免收款'});
+    });
+    save(); render(); A.toast('已將 '+items.length+' 筆依洛嘉自有品項標記為免收款，可直接進入送驗流程');
+  },
   issueInvoiceFor(cn){
     const sel=P('received').filter(p=>custName(p)===cn && p.invSel);
     if(!sel.length){ A.toast('請先勾選 '+cn+' 的樣品'); return; }
