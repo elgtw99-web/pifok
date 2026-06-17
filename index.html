@@ -479,200 +479,14 @@ function parseCompany(t){
 }
 let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='', wipeOpen=false, ocrBusy=false, custAddOpen=false, pendingRestore=null, scQ='', scPage=0, scOpen=null, scDraft={name:'',en:'',tagline:'',cover:'',html:'',link:''}, pifSel={}, scSel={}, selScope=[],
 pifAddOpen=false, pifDraft={name:'',cust:'',drive:'',plan:'shared',note:'',toPublic:false}, pifDetailOpen=null;
-let sharedPIF=[
-  {name:'SYN三胜肽緊緻撫紋眼霜', type:'液劑霜劑'},
-  {name:'杏仁酸植萃亮顏精華', type:'液劑霜劑'},
-  {name:'藻臻粉', type:'其他'},
-  {name:'保濕波亮冰面膜', type:'面膜'},
-  {name:'水潤保濕面膜', type:'面膜'},
-  {name:'二裂酵母&靈芝抗老面膜', type:'面膜'},
-  {name:'修護舒緩面膜', type:'面膜'},
-  {name:'透亮美白面膜', type:'面膜'}
-];
-let staff=[
-  {name:'洪莉晴', email:'admin@eloga.com', role:'主要管理者'},
-  {name:'前臺收件', email:'desk@eloga.com', role:'前臺'}
-];
-let customers=[
-  {name:'晶寶企業行', email:'vic881019@gmail.com', login:'Google', status:'已啟用', drive:'https://drive.google.com/drive/folders/jingbao-pif', driveAuth:true},
-  {name:'芊奕田生技', email:'chianyi@line.me', login:'LINE', status:'已啟用', drive:'https://drive.google.com/drive/folders/chianyi-pif', driveAuth:true},
-  {name:'夏芮蒂生物科技有限公司', email:'sharidy@gmail.com', login:'Google', status:'已啟用', drive:''},
-  {name:'歐菲莉婭商行', email:'', login:'臨時', status:'臨時', temp:true, drive:''},
-  {name:'絢美學企業社', email:'', login:'臨時', status:'臨時', temp:true, drive:''},
-  {name:'鼎圓開發有限公司', email:'', login:'臨時', status:'臨時', temp:true, drive:''},
-  {name:'凱德妮斯企業社', email:'', login:'臨時', status:'臨時', temp:true, drive:''},
-  {name:'姝顏生技企業社', email:'', login:'臨時', status:'臨時', temp:true, drive:''},
-  {name:'潔皙生技', email:'', login:'臨時', status:'臨時', temp:true, drive:''}
-];
-const DEMO_INTRO='<!doctype html><html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><style>body{margin:0;font-family:-apple-system,system-ui,sans-serif;color:#2b2b2b}.hero{background:linear-gradient(135deg,#3E6B5E,#9DB6A7);color:#fff;padding:40px 24px;text-align:center}.hero h1{margin:0;font-size:26px}.hero p{margin:8px 0 0;opacity:.9}.sec{padding:24px}.sec h2{font-size:18px;border-left:4px solid #3E6B5E;padding-left:10px}.tag{display:inline-block;background:#EAF2F1;color:#3E6B5E;border-radius:999px;padding:4px 12px;font-size:13px;margin:4px 4px 0 0}</style></head><body><div class="hero"><h1>黑珍珠煥顏時空膠囊</h1><p>Black Pearl Renewal Capsule</p></div><div class="sec"><h2>產品特色</h2><p>單顆獨立精華膠囊，旅行隨身、用量精準，一顆鎖住整日保養。</p><div><span class="tag">黑珍珠萃取</span><span class="tag">煥顏緊緻</span><span class="tag">旅行友善</span></div></div><div class="sec"><h2>適用</h2><p>晚間保養最後一道鎖水步驟，取一顆塗抹全臉。</p></div><div class="sec" style="background:#F7F5EF"><h2>依洛嘉 E.L.G International Trading</h2><p>OEM／ODM 化妝品代工 · 台南市佳里區佳興里宅興二街600號</p></div></body></html>';
-let showcase=[
-  {id:'sc1',name:'紫草潤色唇膏',en:'Lithospermum Tinted Lip Balm',tagline:'天然紫草萃取，潤色與護唇一次到位',cover:'',html:'',link:'',ts:'2026-06-10'},
-  {id:'sc2',name:'奢華黑金潤澤膠原C型眼膜',en:'Black Gold Collagen Eye Mask',tagline:'黑金膠原貼合眼周，緊緻保濕有感',cover:'',html:'',link:'',ts:'2026-06-08'},
-  {id:'sc3',name:'黃金竹炭淨白亮采C型眼膜',en:'Gold Bamboo Charcoal Eye Mask',tagline:'竹炭淨化＋亮采配方，告別暗沉',cover:'',html:'',link:'',ts:'2026-06-05'},
-  {id:'sc4',name:'黑珍珠煥顏時空膠囊',en:'Black Pearl Renewal Capsule',tagline:'單顆精華膠囊，旅行隨身鎖住保養',cover:'',html:DEMO_INTRO,link:'',ts:'2026-06-01'}
-];
+let sharedPIF=[];
+let staff=[];
+let customers=[];
+const DEMO_INTRO='';
+let showcase=[];
 const ELG_TABS={ '主要管理者':['home','customers','library','receive','apply','data','invoice','pif','showcase','summary'], '管理':['home','customers','library','receive','apply','data','invoice','pif','showcase','summary'] };
 
 let products=[];
-(function(){
-  let n=0;
-  const IMP=[
-    ['紫草潤色唇膏','Lithospermum Lipstick','3.5g/支','16支',0,0,1,'依洛嘉國際實業有限公司'],
-    ['千面女郎溫感唇膏','Warm-Toned Lipstick','3.5g/支','16支',0,0,1,'依洛嘉國際實業有限公司'],
-    ['奢華黑金潤澤膠原C型眼膜','Luxurious Black Gold Moisturizing Collagen C-shaped Eye Mask','8g/片','6片',0,1,0,'依洛嘉國際實業有限公司'],
-    ['黃金竹炭淨白亮采C型眼膜','Gold Bamboo Charcoal Whitening C-shaped Eye Mask','8g/片','6片',0,1,0,'依洛嘉國際實業有限公司'],
-    ['緊緻撫紋保濕頸膜','Firming & Anti-Wrinkle Moisturizing Neck Mask','20g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
-    ['奢華金彈潤賦活頸膜','Luxurious Gold Elastic Revitalizing Neck Mask','20g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
-    ['S曲線彈力小腹膜','S-Curve Elastic Belly Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
-    ['生物磁超導UP彈力淨白胸膜','Biomagnetic Superconducting UP Elastic Whitening Breast Mask','20g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
-    ['深v美學保濕緊緻胸膜','Deep V Aesthetics Firming Breast Mask','20g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
-    ['蜜誘草本護唇膏','Beeswax Herbal Lip Balm','1.5g/支','32支',0,0,1,'依洛嘉國際實業有限公司'],
-    ['蜜誘粉漾護唇膏','Beeswax Pinky Lip Balm','1.5g/支','32支',0,0,1,'依洛嘉國際實業有限公司'],
-    ['黑珍珠煥顏時空膠囊','Black Pearl Skin Renewal Space-Time Capsule','0.5g/顆','100顆',0,0,1,'依洛嘉國際實業有限公司'],
-    ['Q10逆時潤彈膠囊','Q10 Anti-Time Moisturizing Space-Time Capsule','0.33g/顆','150顆',0,0,1,'依洛嘉國際實業有限公司'],
-    ['EGF活化因子時空膠囊','EGF Activating Factor Space-Time Capsule','0.35g/顆','150顆',0,0,1,'依洛嘉國際實業有限公司'],
-    ['潤澤修護時空膠囊','Moisturizing & Repairing Space-Time Capsule','0.5g/顆','100顆',0,0,1,'依洛嘉國際實業有限公司'],
-    ['高潤極致保濕黑面膜','Intensive Moisturizing Black Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
-    ['親膚極致舒緩黑面膜','Intensive Soothing Black Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
-    ['極細狠黑完美眼線液筆','Extreme Fine Intense Black Perfect Eyeliner Pen','2g/支','15支',0,1,0,'依洛嘉國際實業有限公司'],
-    ['免沖洗閃耀金護髮膠囊','No Rinse Golden Hair Treatment Capsules','0.8g/顆','65顆',0,0,1,'依洛嘉國際實業有限公司'],
-    ['免沖洗幻影黑護髮膠囊','No Rinse Black Hair Treatment Capsules','1g/顆','60顆',0,0,1,'依洛嘉國際實業有限公司'],
-    ['免沖洗甜心粉護髮膠囊','No Rinse Pink Hair Treatment Capsules','0.8g/顆','65顆',0,0,1,'依洛嘉國際實業有限公司'],
-    ['免沖洗水晶紫護髮膠囊','No Rinse Purple Hair Treatment Capsules','0.8g/顆','65顆',0,0,1,'依洛嘉國際實業有限公司'],
-    ['免沖洗草原綠護髮膠囊','No Rinse Grassland Hair Care Capsule','0.8g/顆','65顆',0,0,1,'依洛嘉國際實業有限公司'],
-    ['免沖洗寶石紅護髮膠囊','No Rinse Red Hair Treatment Capsules','0.8g/顆','65顆',0,0,1,'依洛嘉國際實業有限公司'],
-    ['摩洛哥護髮香氛膠囊','Moroccan Hair Care Fragrance Capsule','1g/顆','60顆',0,0,1,'依洛嘉國際實業有限公司'],
-    ['英國油護髮香氛膠囊','British Oil Hair Care Fragrance Capsule','1g/顆','60顆',0,0,1,'依洛嘉國際實業有限公司'],
-    ['蘆薈清爽去角質凝膠','Aloe Refreshing Peeling Gel','100g/瓶','3瓶',1,1,0,'依洛嘉國際實業有限公司'],
-    ['深層卸妝棉','Makeup Remover Deep Cleansing Cotton','60片/包，120g','3包',1,1,0,'依洛嘉國際實業有限公司'],
-    ['玫瑰臉部精油','Rose Face Massage Oil','100ml/瓶','4瓶',0,0,1,'依洛嘉國際實業有限公司'],
-    ['舒緩夜語精油','Soothing Night Whisper Essential Oil','100ml/瓶','4瓶',0,0,1,'依洛嘉國際實業有限公司'],
-    ['日夜雙護草本潤色護唇膏(蜜誘粉橙)','Day & Night Double Care Herbal Lip Balm (Pinky Orange)','1.5g/支','32支',0,0,1,'依洛嘉國際實業有限公司'],
-    ['日夜雙護草本潤色護唇膏(蜜桃牛奶)','Day & Night Double Care Herbal Lip Balm (Peach Milk)','1.5g/支','32支',0,0,1,'依洛嘉國際實業有限公司'],
-    ['保濕波亮冰面膜','Moisturizing Brightening Ice Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
-    ['水潤保濕面膜','Hydrating Moisturizing Face Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
-    ['二裂酵母&靈芝抗老面膜','Bifida Ferment and Ganoderma Anti-Aging Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
-    ['修護舒緩面膜','Repairing Soothing Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
-    ['乳液型保濕修護面膜','Emulsion Type Moisturizing Repairing Face Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
-    ['透亮美白面膜','Brightening Whitening Face Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
-    ['氣泡活氧面膜','Bubble Oxygen Mask','25g/片','5片',0,1,0,'依洛嘉國際實業有限公司'],
-    ['滋潤保濕按摩霜','Moisturizing Massage Cream','100g/瓶','3瓶',1,1,0,'依洛嘉國際實業有限公司'],
-    ['1%水','','250g/瓶','1瓶',1,0,0,'依洛嘉國際實業有限公司'],
-    ['0.5%水','','250g/瓶','1瓶',1,0,0,'依洛嘉國際實業有限公司'],
-    ['B5精華賦活保濕安瓶','','10g/瓶','20瓶',1,1,0,'晶寶企業行'],
-    ['光感精萃潔顏露','','500g/瓶','1瓶',1,1,0,'晶寶企業行'],
-    ['玫瑰奢華透光露','','500g/瓶','1瓶',1,1,0,'晶寶企業行'],
-    ['柔嫩煥光保濕乳','','500g/瓶','1瓶',1,1,0,'晶寶企業行'],
-    ['玫瑰潤膚舒壓霜','','500g/瓶','1瓶',1,1,0,'晶寶企業行'],
-    ['極光煥膚精華','','500g/瓶','1瓶',1,1,0,'晶寶企業行'],
-    ['蘆薈凝萃去角質','','500g/瓶','1瓶',1,1,0,'晶寶企業行'],
-    ['玫瑰花萃時光卸淨乳','','500g/瓶','1瓶',1,1,0,'晶寶企業行'],
-    ['永恆之肌-隱形天絲面膜','Timeless Skin-Invisible Tencel Mask','25g/片','5片',0,1,0,'芊奕田生技'],
-    ['蘋果光靚膚精華','','30g/瓶','10瓶',1,1,0,'夏芮蒂生物科技有限公司'],
-    ['雙效美白精華','','30g/瓶','8瓶',1,1,0,'歐菲莉婭商行'],
-    ['深度保濕精華面膜','','25g/片','5片',0,1,0,'歐菲莉婭商行'],
-    ['3重亮白舒緩面膜','','25g/片','5片',0,1,0,'歐菲莉婭商行'],
-    ['4D二裂酵母益生菌舒緩保濕面膜','','25g/片','5片',0,1,0,'歐菲莉婭商行'],
-    ['複萃舒緩私密處膜','','12g/片','10片',0,1,1,'絢美學企業社'],
-    ['白玉蝸牛潤澤修護面膜','','25g/片','6片',0,1,1,'鼎圓開發有限公司'],
-    ['白玉蝸牛修復精華','White Jade Snail Repair Essence','500g/瓶','1瓶',1,1,1,'鼎圓開發有限公司'],
-    ['植萃4D玻尿酸修護精華水','Botanical 4D HA Repair Essence Water','500g/瓶','1瓶',1,1,1,'凱德妮斯企業社'],
-    ['玻尿酸極致保濕面膜(天絲面膜)','','25g/片','5片',0,1,0,'姝顏生技企業社'],
-    ['胜肽緊緻煥白面膜','','25g/片','5片',0,1,0,'姝顏生技企業社'],
-    ['藍銅胜肽緊緻面膜','','25g/片','5片',0,1,0,'姝顏生技企業社'],
-    ['玫瑰玻尿酸保濕面膜','','25g/片','5片',0,1,0,'姝顏生技企業社'],
-  ];
-  IMP.forEach(r=>{ const co=r[7];
-    products.push({id:'p'+(++n),cust:co,name:r[0],alias:'',en:r[1],spec:r[2],qty:r[3],
-      status:'received',batch:'匯入清單',t:{fang:!!r[4],chang:!!r[5],wen:!!r[6]},
-      self:(co===ELG_SELF), mine:(co===CUST)}); });
-})();
-products.forEach(p=>{ if(!p.type) p.type=inferType(p.name); if(p.alias===undefined) p.alias=''; });
-(function(){
-  const byc={}; products.forEach(p=>{ (byc[p.cust]=byc[p.cust]||[]).push(p); });
-  const seg=(c,a,b)=>(byc[c]||[]).slice(a,b);
-  const PIF='https://drive.google.com/drive/folders/elg-pif';
-  const done=(arr,drive,charge)=>arr.forEach(p=>{ p.status='completed'; p.batch='已完成'; p.drive=drive||PIF; if(charge!=null)p.charge=charge; });
-  const set=(arr,st,ex)=>arr.forEach(p=>{ p.status=st; Object.assign(p,ex||{}); });
-  // 依洛嘉自有（42）：完成 / 送驗中 / 製作中 / 待送驗，其餘在庫
-  done(seg(ELG_SELF,0,6), PIF, 0);
-  set(seg(ELG_SELF,6,11),'testing',{batch:'送驗中'});
-  set(seg(ELG_SELF,11,14),'reporting',{});
-  set(seg(ELG_SELF,14,18),'paid',{genSel:true});
-  // 晶寶（8）
-  done(seg('晶寶企業行',0,2),'https://drive.google.com/drive/folders/jingbao-pif',10000);
-  set(seg('晶寶企業行',2,4),'testing',{batch:'送驗中'});
-  set(seg('晶寶企業行',4,5),'paid',{genSel:true});
-  set(seg('晶寶企業行',6,7),'applied',{});
-  set(seg('晶寶企業行',7,8),'shipped',{});
-  // 芊奕田（1）完成
-  done(seg('芊奕田生技',0,1),'https://drive.google.com/drive/folders/chianyi-pif',10000);
-  // 夏芮蒂（1）送驗中
-  set(seg('夏芮蒂生物科技有限公司',0,1),'testing',{batch:'送驗中'});
-  // 歐菲莉婭（4）：完成1 / 待送驗1 / 其餘在庫
-  done(seg('歐菲莉婭商行',0,1), PIF);
-  set(seg('歐菲莉婭商行',1,2),'paid',{genSel:true});
-  // 鼎圓（2）送驗中1
-  set(seg('鼎圓開發有限公司',0,1),'testing',{batch:'送驗中'});
-  // 姝顏（4）：完成1 / 申請1
-  done(seg('姝顏生技企業社',0,1), PIF);
-  set(seg('姝顏生技企業社',2,3),'applied',{});
-})();
-(function(){
-  let n=products.length;
-  const T=(f,g,w)=>({fang:!!f,chang:!!g,wen:!!w});
-  // 第一次送驗 12 筆（公司欄空白 → 大多歸晶寶，智能修護面膜暫歸潔皙生技，可在樣品庫手選轉移）
-  const B12=[
-    ['玫瑰微臻霜','','250g','1瓶',1,1,0,'晶寶企業行'],
-    ['超泌肌能賦活精萃因子','','30g','8瓶',1,1,0,'晶寶企業行'],
-    ['蘆薈舒緩晶凍','','500g','1瓶',1,1,0,'晶寶企業行'],
-    ['積雪草修護凍膜','','500g','1瓶',1,1,0,'晶寶企業行'],
-    ['玫瑰臉部精油PLUS','','100ml','2瓶',0,1,0,'晶寶企業行'],
-    ['積雪草舒緩安瓶','','10g','22瓶',1,1,0,'晶寶企業行'],
-    ['黑蝸牛極致保濕安瓶','','10g','22瓶',1,1,0,'晶寶企業行'],
-    ['EGF緊緻彈潤安瓶','','10g','22瓶',1,1,0,'晶寶企業行'],
-    ['微金分子彈潤肌安瓶','','10g','22瓶',1,1,0,'晶寶企業行'],
-    ['綻光煥膚杏仁酸精華','','30g','8瓶',1,1,0,'晶寶企業行'],
-    ['洋甘菊悠活精油','','100ml','2瓶',0,1,0,'晶寶企業行'],
-    ['智能修護面膜','PDRN×YMT DERAMIDE MASK','25g','4片',0,1,0,'潔皙生技']
-  ];
-  B12.forEach(r=>{ const co=r[7];
-    products.push({id:'b1-'+(++n),cust:co,name:r[0],alias:'',en:r[1],spec:r[2],qty:r[3],
-      status:'testing',batch:'第一次送驗',t:T(r[4],r[5],r[6]),type:inferType(r[0]),
-      self:false, mine:(co===CUST)}); });
-})();
-(function(){
-  // 只做基本狀態校正，不硬編已完成品項——讓使用者在樣品庫手動設定
-  const JB_TEST=['玫瑰微臻霜','超泌肌能賦活精萃因子','蘆薈舒緩晶凍','積雪草修護凍膜','玫瑰臉部精油PLUS','積雪草舒緩安瓶','黑蝸牛極致保濕安瓶','EGF緊緻彈潤安瓶','微金分子彈潤肌安瓶','綻光煥膚杏仁酸精華','洋甘菊悠活精油'];
-  products.forEach(p=>{
-    if(p.cust!==CUST) return;
-    if(JB_TEST.includes(p.name)){ p.status='testing'; if(!p.batch||p.batch==='匯入清單')p.batch='第一次送驗'; }
-    else if(p.status==='received'||p.status==='匯入清單'||!p.status){ p.status='received'; }
-  });
-  // 7 筆已完成 PIF（對應 Google Drive 實際檔案）
-  const DRIVE='https://drive.google.com/drive/folders/jingbao-pif';
-  const PIF7=[
-    {id:'pif-jb-1',name:'循環晨韻精油',        en:'Cycling Morning Rhyme Essential Oil',   date:'2026-05-25'},
-    {id:'pif-jb-2',name:'薑萃天竺葵舒緩精油',  en:'Ginger Geranium Soothing Essential Oil',date:'2026-05-26'},
-    {id:'pif-jb-3',name:'曲線緊緻精油Plus',    en:'Firming Slimming Essential Oil Plus',   date:'2026-05-26'},
-    {id:'pif-jb-4',name:'瓷娃娃馬卡龍精華',    en:'Porcelain Doll Macaron Essence',        date:'2026-05-20'},
-    {id:'pif-jb-5',name:'幹細胞活膚三合一地漿水',en:'Stem Cell Revitalizing 3-in-1 Elixir', date:'2026-05-29'},
-    {id:'pif-jb-6',name:'茉莉花萃精油',        en:'Jasmine Extract Essential Oil',         date:'2026-05-29'},
-    {id:'pif-jb-7',name:'奧秘煥彩素顏霜',      en:'Secret Radiance Bare-Face Cream',       date:'2026-05-29'},
-  ];
-  PIF7.forEach(d=>{
-    if(products.some(p=>p.id===d.id)) return; // 已存在就不重複加
-    products.push({
-      id:d.id, cust:CUST, name:d.name, alias:'', en:d.en, spec:'', qty:'',
-      status:'completed', batch:'已完成', type:inferType(d.name),
-      t:{fang:false,chang:false,wen:false}, mine:true,
-      drive:DRIVE, charge:10000, pifPlan:'shared', pifPlanLabel:'共用合約價',
-      customerEmail:'vic881019@gmail.com',
-      payRecords:[{date:d.date, amt:10000, method:'匯款', note:'PIF 完成付款'}],
-      paidAmt:10000
-    });
-  });
-})();
 
 const SM={ applied:['等待依洛嘉確認','w'], approved:['可寄送','i'], pending:['待寄送','n'],
   shipped:['已寄出樣品','i'], received:['已收樣','i'], invoiced:['待匯款','w'], reported:['待查帳','w'],
@@ -2842,7 +2656,7 @@ document.addEventListener('focusout', ()=>{ const f=document.getElementById('fab
 // ===== Firebase 同步開關 =====
 // 目前設為 false：Google 登入只做身分驗證，資料全走本機 localStorage
 // Firestore 規則設好 + 首次上傳後，改為 true 啟用雲端同步
-const FB_SYNC_READY = false;
+const FB_SYNC_READY = true;
 
 const firebaseConfig = {
   apiKey: "AIzaSyDYZv3jPSYlpfD5SznvF8OfkQsILQTFJ8I",
