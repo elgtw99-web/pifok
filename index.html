@@ -287,6 +287,9 @@
     <div id="dev"></div>
   </div>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.3.0/firebase-app-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.3.0/firebase-auth-compat.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.3.0/firebase-firestore-compat.min.js"></script>
 <script>
 const CUST = '晶寶企業行';
 const ELG_SELF = '依洛嘉國際實業有限公司';
@@ -629,7 +632,10 @@ const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 
 /* ---------- persistence ---------- */
 const SEED_VER='2026-06-15-jingbao-fix';
-function save(){ try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,showcase,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO})); }catch(e){} }
+function save(){
+  if(typeof FB!=='undefined' && FB.on && FB.user && FB.role && FB.role!=='pending'){ clearTimeout(FB.syncT); FB.syncT=setTimeout(fbSync,400); return; }
+  try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,showcase,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO})); }catch(e){}
+}
 function load(){
   try{
     const raw=localStorage.getItem('elg_state'); if(!raw) return;
@@ -666,6 +672,7 @@ function render(){
   else if(view==='board') html=boardScreen();
   else if(view==='add-items') html=addItemsScreen();
   else if(view==='shared-pif') html=sharedPifScreen();
+  else if(view==='fb-pending') html=fbPendingScreen();
   else html = (role==='customer') ? custApp() : elgApp();
   app.innerHTML=html;
   let endc='end-entry';
@@ -730,12 +737,13 @@ function elogaLogin(){
   const chip=r=>`<button class="${elgRole===r?'on':''}" onclick="A.pickElgRole('${r}')">${r}</button>`;
   return `<div class="full">
     <button class="back" onclick="A.backEntry()"><i class="ti ti-arrow-left"></i> 返回</button>
-    <div class="logintop"><div class="logo sm">依</div><h2>依洛嘉內部登入</h2><p class="muted">請輸入內部帳號</p></div>
-    <label class="lbl">帳號</label><input class="fld" value="eloga.admin" style="margin-bottom:14px">
-    <label class="lbl">密碼</label><input class="fld" type="password" value="demo1234" style="margin-bottom:14px">
+    <div class="logintop"><div class="logo sm">依</div><h2>依洛嘉內部登入</h2><p class="muted">以授權的 Google 帳號登入雲端後臺</p></div>
+    <button class="btn" style="margin-bottom:18px" onclick="A.googleSignIn()"><i class="ti ti-brand-google"></i> 使用 Google 登入（雲端後臺）</button>
+    <div class="note" style="margin-bottom:18px"><i class="ti ti-info-circle"></i>需先在 Firebase 把你的帳號加入 staff 名單，登入後才會進入後臺；否則會顯示「帳號待開通」並出示你的 UID。</div>
+    <div class="note" style="margin-bottom:10px"><i class="ti ti-flask"></i>離線測試（不連雲端）</div>
     <label class="lbl">以身分登入（Demo · 測試權限）</label>
-    <div class="seg" style="margin-bottom:20px">${chip('主要管理者')}${chip('管理')}</div>
-    <button class="btn" onclick="A.loginEloga()"><i class="ti ti-login-2"></i> 登入</button>
+    <div class="seg" style="margin-bottom:14px">${chip('主要管理者')}${chip('管理')}</div>
+    <button class="btn btn--ghost" onclick="A.loginEloga()"><i class="ti ti-login-2"></i> 以範例後臺進入</button>
   </div>`;
 }
 function customerLogin(){
@@ -743,9 +751,10 @@ function customerLogin(){
     <button class="back" onclick="A.backEntry()"><i class="ti ti-arrow-left"></i> 返回</button>
     <div class="logintop"><div class="logo sm" style="background:var(--accent-tint);color:var(--accent)"><i class="ti ti-user"></i></div>
       <h2>客戶登入</h2><p class="muted">選擇你慣用的帳號登入</p></div>
-    <button class="btn btn--ghost" style="margin-bottom:12px" onclick="A.loginCustomer('Google')"><i class="ti ti-brand-google" style="color:#4285F4"></i> 使用 Google 登入</button>
-    <button class="btn linebtn" onclick="A.loginCustomer('LINE')"><i class="ti ti-brand-line"></i> 使用 LINE 登入</button>
-    <div class="note" style="margin-top:18px"><i class="ti ti-info-circle"></i>用 LINE 登入的話，取 PIF 檔案前需留一個 Gmail，才能收到雲端硬碟資料夾分享。</div>
+    <button class="btn btn--ghost" style="margin-bottom:12px" onclick="A.googleSignIn()"><i class="ti ti-brand-google" style="color:#4285F4"></i> 使用 Google 登入（雲端）</button>
+    <button class="btn linebtn" onclick="A.toast('LINE 登入稍後支援，請先用 Google 登入')"><i class="ti ti-brand-line"></i> 使用 LINE 登入</button>
+    <div class="note" style="margin-top:18px"><i class="ti ti-info-circle"></i>用 Google 登入後，依洛嘉會以你的信箱對應到你的帳號；尚未開通的信箱會顯示「帳號待開通」。</div>
+    <div class="note" style="margin-top:10px"><i class="ti ti-flask"></i>離線測試：<span style="cursor:pointer;text-decoration:underline" onclick="A.loginCustomer('Google')">用範例客戶進入（不連雲端）</span></div>
   </div>`;
 }
 function customerProfile(){
@@ -1604,17 +1613,19 @@ const dval=(id,def)=>{ const e=document.getElementById(id); return e? e.value : 
 function syncDrafts(){ drafts=drafts.map((d,i)=>({ name:dval('d_n_'+i,d.name), alias:dval('d_a_'+i,d.alias||''), en:dval('d_e_'+i,d.en||''), spec:dval('d_s_'+i,d.spec), qty:dval('d_q_'+i,d.qty) })); }
 
 function addItemsScreen(){
-  const seg=(id,ic,lbl)=>`<button class="${addMode===id?'on':''}" onclick="A.setAddMode('${id}')"><i class="ti ti-${ic}"></i> ${lbl}</button>`;
-  let h=`<div class="hd"><div><h1>新增品項</h1><p>${addTarget==='eloga'?'依洛嘉自建':'拍照／貼文字／手動'}</p></div>
+  const isElg = addTarget==='eloga';
+  const m = (!isElg && addMode==='photo') ? 'text' : addMode;   // 客戶端沒有照片辨識
+  const seg=(id,ic,lbl)=>`<button class="${m===id?'on':''}" onclick="A.setAddMode('${id}')"><i class="ti ti-${ic}"></i> ${lbl}</button>`;
+  let h=`<div class="hd"><div><h1>新增品項</h1><p>${isElg?'依洛嘉建檔 · 照片辨識／貼文字／手動':'貼文字／手動'}</p></div>
       <button class="backbtn" onclick="A.closeAddItems()"><i class="ti ti-arrow-left"></i> 返回</button></div>
     <div class="screen"><div class="pane">`;
-  if(addTarget==='eloga'){
+  if(isElg){
     h+=`<label class="lbl">歸屬客戶</label>
       <select class="fld" style="margin-bottom:14px" onchange="A.setAddCust(this.value)">
         ${customers.map(c=>`<option ${c.name===addCust?'selected':''}>${c.name}</option>`).join('')}</select>`;
   }
-  h+=`<div class="modeseg">${seg('photo','camera','截圖辨識')}${seg('text','clipboard-text','貼文字')}${seg('manual','pencil','手動')}</div>`;
-  h+=`<div style="margin-top:14px">${ addMode==='photo'?photoMode() : addMode==='text'?textMode() : manualMode() }</div>`;
+  h+=`<div class="modeseg">${isElg?seg('photo','camera','照片辨識'):''}${seg('text','clipboard-text','貼文字')}${seg('manual','pencil','手動')}</div>`;
+  h+=`<div style="margin-top:14px">${ (isElg && m==='photo')?photoMode() : m==='text'?textMode() : manualMode() }</div>`;
   if(drafts.length){
     h+=`<div class="row sect mt"><span>待確認（${drafts.length}）</span><span class="muted" style="font-size:13px;font-weight:600;cursor:pointer" onclick="A.clearDrafts()">清空草稿</span></div>
       <div class="faint" style="font-size:12px;margin:0 0 8px"><i class="ti ti-device-floppy"></i> 已自動暫存，可離開後再回來繼續</div><div class="stack">`+ drafts.map((d,i)=>`
@@ -1692,6 +1703,15 @@ function elogaAccounts(){
       </div>
       ${s? staffSection() : customerSection()}
       <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--line)">
+        <div class="card" style="border-color:var(--accent);margin-bottom:14px">
+          <p class="nm" style="font-size:15px"><i class="ti ti-cloud"></i> 雲端同步（Firebase）</p>
+          <p class="sub" style="margin:4px 0 10px">${(typeof FB!=='undefined'&&FB.on&&FB.user)?('已雲端登入：'+(FB.user.email||'')+'　·　資料即時同步到雲端、多裝置共用'):'目前未雲端登入（資料存在本機）。請從入口頁用 Google 登入。'}</p>
+          ${(typeof FB!=='undefined'&&FB.on&&FB.user)?`<div style="display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn--sm" style="width:auto;padding:0 16px" onclick="A.fbUploadSeed()"><i class="ti ti-cloud-upload"></i> 首次上傳資料到雲端</button>
+            <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" onclick="A.fbLogout()"><i class="ti ti-logout"></i> 雲端登出</button>
+          </div>
+          <p class="sub" style="margin-top:8px">「首次上傳」會把目前資料寫到雲端；若雲端已有資料會自動略過、不覆蓋。</p>`:''}
+        </div>
         <div class="card" style="border-color:var(--accent)">
           <p class="nm" style="font-size:15px"><i class="ti ti-database-export"></i> 資料備份與還原</p>
           <p class="sub" style="margin:4px 0 10px">系統資料目前存在本機瀏覽器，建議定期下載備份。換裝置、清快取或更新版本後，可用備份檔還原全部資料。</p>
@@ -1830,11 +1850,11 @@ const A = {
   backEntry(){ view='entry'; render(); },
   loginEloga(){ role='eloga'; zone='back'; const a=ELG_TABS[elgRole]||ELG_TABS['主要管理者']; elgTab=a[0]; view='app'; render(); A.toast('以「'+elgRole+'」身分登入'); },
   setZone(z){ zone=z; if(view==='eloga-accounts') view='app'; render(); },
-  openAddItems(target){ if(addTarget!==target) drafts=[]; addTarget=target; if(!addCust) addCust=(customers[0]&&customers[0].name)||''; view='add-items'; render(); },
+  openAddItems(target){ if(addTarget!==target) drafts=[]; addTarget=target; if(target!=='eloga' && addMode==='photo') addMode='text'; if(!addCust) addCust=(customers[0]&&customers[0].name)||''; view='add-items'; render(); },
   closeAddItems(){ view='app'; if(addTarget==='eloga') elgTab='data'; else custTab='submit'; render(); },
   clearDrafts(){ drafts=[]; save(); render(); A.toast('已清空草稿'); },
   syncSave(){ syncDrafts(); save(); },
-  setAddMode(m){ syncDrafts(); addMode=m; render(); },
+  setAddMode(m){ if(m==='photo' && addTarget!=='eloga') return; syncDrafts(); addMode=m; render(); },
   setAddCust(v){ addCust=v; },
   recognizeText(){ syncDrafts(); const got=parseLines(dval('pastebox','')); if(!got.length){ A.toast('沒有辨識到品名'); return; } drafts=drafts.concat(got); render(); A.toast('辨識出 '+got.length+' 筆，請確認'); },
   photoRecognized(){ syncDrafts(); drafts.push({name:'（截圖辨識品名，請確認）',en:'',spec:'',qty:''}); render(); A.toast('已辨識 1 筆（示意），請確認'); },
@@ -1958,6 +1978,7 @@ const A = {
   },
   toggleDev(){ devOpen=!devOpen; render(); },
   devGo(which){
+    if(typeof FB!=='undefined' && FB.on && FB.user){ A.toast('已雲端登入，請先登出再用測試切換'); devOpen=false; render(); return; }
     devOpen=false;
     if(which==='customer'){ role='customer'; Object.assign(me,SAMPLE_ME); me.filled=true; custTab='submit'; view='app'; }
     else if(which==='customer2'){ role='customer'; Object.assign(me,SAMPLE_ME2); me.filled=true; custTab='submit'; view='app'; }
@@ -2002,7 +2023,7 @@ const A = {
     me.nameCh=g('m_nch')||me.nameCh; me.nameEn=g('m_nen'); me.addrCh=g('m_ach'); me.addrEn=g('m_aen'); me.phone=g('m_tel');
     me.filled=true; view='app'; custTab='submit'; render(); A.toast('廠商資料已儲存');
   },
-  logout(){ view='entry'; render(); },
+  logout(){ try{ if(typeof FB!=='undefined' && FB.on && FB.user){ FB.auth.signOut(); FB.user=null; FB.role=null; FB.ready=false; } }catch(e){} role='customer'; view='entry'; render(); },
   openAccounts(){ view='eloga-accounts'; acctTab='staff'; addOpen=false; wipeOpen=false; render(); },
   scSearch(v){ scQ=v; scPage=0; render(); },
   scGo(n){ scPage=n; render(); },
@@ -2301,8 +2322,139 @@ window.A=A;
 // 打字時自動隱藏浮動客服圖標，避免擋住輸入
 document.addEventListener('focusin', e=>{ const t=e.target&&e.target.tagName; if(t==='INPUT'||t==='TEXTAREA'){ const f=document.getElementById('fab'); if(f) f.classList.add('hide'); } });
 document.addEventListener('focusout', ()=>{ const f=document.getElementById('fab'); if(f) f.classList.remove('hide'); });
+
+/* ===================== FIREBASE 雲端層 ===================== */
+const firebaseConfig = {
+  apiKey: "AIzaSyDYZv3jPSYlpfD5SznvF8OfkQsILQTFJ8I",
+  authDomain: "pifok-20e32.firebaseapp.com",
+  projectId: "pifok-20e32",
+  storageBucket: "pifok-20e32.firebasestorage.app",
+  messagingSenderId: "457227684194",
+  appId: "1:457227684194:web:86fd2fb78885f350db843b"
+};
+let FB={on:false,db:null,auth:null,user:null,role:null,unsub:[],last:{},ready:false,syncT:null};
+let SEED_SNAPSHOT=null;
+function fbInit(){
+  try{
+    if(window.firebase && firebaseConfig.apiKey){
+      firebase.initializeApp(firebaseConfig);
+      FB.db=firebase.firestore(); FB.auth=firebase.auth(); FB.on=true;
+    }
+  }catch(e){ FB.on=false; console.warn('Firebase init failed',e); }
+}
+function stripId(o){ const c=Object.assign({},o); delete c.id; return c; }
+function fbDetach(){ FB.unsub.forEach(u=>{try{u();}catch(e){}}); FB.unsub=[]; }
+function snapApply(name, arr, docs){
+  arr.length=0; const m={};
+  docs.forEach(d=>{ const o=Object.assign({}, d.data()); o.id=d.id; arr.push(o); m[d.id]=JSON.stringify(stripId(o)); });
+  FB.last[name]=m;
+}
+function emailMap(){ const m={}; customers.forEach(c=>{ if(c.name) m[c.name]=c.email||''; }); m[ELG_SELF]=''; return m; }
+function attachAdmin(){
+  fbDetach();
+  const C=(name,arr)=>FB.unsub.push(FB.db.collection(name).onSnapshot(s=>{ snapApply(name,arr,s.docs); FB.ready=true; render(); }, e=>console.warn(name,e)));
+  C('products',products); C('customers',customers); C('staff',staff); C('sharedPIF',sharedPIF); C('showcase',showcase);
+}
+function attachCustomer(email){
+  fbDetach();
+  FB.unsub.push(FB.db.collection('products').where('customerEmail','==',email).onSnapshot(s=>{ snapApply('products',products,s.docs); FB.ready=true; render(); }, e=>console.warn(e)));
+  FB.unsub.push(FB.db.collection('customers').where('email','==',email).onSnapshot(s=>{ snapApply('customers',customers,s.docs); render(); }, e=>console.warn(e)));
+  FB.unsub.push(FB.db.collection('sharedPIF').where('state','in',['public','building']).onSnapshot(s=>{ snapApply('sharedPIF',sharedPIF,s.docs); render(); }, e=>console.warn(e)));
+  FB.unsub.push(FB.db.collection('showcase').onSnapshot(s=>{ snapApply('showcase',showcase,s.docs); render(); }, e=>console.warn(e)));
+}
+function fbStart(){
+  if(!FB.on) return;
+  FB.auth.onAuthStateChanged(async user=>{
+    FB.user=user;
+    if(!user){ FB.role=null; FB.ready=false; fbDetach(); return; }
+    try{
+      const sd=await FB.db.collection('staff').doc(user.uid).get();
+      if(sd.exists){
+        FB.role='eloga'; role='eloga'; elgRole=(sd.data()&&sd.data().role)||'主要管理者'; zone='back'; elgTab='home'; view='app';
+        attachAdmin(); render();
+      } else {
+        const q=await FB.db.collection('customers').where('email','==',user.email).limit(1).get();
+        if(!q.empty){
+          const c=q.docs[0].data(); FB.role='customer'; role='customer'; custTab='submit';
+          me=Object.assign({}, me, {nameCh:c.name, nameEn:c.nameEn||'', addrCh:CINFO[c.name]||me.addrCh||'', email:user.email, filled:true});
+          attachCustomer(user.email); view='app'; render();
+        } else {
+          FB.role='pending'; role='guest'; view='fb-pending'; render();
+        }
+      }
+    }catch(e){ A.toast('登入後讀取失敗：'+e.message); console.warn(e); }
+  });
+}
+function fbSync(){
+  if(!FB.on||!FB.user||!FB.ready||FB.role==='pending') return;
+  try{
+    const em=emailMap();
+    const cols = FB.role==='eloga' ? ['products','customers','staff','sharedPIF','showcase'] : ['products'];
+    const ref={products,customers,staff,sharedPIF,showcase};
+    const batch=FB.db.batch(); let ops=0;
+    cols.forEach(name=>{
+      const arr=ref[name]||[]; const last=FB.last[name]||{}; const seen={};
+      arr.forEach(o=>{
+        if(!o.id) o.id=FB.db.collection(name).doc().id;
+        const data=stripId(o);
+        if(name==='products' && !data.customerEmail) { data.customerEmail=em[data.cust]||''; o.customerEmail=data.customerEmail; }
+        seen[o.id]=true;
+        const j=JSON.stringify(data);
+        if(last[o.id]!==j){ batch.set(FB.db.collection(name).doc(o.id),data); last[o.id]=j; ops++; }
+      });
+      Object.keys(last).forEach(id=>{ if(!seen[id]){ batch.delete(FB.db.collection(name).doc(id)); delete last[id]; ops++; } });
+      FB.last[name]=last;
+    });
+    if(FB.role==='eloga'){ batch.set(FB.db.collection('meta').doc('config'),{CINFO},{merge:true}); ops++; }
+    if(ops>0 && ops<=450) batch.commit().catch(e=>console.warn('sync',e));
+  }catch(e){ console.warn('fbSync',e); }
+}
+function fbPendingScreen(){
+  const u=FB.user||{};
+  return `<div class="full">
+    <div class="brand"><div class="logo">依</div><h1>帳號待開通</h1></div>
+    <div class="card" style="margin-top:20px">
+      <p class="nm" style="font-size:15px"><i class="ti ti-user-question"></i> 這個 Google 帳號尚未開通</p>
+      <p class="sub" style="margin:8px 0">登入信箱：<b>${u.email||''}</b></p>
+      <p class="sub" style="margin:8px 0">若你是依洛嘉管理者，請到 Firebase 主控台 Firestore 建立 <b>staff/你的UID</b>：</p>
+      <div class="card" style="background:var(--n-bg);border:0;margin:8px 0"><div class="sub">你的 UID（複製）</div>
+        <input class="fld fld--mini" readonly value="${u.uid||''}" onclick="this.select()"></div>
+      <p class="sub" style="margin:8px 0">若你是客戶，請聯絡依洛嘉以 LINE 客服開通帳號。</p>
+      <div style="display:flex;gap:8px;margin-top:10px">
+        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.reloadPage()"><i class="ti ti-refresh"></i> 我已開通，重新整理</button>
+        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.fbLogout()"><i class="ti ti-logout"></i> 登出</button>
+      </div>
+    </div>
+  </div>`;
+}
+async function fbUploadSeed(){
+  if(!FB.on||!FB.user||FB.role!=='eloga'){ A.toast('需以依洛嘉管理者登入後再上傳'); return; }
+  const S=SEED_SNAPSHOT; if(!S){ A.toast('找不到種子資料'); return; }
+  try{
+    const ex=await FB.db.collection('products').limit(1).get();
+    if(!ex.empty){ A.toast('雲端已有資料，為避免覆蓋已略過'); return; }
+    A.toast('上傳種子資料中…');
+    const em={}; (S.customers||[]).forEach(c=>{ if(c.name) em[c.name]=c.email||''; }); em[ELG_SELF]='';
+    const writeAll=async(name,arr,stamp)=>{ arr=arr||[]; for(let i=0;i<arr.length;i+=400){ const b=FB.db.batch(); arr.slice(i,i+400).forEach(o=>{ const id=o.id||FB.db.collection(name).doc().id; const data=stripId(o); if(stamp)stamp(data); b.set(FB.db.collection(name).doc(id),data); }); await b.commit(); } };
+    await writeAll('products',S.products,d=>{ if(!d.customerEmail) d.customerEmail=em[d.cust]||''; });
+    await writeAll('customers',S.customers);
+    await writeAll('sharedPIF',S.sharedPIF);
+    await writeAll('showcase',S.showcase);
+    await FB.db.collection('staff').doc(FB.user.uid).set({role:elgRole||'主要管理者', name:'依洛嘉'},{merge:true});
+    await FB.db.collection('meta').doc('config').set({CINFO:S.CINFO},{merge:true});
+    A.toast('已上傳種子資料到雲端，畫面將自動更新');
+  }catch(e){ A.toast('上傳失敗：'+e.message); console.warn(e); }
+}
+A.googleSignIn=function(){ if(!FB.on){ A.toast('Firebase 尚未載入，請檢查網路'); return; } const p=new firebase.auth.GoogleAuthProvider(); FB.auth.signInWithPopup(p).catch(e=>A.toast('登入失敗：'+e.message)); };
+A.fbLogout=function(){ try{ if(FB.on&&FB.user) FB.auth.signOut(); }catch(e){} FB.user=null; FB.role=null; FB.ready=false; role='customer'; me={}; view='entry'; render(); };
+A.fbUploadSeed=function(){ fbUploadSeed(); };
+A.reloadPage=function(){ try{ location.reload(); }catch(e){} };
+
+fbInit();
+SEED_SNAPSHOT = JSON.parse(JSON.stringify({products,customers,staff,sharedPIF,showcase,CINFO}));
 load();
 render();
+fbStart();
 </script>
 </body>
 </html>
