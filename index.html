@@ -1438,17 +1438,60 @@ function elgInvoice(){
   const recv=P('received');
   const issued=P('invoiced');
   const toCheck=P('reported');
-  if(!recv.length && !issued.length && !toCheck.length) return `<div class="empty"><i class="ti ti-receipt-off"></i>目前沒有待請款／已開單／待查帳的項目</div>`;
-  const custs=[...new Set(recv.map(p=>custName(p)))];
-  recv.forEach(p=>{ if(p.invSel===undefined) p.invSel=true; if(!p.feeSel) p.feeSel=10000; });
+  const testing=P('testing');
+  const testingUnpaid=testing.filter(p=>!p.paidAmt||p.paidAmt===0);
+
   const allPaid=products.filter(p=>['paid','testing','reporting','completed'].includes(p.status)&&p.payRecords&&p.payRecords.length);
   const totalCollected=allPaid.reduce((s,p)=>(p.payRecords||[]).reduce((a,r)=>a+r.amt,s),0);
   const byMethod={}; allPaid.forEach(p=>(p.payRecords||[]).forEach(r=>{ byMethod[r.method]=(byMethod[r.method]||0)+r.amt; }));
+
+  if(!recv.length && !issued.length && !toCheck.length && !testingUnpaid.length)
+    return `<div class="empty"><i class="ti ti-receipt-off"></i>目前沒有待請款／已開單／待查帳的項目</div>`;
+
+  const custs=[...new Set(recv.map(p=>custName(p)))];
+  recv.forEach(p=>{ if(p.invSel===undefined) p.invSel=true; if(!p.feeSel) p.feeSel=10000; });
+
   let h=`<div class="dash" style="margin-bottom:14px">
     <div class="metric"><div class="mi" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-cash"></i></div><div class="mv">${money(totalCollected)}</div><div class="ml">總收款</div></div>
     ${Object.keys(byMethod).map(m=>`<div class="metric"><div class="mi"><i class="ti ti-${m==='匯款'?'building-bank':m==='合約扣款'?'file-invoice':m==='信用卡'?'credit-card':'coins'}"></i></div><div class="mv" style="font-size:14px">${money(byMethod[m])}</div><div class="ml">${m}</div></div>`).join('')}
-  </div>
-  <div class="note" style="margin-bottom:14px"><i class="ti ti-users"></i>依客戶分開開單：勾選樣品、選費用方案，確認合計後開收款單回傳給客戶。</div>`;
+  </div>`;
+
+  // ===== 補錄請款（送驗中未收款品項）=====
+  if(testingUnpaid.length){
+    const tCusts=[...new Set(testingUnpaid.map(p=>custName(p)))];
+    h+=`<div class="card" style="border-color:var(--w);margin-bottom:16px">
+      <div class="row" style="margin-bottom:8px">
+        <span><span class="nm" style="font-size:15px"><i class="ti ti-history"></i> 補錄請款（送驗中品項）</span><br>
+        <span class="sub">這些品項已在送驗中但尚未有收款記錄。補錄後不影響送驗流程，金額會計入收款匯總。</span></span>
+        <span class="pill pill--w">${testingUnpaid.length}</span>
+      </div>
+      ${tCusts.map(cn=>{
+        const items=testingUnpaid.filter(p=>custName(p)===cn);
+        return `<div style="border-top:1px solid var(--line);padding-top:10px;margin-top:10px">
+          <div class="nm" style="font-size:13.5px;margin-bottom:8px">${cn}</div>
+          ${items.map(p=>`
+            <div class="card compact" style="margin-bottom:8px">
+              <div class="row" style="margin-bottom:8px">
+                <span style="flex:1"><span class="nm" style="font-size:13px">${p.name}</span><br>
+                <span class="sub" style="font-size:11.5px">${p.batch||''}</span></span>
+                <select class="fld fld--mini" style="width:auto;min-width:140px" onchange="A.retroSetFee('${p.id}',Number(this.value))">
+                  ${PIF_PLANS.map(pl=>`<option value="${pl.amt}" ${(p.retroFee||10000)===pl.amt?'selected':''}>${pl.label} ${money(pl.amt)}</option>`).join('')}
+                </select>
+              </div>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
+                <div><label class="lbl">收款日期</label><input class="fld fld--mini" type="date" id="retro_date_${p.id}" value="${new Date().toISOString().slice(0,10)}" style="width:130px"></div>
+                <div><label class="lbl">付款方式</label><select class="fld fld--mini" id="retro_method_${p.id}" style="width:auto">${PAY_METHODS.map(m=>`<option>${m}</option>`).join('')}</select></div>
+                <div style="flex:1;min-width:100px"><label class="lbl">備註（選填）</label><input class="fld fld--mini" id="retro_note_${p.id}" placeholder="例：末五碼 12345"></div>
+                <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px;flex:none;align-self:flex-end" onclick="A.retroPay('${p.id}')">
+                  <i class="ti ti-check"></i> 補錄收款</button>
+              </div>
+            </div>`).join('')}
+        </div>`;
+      }).join('')}
+    </div>`;
+  }
+
+  h+=`<div class="note" style="margin-bottom:14px"><i class="ti ti-users"></i>依客戶分開開單：勾選樣品、選費用方案，確認合計後開收款單回傳給客戶。</div>`;
   h += `<div class="row sect"><span>開收款單（已收樣）</span><span class="pill pill--i">${recv.length}</span></div>`;
   h += recv.length ? custs.map(cn=>{
     const items=recv.filter(p=>custName(p)===cn);
@@ -1581,6 +1624,27 @@ function elgPif(){
       </select>
       <label class="lbl">PIF Google Drive 資料夾連結</label>
       <input class="fld" id="pa_drive" value="${pd.drive.replace(/"/g,'&quot;')}" placeholder="https://drive.google.com/drive/folders/…" style="margin-bottom:10px">
+      <div style="border-top:1px solid var(--line);margin:12px 0 12px;padding-top:12px">
+        <p class="nm" style="font-size:13.5px;margin-bottom:10px"><i class="ti ti-cash"></i> 已收款記錄（選填）</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+          <div style="flex:1;min-width:110px">
+            <label class="lbl">收款日期</label>
+            <input class="fld fld--mini" id="pa_pay_date" type="date" value="${new Date().toISOString().slice(0,10)}">
+          </div>
+          <div style="flex:1;min-width:110px">
+            <label class="lbl">實收金額</label>
+            <input class="fld fld--mini" id="pa_pay_amt" type="number" placeholder="例：10000">
+          </div>
+          <div style="flex:1;min-width:110px">
+            <label class="lbl">付款方式</label>
+            <select class="fld fld--mini" id="pa_pay_method">
+              ${PAY_METHODS.map(m=>`<option>${m}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <label class="lbl">收款備註（選填）</label>
+        <input class="fld fld--mini" id="pa_pay_note" placeholder="例：末五碼 12345" style="margin-bottom:0">
+      </div>
       <label class="lbl">備註（選填）</label>
       <input class="fld" id="pa_note" value="${pd.note.replace(/"/g,'&quot;')}" placeholder="例：第一批送驗" style="margin-bottom:12px">
       <label class="row" style="gap:10px;align-items:center;margin-bottom:14px;cursor:pointer">
@@ -2346,17 +2410,26 @@ const A = {
     const id='mp'+Date.now();
     const d=new Date(), p2=n=>String(n).padStart(2,'0');
     const ts=`${d.getFullYear()}-${p2(d.getMonth()+1)}-${p2(d.getDate())}`;
+    // 讀取已收款欄位
+    const payAmt=Number(g('pa_pay_amt'))||0;
+    const payDate=g('pa_pay_date')||ts;
+    const payMethod=((document.getElementById('pa_pay_method')||{}).value)||'匯款';
+    const payNote=g('pa_pay_note');
+    const payRecords=payAmt>0?[{date:payDate,amt:payAmt,method:payMethod,note:payNote}]:[];
     const np={ id, name, alias:'', en:'', spec:'', qty:'', type:inferType(name),
       cust, status:'completed', batch:'已完成', drive, charge:plan.amt,
       pifPlan:planId, pifPlanLabel:plan.label, note,
-      customerEmail: (customers.find(c=>c.name===cust)||{}).email||'',
-      self:(cust===ELG_SELF), mine:(cust===CUST), t:{fang:false,chang:false,wen:false} };
+      customerEmail:(customers.find(c=>c.name===cust)||{}).email||'',
+      self:(cust===ELG_SELF), mine:(cust===CUST), t:{fang:false,chang:false,wen:false},
+      payRecords, paidAmt:payAmt };
     products.push(np);
     if(pifDraft.toPublic){
       sharedPIF.push({id:'sp'+Date.now(), name, type:np.type||'化妝品', state:'public'});
     }
+    const wasPublic=pifDraft.toPublic;
     pifAddOpen=false; pifDraft={name:'',cust:'',drive:'',plan:'shared',note:'',toPublic:false};
-    save(); render(); A.toast('已新增 PIF：'+name+(pifDraft.toPublic?'（已設為公開）':''));
+    save(); render();
+    A.toast('已新增 PIF：'+name+(payAmt?'　已收款 '+money(payAmt):'　尚無收款記錄')+(wasPublic?'（已設為公開）':''));
   },
   pifSelAll(on){ pifSel={}; if(on){ sharedPIF.forEach((_,i)=>{ pifSel[i]=true; }); } render(); },
   toggleSel(id){ if(batch[id]) delete batch[id]; else batch[id]=true; render(); },
@@ -2524,6 +2597,25 @@ const A = {
   openMyFolder(){ const c=customers.find(x=>x.name===me.nameCh); if(c&&c.drive&&c.driveAuth) window.open(c.drive,'_blank'); else A.toast(c&&c.drive&&!c.driveAuth?'依洛嘉尚未授權存取你的 PIF 雲端資料夾':'依洛嘉尚未提供你的 PIF 雲端資料夾連結'); },
   setCustDrive(i,v){ if(customers[i]){ customers[i].drive=(v||'').trim(); save(); A.toast('已更新客戶 PIF 資料夾連結'); } },
   receive(id){ const p=byId(id); if(p){ p.status='received'; if(p.invSel===undefined)p.invSel=true; if(!p.feeSel)p.feeSel=5000; } render(); A.toast('已收樣，可到「請款」開收款單'); },
+  retroSetFee(id,amt){ const p=byId(id); if(p){ p.retroFee=Number(amt)||10000; } },
+  retroPay(id){
+    const p=byId(id); if(!p) return;
+    const amt=p.retroFee||10000;
+    const dateEl=document.getElementById('retro_date_'+id);
+    const methodEl=document.getElementById('retro_method_'+id);
+    const noteEl=document.getElementById('retro_note_'+id);
+    const date=dateEl?dateEl.value:new Date().toLocaleDateString('zh-TW');
+    const method=methodEl?methodEl.value:'匯款';
+    const note=noteEl?noteEl.value:'';
+    p.payRecords=p.payRecords||[];
+    p.payRecords.push({date, amt, method, note:note||'補錄收款'});
+    p.paidAmt=(p.paidAmt||0)+amt;
+    p.charge=amt;
+    p.payMethod=method;
+    // 保留 testing 狀態，不改變送驗流程
+    save(); render();
+    A.toast('已補錄收款：'+p.name+' '+money(amt)+'（'+method+'）');
+  },
   waiveInvoice(cn){
     const items=P('received').filter(p=>custName(p)===cn && p.invSel);
     if(!items.length){ A.toast('請先勾選要免收款的品項'); return; }
