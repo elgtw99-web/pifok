@@ -1277,7 +1277,11 @@ function elgSummary(){
                 <span style="font-weight:600">${p.name||'—'}</span>
                 <span class="sub" style="font-size:11px;margin-left:6px">${SM[p.status]?SM[p.status][0]:p.status}${method?' · '+method:''}</span>
                 <br>${pifBadge}
-                ${paid>0?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 8px;margin-top:4px;font-size:10.5px;color:#C0392B;border-color:#E7C3BD" onclick="A.revertItemPay('${p.id}')"><i class="ti ti-arrow-back-up"></i> ${confirmDel==='rev'+p.id?'確認退回？':'退回請款中'}</button>`:''}
+                <span style="display:inline-flex;gap:4px;flex-wrap:wrap;margin-top:4px">
+                  ${paid>0?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 8px;font-size:10.5px;color:#C0392B;border-color:#E7C3BD" onclick="A.revertItemPay('${p.id}')"><i class="ti ti-arrow-back-up"></i> ${confirmDel==='rev'+p.id?'確認退回？':'退回請款中'}</button>`:''}
+                  ${(pifInvoiced&&!pifPaid)?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 8px;font-size:10.5px;color:#C0392B;border-color:#E7C3BD" onclick="A.revertPifInvoice('${p.id}')"><i class="ti ti-arrow-back-up"></i> ${confirmDel==='rpi'+p.id?'確認退回PIF？':'退回PIF請款'}</button>`:''}
+                  ${(!pifInvoiced&&!pifPaid)?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 8px;font-size:10.5px;color:var(--accent);border-color:var(--accent)" onclick="A.go('invoice');A.setInvTab('retro')"><i class="ti ti-plus"></i> 補請PIF費</button>`:''}
+                </span>
               </span>
               <span style="text-align:right;white-space:nowrap">
                 <span style="color:${amtColor};font-weight:700;font-size:12.5px">${amtText}</span>
@@ -2013,13 +2017,21 @@ function elgInvoice(){
 
       // === 3. PIF 費已收 ===
       if(pifDone.length){
-        h+=`<div class="sect" style="font-size:13px;margin-top:14px">PIF 費已收（${pifDone.length}）</div>`;
-        h+=`<div class="stack">`+pifDone.map(p=>`
-          <div class="card compact row" style="gap:8px;border-color:var(--s)">
-            <span style="flex:1;min-width:0"><span class="nm" style="font-size:13px">${p.name}</span><br>
-              <span class="sub" style="font-size:11px">${p.pifPlanLabel||''}</span></span>
-            <span class="pill pill--s" style="font-size:10px">✓ ${money(p.pifCharge||0)}</span>
-          </div>`).join('')+`</div>`;
+        const doneOpen=pifGroupClosed['retro_done_'+activeCust]==='open';
+        const doneTotal=pifDone.reduce((s,p)=>s+(p.pifCharge||0),0);
+        h+=`<div class="card" style="margin-top:14px;padding:0;overflow:hidden;border-color:var(--s)">
+          <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--s-bg);cursor:pointer" onclick="A.toggleRetroDone('${activeCust}')">
+            <span style="flex:1;min-width:0"><span class="nm" style="font-size:13px;color:var(--s)"><i class="ti ti-circle-check"></i> PIF 費已收</span>
+              <span class="sub" style="font-size:11px;margin-left:6px">${pifDone.length} 筆 · ${money(doneTotal)} · 明細見下方收款單</span></span>
+            <i class="ti ti-chevron-${doneOpen?'up':'down'}" style="color:var(--s);flex:none"></i>
+          </div>
+          ${doneOpen?`<div style="padding:8px 12px"><div class="stack">`+pifDone.map(p=>`
+            <div class="card compact row" style="gap:8px;border-color:var(--s)">
+              <span style="flex:1;min-width:0"><span class="nm" style="font-size:13px">${p.name}</span><br>
+                <span class="sub" style="font-size:11px">${p.pifPlanLabel||''}</span></span>
+              <span class="pill pill--s" style="font-size:10px">✓ ${money(p.pifCharge||0)}</span>
+            </div>`).join('')+`</div></div>`:''}
+        </div>`;
       }
 
       if(!notInvoiced.length && !invoicing.length && !pifDone.length){
@@ -3629,6 +3641,7 @@ const A = {
     confirmDel=null; save(); render(); A.toast('已從共用清單撤回：'+nm);
   },
   togglePifGroup(cn){ pifGroupClosed[cn]=!pifGroupClosed[cn]; render(); },
+  toggleRetroDone(cn){ const k='retro_done_'+cn; pifGroupClosed[k]=(pifGroupClosed[k]==='open')?undefined:'open'; render(); },
   togglePifGroupSel(cn){
     const ids=products.filter(p=>p.status==='completed'&&custName(p)===cn).map(p=>p.id);
     const allOn=ids.every(id=>batch[id]);
@@ -4119,6 +4132,22 @@ const A = {
     });
     if(fixed){ save(); render(); A.toast('已修正 '+fixed+' 筆重複計入的金額（PIF 費已從檢驗費應收中分離）'); }
     else A.toast('沒有發現需要修正的重複金額');
+  },
+  revertPifInvoice(id){
+    const p=byId(id); if(!p||!p.pifFeeInvoice) return;
+    if(confirmDel!=='rpi'+id){ confirmDel='rpi'+id; render(); A.toast('再按一次確認：撤回「'+p.name+'」的 PIF 請款，可重新開單'); return; }
+    const recId=p.pifFeeInvoice;
+    // 從收款單移除此品項；若收款單沒品項了就刪整張
+    const rec=invoiceRecs.find(r=>r.id===recId);
+    if(rec){
+      rec.items=(rec.items||[]).filter(it=>it.pid!==id);
+      rec.total=(rec.items||[]).reduce((s,it)=>s+(it.amt||0),0);
+      if(!rec.items.length){ invoiceRecs=invoiceRecs.filter(r=>r.id!==recId); if(typeof FB!=='undefined'&&FB.on&&FB.db) FB.db.collection('invoiceRecs').doc(recId).delete().catch(()=>{}); }
+    }
+    // 清掉品項的 PIF 請款標記 → 回到「未開單」，可重新補請
+    delete p.pifFeeInvoice; delete p.pifPlanLabel; delete p.pifCharge;
+    confirmDel=null; save(); render();
+    A.toast('已撤回「'+p.name+'」的 PIF 請款，回到未開單，可重新開單');
   },
   revertItemPay(id){
     const p=byId(id); if(!p) return;
