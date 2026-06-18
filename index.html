@@ -525,7 +525,7 @@ function genInvNo(){
 const money = n => '$'+n.toLocaleString();
 const PAY_METHODS=['匯款','現金','信用卡','合約扣款','其他'];
 const PIF_PLANS=[
-  {id:'shared',  label:'共用合約價',          amt:10000, desc:'共用合約客戶適用'},
+  {id:'shared',  label:'VIP客戶價',          amt:10000, desc:'VIP 客戶適用'},
   {id:'rename',  label:'換名檢驗費',          amt:5000,  desc:'只換名、不重新送驗'},
   {id:'oem',     label:'代工客戶公定檢測費',  amt:10000, desc:'單筆訂單10萬元以上代工客戶'},
   {id:'full',    label:'PIF 處理費（含檢測）',amt:20000, desc:'含全套檢測費用'},
@@ -1129,74 +1129,63 @@ function elgShowcase(){
   return h;
 }
 function elgSummary(){
-  // ── 資料定義 ──
-  const paidOf   =p=>(p.payRecords||[]).filter(r=>!r.note||!r.note.startsWith('PIF費')).reduce((s,r)=>s+(r.amt||0),0);
-  const pifPaidOf=p=>(p.payRecords||[]).filter(r=>r.note&&r.note.startsWith('PIF費')).reduce((s,r)=>s+(r.amt||0),0);
+  // ── 收款匯總：方案金額(charge)就是總收費，一張收款單收一次，無 PIF 費二次收款 ──
+  const paidOf=p=>(p.payRecords||[]).reduce((s,r)=>s+(r.amt||0),0);
 
-  // 所有已進入收款流程的品項（invoiced 以上）
   const allProd=products.filter(p=>
     ['invoiced','reported','paid','testing','reporting','completed'].includes(p.status)
     && custName(p)!==ELG_SELF
   );
 
-  // ── 頂部加總（只算真正到手的錢）──
-  const totalLabPaid  = allProd.reduce((s,p)=>s+paidOf(p),0);
-  const totalPifPaid  = allProd.reduce((s,p)=>s+pifPaidOf(p),0);
-  const pendingLabAmt = allProd.filter(p=>['invoiced','reported'].includes(p.status)&&paidOf(p)===0).reduce((s,p)=>s+(p.charge||0),0);
-  const pendingPifAmt = invoiceRecs.filter(r=>r.kind==='pif'&&r.status!=='paid').reduce((s,r)=>s+(r.total||0),0);
+  // 頂部加總
+  const totalReceived=allProd.reduce((s,p)=>s+paidOf(p),0);
+  const totalPending =allProd.filter(p=>['invoiced','reported'].includes(p.status)&&paidOf(p)===0).reduce((s,p)=>s+(p.charge||0),0);
+  const totalCharge  =allProd.reduce((s,p)=>s+(paidOf(p)>0?paidOf(p):(p.charge||0)),0);
+
+  // 收款方式統計
+  const byMethod={};
+  allProd.forEach(p=>(p.payRecords||[]).forEach(r=>{ if(r.amt>0) byMethod[r.method]=(byMethod[r.method]||0)+r.amt; }));
 
   const sumQ=(libQ||'').trim().toLowerCase();
   let h='';
 
-  // ── 頂部四格 ──
+  // 頂部四格
   h+=`<div class="dash" style="margin-bottom:16px">
     <div class="metric"><div class="mi" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-cash"></i></div>
-      <div class="mv">${money(totalLabPaid+totalPifPaid)}</div><div class="ml">實收總計</div></div>
+      <div class="mv">${money(totalReceived)}</div><div class="ml">實收總計</div></div>
     <div class="metric"><div class="mi" style="background:var(--w-bg);color:var(--w)"><i class="ti ti-clock"></i></div>
-      <div class="mv">${money(pendingLabAmt+pendingPifAmt)}</div><div class="ml">待收款</div></div>
-    <div class="metric"><div class="mi" style="background:var(--accent-tint);color:var(--accent)"><i class="ti ti-building-bank"></i></div>
-      <div class="mv">${money(totalLabPaid)}</div><div class="ml">檢驗費已收</div></div>
-    <div class="metric"><div class="mi" style="background:var(--accent-tint);color:var(--accent)"><i class="ti ti-file-certificate"></i></div>
-      <div class="mv">${money(totalPifPaid)}</div><div class="ml">PIF費已收</div></div>
+      <div class="mv">${money(totalPending)}</div><div class="ml">待收款</div></div>
+    <div class="metric"><div class="mi" style="background:var(--n-bg)"><i class="ti ti-receipt"></i></div>
+      <div class="mv">${money(totalCharge)}</div><div class="ml">應收總計</div></div>
+    ${Object.keys(byMethod).map(m=>`<div class="metric"><div class="mi"><i class="ti ti-${m==='匯款'?'building-bank':m==='合約扣款'?'file-invoice':m==='信用卡'?'credit-card':'coins'}"></i></div><div class="mv" style="font-size:14px">${money(byMethod[m])}</div><div class="ml">${m}</div></div>`).join('')}
   </div>`;
 
   h+=srchBar('搜尋客戶或品名…');
+  h+=`<div style="text-align:right;margin:-4px 0 10px"><button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;font-size:11.5px" onclick="A.repairCharges()"><i class="ti ti-wand"></i> 清理重複資料</button></div>`;
 
-  // ── 依客戶分組 ──
+  // 依客戶分組
   const allCusts=[...new Set(allProd.map(p=>custName(p)))].sort();
   const filtCusts=sumQ
     ? allCusts.filter(cn=>cn.toLowerCase().includes(sumQ)||allProd.some(p=>custName(p)===cn&&(p.name||'').toLowerCase().includes(sumQ)))
     : allCusts;
 
-  // ── 每個客戶的卡片 ──
   const renderCust=cn=>{
     const prods=allProd.filter(p=>custName(p)===cn&&(!sumQ||(p.name||'').toLowerCase().includes(sumQ)||cn.toLowerCase().includes(sumQ)));
     if(!prods.length) return '';
 
-    // 各品項分類
-    const completed =prods.filter(p=>['completed','reporting','testing','paid'].includes(p.status));
-    const inProgress=prods.filter(p=>['invoiced','reported'].includes(p.status));
+    const received=prods.reduce((s,p)=>s+paidOf(p),0);
+    const charge  =prods.reduce((s,p)=>s+(paidOf(p)>0?paidOf(p):(p.charge||0)),0);
 
-    // 金額加總
-    const labPaid =prods.reduce((s,p)=>s+paidOf(p),0);
-    const pifPaid2=prods.reduce((s,p)=>s+pifPaidOf(p),0);
-    const labPending=inProgress.filter(p=>paidOf(p)===0).reduce((s,p)=>s+(p.charge||0),0);
-    // PIF 待收：以「品項層級」為真相 — 有開 PIF 單但尚未標記已收的
-    const pifPendingItems=prods.filter(p=>p.pifFeeInvoice&&!p.pifFeePaid);
-    const pifPending=pifPendingItems.reduce((s,p)=>s+(p.pifCharge||0),0);
-    const totalReceived=labPaid+pifPaid2;
-    const totalPending=labPending+pifPending;
-    // 只要還有：未收的檢驗費批次、或任何「已開PIF單未收」的品項，就不算結清
-    const isAllDone = inProgress.length===0 && pifPendingItems.length===0 && labPending===0;
+    // 待收款品項（已開單未收款）
+    const inProgress=prods.filter(p=>['invoiced','reported'].includes(p.status)&&paidOf(p)===0);
+    const pending=inProgress.reduce((s,p)=>s+(p.charge||0),0);
+    const isAllDone = inProgress.length===0 && received>0;
 
     const open=!pifGroupClosed['sum_'+cn];
 
-    // 頭部顯示
     let badge='';
-    if(isAllDone && totalReceived>0)
-      badge=`<span class="pill pill--s" style="font-size:11px">✓ 已結清</span>`;
-    else if(totalPending>0)
-      badge=`<span class="pill pill--w" style="font-size:11px">待收 ${money(totalPending)}</span>`;
+    if(isAllDone) badge=`<span class="pill pill--s" style="font-size:11px">✓ 已結清</span>`;
+    else if(pending>0) badge=`<span class="pill pill--w" style="font-size:11px">待收 ${money(pending)}</span>`;
 
     h+=`<div class="card" style="margin-bottom:10px;padding:0;overflow:hidden${isAllDone?';border-color:var(--s)40':''}">
       <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:${isAllDone?'var(--s-bg)':'var(--n-bg)'};cursor:pointer;border-bottom:${open?'1px solid var(--line)':'0'}"
@@ -1207,8 +1196,8 @@ function elgSummary(){
           ${badge?'&nbsp;'+badge:''}
         </span>
         <span style="text-align:right;margin-right:6px;line-height:1.6">
-          <span style="font-size:13px;font-weight:700;color:var(--s)">已收 ${money(totalReceived)}</span>
-          ${totalPending>0?`<br><span style="font-size:11px;color:var(--w)">待收 ${money(totalPending)}</span>`:''}
+          <span style="font-size:13px;font-weight:700;color:var(--s)">已收 ${money(received)}</span>
+          ${pending>0?`<br><span style="font-size:11px;color:var(--w)">待收 ${money(pending)}</span>`:''}
         </span>
         <i class="ti ti-chevron-${open?'up':'down'}" style="color:var(--muted);flex:none"></i>
       </div>`;
@@ -1216,25 +1205,18 @@ function elgSummary(){
     if(open){
       h+=`<div style="padding:10px 14px 14px">`;
 
-      // ── 區塊A：待收款請款單（需要操作的放最上面）──
+      // ── 待收款請款單 ──
       const batchMap={};
-      inProgress.forEach(p=>{ if(p.batch&&p.batch.startsWith('INV-')&&paidOf(p)===0){ (batchMap[p.batch]=batchMap[p.batch]||[]).push(p); } });
+      inProgress.forEach(p=>{ if(p.batch&&p.batch.startsWith('INV-')){ (batchMap[p.batch]=batchMap[p.batch]||[]).push(p); } });
       const pendingBatches=Object.keys(batchMap);
-      const pendingPifRecs=invoiceRecs.filter(r=>r.cust===cn&&r.kind==='pif'&&r.status!=='paid'
-        && (r.items||[]).some(it=>{ const p=byId(it.pid); return p&&!p.pifFeePaid; }));
-      // 孤兒：品項有 pifFeeInvoice 未收，但對應收款單不在 pendingPifRecs（invoiceRec 不存在或狀態已 paid）
-      const recIds=new Set(pendingPifRecs.map(r=>r.id));
-      const orphanPif=prods.filter(p=>p.pifFeeInvoice&&!p.pifFeePaid&&!recIds.has(p.pifFeeInvoice));
 
-      if(pendingBatches.length||pendingPifRecs.length||orphanPif.length){
-        // 一鍵：確認全部已收齊 → 收款單從客戶端撤下
+      if(pendingBatches.length){
         h+=`<div style="display:flex;gap:6px;margin-bottom:8px">
           <button class="btn btn--ok btn--sm" style="flex:1" onclick="A.confirmAllPaidFor('${cn}')">
             <i class="ti ti-checks"></i> ${confirmDel==='cap'+cn?'再按一次：全部標記已收齊':'確認全部已收齊（撤下客戶請款單）'}</button>
         </div>`;
-        h+=`<div style="font-size:12px;font-weight:700;color:var(--w);margin-bottom:8px"><i class="ti ti-clock"></i> 待收款（${pendingBatches.length+pendingPifRecs.length+orphanPif.length} 筆）</div>`;
+        h+=`<div style="font-size:12px;font-weight:700;color:var(--w);margin-bottom:8px"><i class="ti ti-clock"></i> 待收款（${pendingBatches.length} 張）</div>`;
 
-        // 檢驗費批次
         pendingBatches.forEach(bk=>{
           const items=batchMap[bk];
           const tot=items.reduce((s,p)=>s+(p.charge||0),0);
@@ -1245,7 +1227,7 @@ function elgSummary(){
               <span>
                 <span class="nm" style="font-size:13px;color:var(--accent)">${bk}</span>
                 ${disputed?`<span class="pill" style="font-size:10px;background:#FDECEA;color:#C0392B;border:1px solid #E7C3BD;margin-left:4px">⚠ 客戶申訴</span>`:''}
-                <br><span class="sub" style="font-size:11px">檢驗費 · ${items.length} 筆${payNote?' · 末五碼 '+payNote:''}</span>
+                <br><span class="sub" style="font-size:11px">${items.length} 筆${payNote?' · 末五碼 '+payNote:''}</span>
               </span>
               <span class="amt" style="color:var(--w)">${money(tot)}</span>
             </div>
@@ -1257,115 +1239,33 @@ function elgSummary(){
             </div>
           </div>`;
         });
-
-        // PIF費單
-        pendingPifRecs.forEach(rec=>{
-          h+=`<div class="card compact" style="margin-bottom:8px;border-color:var(--w)">
-            <div class="row" style="margin-bottom:6px">
-              <span><span class="nm" style="font-size:13px;color:var(--accent)">${rec.id}</span><br>
-                <span class="sub" style="font-size:11px">PIF費 · ${rec.items.length} 筆 · ${rec.method}</span></span>
-              <span class="amt" style="color:var(--w)">${money(rec.total)}</span>
-            </div>
-            <div style="display:flex;gap:6px">
-              <button class="btn btn--ok btn--sm" style="flex:1" onclick="A.markInvPaid('${rec.id}')"><i class="ti ti-check"></i> 確認已收款</button>
-              <button class="btn btn--ghost btn--sm" style="flex:1;color:var(--accent);border-color:var(--accent)" onclick="A.manualMarkInvPaid('${rec.id}')"><i class="ti ti-hand-stop"></i> ${confirmDel==='mmip'+rec.id?'再按一次確認':'手動確認（免匯款）'}</button>
-            </div>
-          </div>`;
-        });
-
-        // 孤兒 PIF 品項（無對應收款單）
-        orphanPif.forEach(p=>{
-          h+=`<div class="card compact" style="margin-bottom:8px;border-color:var(--w)">
-            <div class="row" style="margin-bottom:6px">
-              <span><span class="nm" style="font-size:13px">${p.name||'—'}</span><br>
-                <span class="sub" style="font-size:11px">PIF費 · ${p.pifPlanLabel||''} · 單號 ${p.pifFeeInvoice||'—'}</span></span>
-              <span class="amt" style="color:var(--w)">${money(p.pifCharge||0)}</span>
-            </div>
-            <div style="display:flex;gap:6px">
-              <button class="btn btn--ok btn--sm" style="flex:1" onclick="A.manualMarkInvPaid('${p.pifFeeInvoice}')"><i class="ti ti-check"></i> ${confirmDel==='mmip'+p.pifFeeInvoice?'再按一次確認':'確認已收款'}</button>
-              <button class="btn btn--ghost btn--sm" style="flex:1;color:#C0392B;border-color:#E7C3BD" onclick="A.revertPifInvoice('${p.id}')"><i class="ti ti-arrow-back-up"></i> ${confirmDel==='rpi'+p.id?'確認撤回':'撤回PIF'}</button>
-            </div>
-          </div>`;
-        });
       }
 
-      // ── 區塊B：已完成 PIF 品項總覽（勾選補開請款用）──
-      if(completed.length){
-        // 勾選狀態用 sumSel_{pid}
-        const selKey=p=>'sumSel_'+p.id;
-        const anySel=completed.some(p=>pifGroupClosed[selKey(p)]);
-        const selList=completed.filter(p=>pifGroupClosed[selKey(p)]);
-
-        h+=`<div style="display:flex;align-items:center;gap:8px;margin:12px 0 6px;padding-top:10px;border-top:1px solid var(--line)">
-          <span style="font-size:12px;font-weight:700;color:var(--muted)"><i class="ti ti-flask"></i> 已完成／送驗中 PIF（${completed.length} 筆）</span>
-          <span style="flex:1"></span>
-          ${anySel?`<button class="btn btn--sm" style="width:auto;padding:0 12px;font-size:12px" onclick="A.retroReopen('${cn}')">
-            <i class="ti ti-file-invoice"></i> 補開請款（${selList.length} 筆）</button>`:''}
+      // ── 品項明細 ──
+      h+=`<div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;font-size:11px;font-weight:700;color:var(--muted);padding:6px 0;border-bottom:1px solid var(--line2);margin-top:${pendingBatches.length?'12px':'0'}">
+        <span>品名</span><span style="text-align:right">金額</span><span style="text-align:right">收款</span>
+      </div>`;
+      prods.forEach(p=>{
+        const pd=paidOf(p);
+        const charge=p.charge||0;
+        const isPending=['invoiced','reported'].includes(p.status)&&pd===0;
+        let payTag;
+        if(pd>0) payTag=`<span style="color:var(--s);font-weight:700">✓ 已收</span>`;
+        else if(isPending) payTag=`<span style="color:var(--w)">待收</span>`;
+        else payTag=`<span style="color:var(--faint)">—</span>`;
+        h+=`<div style="display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px">
+          <span style="min-width:0">
+            <span style="font-weight:600">${p.name||'—'}</span>
+            <span class="sub" style="font-size:10.5px;margin-left:4px">${SM[p.status]?SM[p.status][0]:p.status}</span>
+          </span>
+          <span style="text-align:right;font-weight:700">${money(pd>0?pd:charge)}</span>
+          <span style="text-align:right;font-size:11px">${payTag}</span>
         </div>`;
+      });
 
-        // 表格標題
-        h+=`<div style="display:grid;grid-template-columns:20px 1fr auto auto auto;gap:6px;align-items:center;font-size:11px;font-weight:700;color:var(--muted);padding:4px 0;border-bottom:1px solid var(--line2)">
-          <span></span><span>品名</span><span style="text-align:right">檢驗費</span><span style="text-align:center">PIF費</span><span style="text-align:right">收款</span>
-        </div>`;
-
-        completed.forEach(p=>{
-          const labP=paidOf(p);
-          const pifP=pifPaidOf(p);
-          const labC=p.charge||0;
-          const pifC=p.pifCharge||0;
-          const pifInvoiced=!!p.pifFeeInvoice;
-          const pifPaidF=!!p.pifFeePaid;
-          const needsPif=!pifInvoiced&&!pifPaidF;
-          const isSel=!!pifGroupClosed[selKey(p)];
-
-          // PIF費狀態標籤
-          let pifTag='';
-          if(pifPaidF) pifTag=`<span class="pill pill--s" style="font-size:10px">已收 ${money(pifC)}</span>`;
-          else if(pifInvoiced) pifTag=`<span class="pill pill--w" style="font-size:10px">請款中</span>`;
-          else pifTag=`<span class="pill pill--n" style="font-size:10px">未開單</span>`;
-
-          // 檢驗費狀態
-          let labTag='';
-          if(labP>=labC && labC>0) labTag=`<span style="color:var(--s);font-size:12px;font-weight:700">${money(labP)}</span>`;
-          else if(labC===0) labTag=`<span style="color:var(--faint);font-size:12px">—</span>`;
-          else if(['invoiced','reported'].includes(p.status)) labTag=`<span style="color:var(--w);font-size:12px">請款中</span>`;
-          else labTag=`<span style="color:var(--faint);font-size:12px">未收</span>`;
-
-          // 右側：整體收款概況
-          // 「齊」= 已收檢驗費 >= 應收檢驗費，且 PIF 費若有開單也已收
-          const labDone = labC===0 || labP>=labC;
-          const pifDone = !pifInvoiced || pifPaidF;
-          let rightTag='';
-          if(labDone && pifDone && (labP>0||pifPaidF))
-            rightTag=`<span style="color:var(--s);font-size:11px;font-weight:700">✓ 齊</span>`;
-          else if(labP>0||pifPaidF)
-            rightTag=`<span style="color:var(--w);font-size:11px">部分</span>`;
-          else
-            rightTag=`<span style="color:var(--faint);font-size:11px">未收</span>`;
-
-          h+=`<div style="display:grid;grid-template-columns:20px 1fr auto auto auto;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px">
-            <span class="ck ${isSel?'on':''}" style="cursor:pointer;width:18px;height:18px;border-radius:5px;flex:none"
-              onclick="A.toggleSumSel('${p.id}')" title="勾選後可補開／重開 PIF 費請款">
-              <i class="ti ti-check" style="font-size:12px;opacity:${isSel?1:0}"></i></span>
-            <span style="min-width:0">
-              <span style="font-weight:600">${p.name||'—'}</span>
-              <span class="sub" style="font-size:10.5px;margin-left:4px">${SM[p.status]?SM[p.status][0]:p.status}</span>
-            </span>
-            <span style="text-align:right">${labTag}</span>
-            <span style="text-align:center">${pifTag}</span>
-            <span style="text-align:right">${rightTag}</span>
-          </div>`;
-        });
-
-        if(anySel){
-          h+=`<div class="note" style="margin-top:8px"><i class="ti ti-info-circle"></i>已勾選 ${selList.length} 筆，點上方「補開請款」跳到補錄分頁開 PIF 費單。</div>`;
-        }
-      }
-
-      h+=`</div>`; // end open
+      h+=`</div>`;
     }
-
-    h+=`</div>`; // end card
+    h+=`</div>`;
     return '';
   };
 
@@ -3124,7 +3024,7 @@ const A = {
     if(st==='completed'){
       p.batch='已完成';
       if(!p.pifPlan) p.pifPlan='shared';
-      if(!p.pifPlanLabel) p.pifPlanLabel='共用合約價';
+      if(!p.pifPlanLabel) p.pifPlanLabel='VIP客戶價';
       if(!p.charge) p.charge=10000;
     }
     save(); render();
@@ -4239,29 +4139,31 @@ const A = {
     A.toast('已建立 PIF 處理費收款單 '+rec.id+'（'+money(total)+'）');
   },
   repairCharges(){
-    // 修正：之前 PIF 費被加進 charge 導致金額翻倍的舊資料
-    let fixed=0;
+    // 清理重複資料：PIF 費是重複計算，方案金額（charge）本身就是總收費，不該再收一次 PIF 費
+    let cleaned=0, recsDel=0;
     products.forEach(p=>{
-      if(p.pifFeePaid && p.pifCharge && (p.charge||0)>=p.pifCharge){
-        // charge 包含了 pifCharge → 扣回，讓 charge 只剩檢驗費
-        const restored=(p.charge||0)-p.pifCharge;
-        if(restored>0){ p.charge=restored; fixed++; }
+      let touched=false;
+      // 移除所有 PIF 費收款記錄（重複計入）
+      if(p.payRecords && p.payRecords.some(r=>r.note&&r.note.startsWith('PIF費'))){
+        const pifAmt=p.payRecords.filter(r=>r.note&&r.note.startsWith('PIF費')).reduce((s,r)=>s+(r.amt||0),0);
+        p.payRecords=p.payRecords.filter(r=>!(r.note&&r.note.startsWith('PIF費')));
+        p.paidAmt=Math.max(0,(p.paidAmt||0)-pifAmt);
+        touched=true;
       }
+      // 清除 PIF 費標記
+      if(p.pifFeeInvoice!==undefined){ delete p.pifFeeInvoice; touched=true; }
+      if(p.pifFeePaid!==undefined){ delete p.pifFeePaid; touched=true; }
+      if(p.pifCharge!==undefined){ delete p.pifCharge; touched=true; }
+      if(p.pifPlanLabel!==undefined){ delete p.pifPlanLabel; touched=true; }
+      if(touched) cleaned++;
     });
-    // 同步修正：品項已標記 pifFeePaid，但對應收款單還停在未收款 → 把收款單標為 paid
-    let synced=0;
-    invoiceRecs.forEach(rec=>{
-      if(rec.kind==='pif' && rec.status!=='paid'){
-        const items=rec.items||[];
-        const allPaid=items.length>0 && items.every(it=>{ const p=byId(it.pid); return p&&p.pifFeePaid; });
-        if(allPaid){ rec.status='paid'; if(!rec.paidAt) rec.paidAt=new Date().toISOString(); synced++; }
-      }
-    });
-    const msgs=[];
-    if(fixed) msgs.push('修正 '+fixed+' 筆重複金額');
-    if(synced) msgs.push('同步 '+synced+' 張已收款收款單狀態');
-    if(msgs.length){ save(); render(); A.toast('✓ '+msgs.join('、')); }
-    else A.toast('沒有發現需要修正的資料');
+    // 刪除所有 PIF 費收款單
+    const pifRecs=invoiceRecs.filter(r=>r.kind==='pif');
+    pifRecs.forEach(rec=>{ if(typeof FB!=='undefined'&&FB.on&&FB.db) FB.db.collection('invoiceRecs').doc(rec.id).delete().catch(()=>{}); recsDel++; });
+    invoiceRecs=invoiceRecs.filter(r=>r.kind!=='pif');
+
+    if(cleaned||recsDel){ save(); render(); A.toast('✓ 已清理 '+cleaned+' 筆品項的重複 PIF 費資料、刪除 '+recsDel+' 張 PIF 費收款單，加總已恢復正確'); }
+    else A.toast('沒有發現需要清理的重複資料');
   },
   revertPifInvoice(id){
     const p=byId(id); if(!p||!p.pifFeeInvoice) return;
