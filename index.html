@@ -1526,12 +1526,15 @@ function elgHome(){
   if(typeof FB!=='undefined' && FB.on && FB.user){
     const cloudN=(FB.cloudCount===undefined?null:FB.cloudCount);
     if(products.length>0 && (cloudN===0 || FB.cloudEmpty)){
-      // 本機有資料、雲端空 → 這台是「有資料的電腦」，要上傳
+      // 本機有資料、雲端空 → 這台是「有資料的電腦」
       h+=`<div class="card" style="border-color:var(--w);margin-bottom:16px">
         <p class="nm" style="font-size:15px"><i class="ti ti-cloud-upload"></i> 雲端尚無資料 · 本機有 ${products.length} 筆</p>
-        <p class="sub" style="margin:6px 0 12px">這台有資料但雲端是空的。請上傳到雲端，手機與其他裝置才看得到。</p>
-        <button class="btn btn--ok btn--sm" style="width:auto;padding:0 18px" onclick="A.fbPushLocal()"><i class="ti ti-cloud-upload"></i> 上傳 ${products.length} 筆到雲端</button>
-        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;margin-left:8px" onclick="A.fbDiagnose()"><i class="ti ti-stethoscope"></i> 測試雲端連線</button>
+        <p class="sub" style="margin:6px 0 10px"><b style="color:#C0392B">⚠ 這台是你確認最完整的資料</b>，按下方按鈕會把雲端完全設成這台的內容,所有手機/電腦都會同步成這份。</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn--sm" style="width:auto;padding:0 16px;background:var(--accent)" onclick="A.fbMakeMaster()"><i class="ti ti-cloud-cog"></i> ${confirmDel==='makemaster'?'再按一次確認：設為主資料':'一鍵設為主資料（同步到所有裝置）'}</button>
+          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;color:var(--accent);border-color:var(--accent)" onclick="A.dataSnapshot()"><i class="ti ti-camera"></i> 資料快照</button>
+          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.fbDiagnose()"><i class="ti ti-stethoscope"></i> 測試連線</button>
+        </div>
         <div id="fb_diag" class="sub" style="margin-top:8px"></div>
       </div>`;
     } else if(products.length===0 && (cloudN===0 || cloudN===null)){
@@ -2984,10 +2987,12 @@ function elogaAccounts(){
             else { statusLine='✓ 已雲端登入：'+(FB.user.email||'')+'　·　資料即時同步'; statusColor='var(--s)'; }
             return `<p class="sub" style="margin:4px 0 10px;color:${statusColor};font-weight:600">${statusLine}</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
-              <button class="btn btn--sm" style="width:auto;padding:0 16px" ${user?'':'disabled'} onclick="A.fbPushLocal()"><i class="ti ti-cloud-upload"></i> 上傳本機資料到雲端（${products.length} 筆）</button>
+              <button class="btn btn--sm" style="width:auto;padding:0 16px;background:var(--accent)" ${user?'':'disabled'} onclick="A.fbMakeMaster()"><i class="ti ti-cloud-cog"></i> ${confirmDel==='makemaster'?'再按一次確認':'一鍵設為主資料'}</button>
+              <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" ${user?'':'disabled'} onclick="A.fbPushLocal()"><i class="ti ti-cloud-upload"></i> 一般上傳（${products.length} 筆）</button>
               <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" onclick="A.fbDiagnose()"><i class="ti ti-stethoscope"></i> 測試雲端連線</button>
               ${user?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" onclick="A.fbLogout()"><i class="ti ti-logout"></i> 雲端登出</button>`:''}
-            </div>`;
+            </div>
+            <p class="sub" style="margin-top:8px;font-size:11.5px"><b>「一鍵設為主資料」</b>＝把雲端完全設成這台的內容（含清掉雲端多餘的舊資料），所有裝置都會同步成這份。確定這台最完整再用。</p>`;
           })()}
           ${A._pushForce?`<div class="card" style="border-color:#C0392B;margin-top:8px;background:#FDECEA">
             <p class="sub" style="color:#C0392B;margin-bottom:8px"><i class="ti ti-alert-triangle"></i> 雲端已有資料。「強制上傳」會用<b>這台電腦目前的 ${products.length} 筆</b>覆蓋雲端同名資料（相同 ID 會被取代，雲端多出的不刪）。確定嗎？</p>
@@ -4554,6 +4559,49 @@ const A = {
     </div>`;
     document.body.appendChild(overlay);
   },
+  dataSnapshot(){
+    // 資料快照：給每台電腦各按一次，比較哪台完整，再決定誰上傳
+    const real=products.filter(p=>custName(p)!==ELG_SELF);
+    const custSet=new Set(real.map(p=>custName(p)));
+    // 收款總額（分桶模型）
+    let billed=0, paid=0;
+    real.forEach(p=>{ billed+=itemBilled(p); paid+=itemPaid(p); });
+    // 各狀態筆數
+    const stCount={};
+    real.forEach(p=>{ stCount[p.status]=(stCount[p.status]||0)+1; });
+    const stStr=Object.keys(stCount).map(k=>(SM[k]?SM[k][0]:k)+' '+stCount[k]).join('、');
+    // 雲端筆數
+    const cloudN=(typeof FB!=='undefined'&&FB.cloudCount!==undefined)?FB.cloudCount:'未知';
+
+    const lines=[
+      ['產品總筆數', real.length+' 筆'],
+      ['客戶數', custSet.size+' 家'],
+      ['應收總計', money(billed)],
+      ['實收總計', money(paid)],
+      ['請款單(invoices)總數', real.reduce((s,p)=>s+itemInvoices(p).length,0)+' 張'],
+      ['各狀態', stStr||'—'],
+      ['此裝置登入', (typeof FB!=='undefined'&&FB.user)?(FB.user.email||''):'未登入'],
+      ['雲端目前產品', cloudN+(cloudN===0?'（雲端是空的）':'')+' 筆'],
+    ];
+    const overlay=document.createElement('div');
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:center;justify-content:center;padding:16px';
+    overlay.onclick=e=>{ if(e.target===overlay) overlay.remove(); };
+    overlay.innerHTML=`<div style="background:var(--surface);border-radius:14px;width:100%;max-width:460px;max-height:85vh;overflow:auto;padding:20px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-size:16px;font-weight:700;flex:1"><i class="ti ti-camera"></i> 這台電腦的資料快照</span>
+        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" onclick="this.closest('div[style*=fixed]').remove()">關閉</button>
+      </div>
+      <p class="sub" style="margin-bottom:14px;font-size:12px">在<b>兩台電腦</b>各按一次「資料快照」，比較下面的數字，<b>筆數和金額較大的那台 = 較完整</b>，就用那台上傳到雲端。</p>
+      <div style="border:1px solid var(--line);border-radius:10px;overflow:hidden">
+        ${lines.map((l,i)=>`<div style="display:flex;gap:10px;padding:10px 14px;${i%2?'background:var(--n-bg)40':''};border-bottom:${i<lines.length-1?'1px solid var(--line)':'0'}">
+          <span style="flex:1;font-size:13px;color:var(--muted)">${l[0]}</span>
+          <span style="font-size:13.5px;font-weight:700;text-align:right">${l[1]}</span>
+        </div>`).join('')}
+      </div>
+      <p class="sub" style="margin-top:14px;font-size:11.5px"><i class="ti ti-info-circle"></i> 比對後，請告訴我兩台的「產品總筆數、應收總計、實收總計」三個數字，我會教你安全的上傳方式。</p>
+    </div>`;
+    document.body.appendChild(overlay);
+  },
   diagPayData(){
     // 診斷：列出所有進入收款流程的品項的原始欄位，找出金額異常的來源
     const prods=products.filter(p=>['invoiced','reported','paid','testing','reporting','completed'].includes(p.status)&&custName(p)!==ELG_SELF);
@@ -5455,6 +5503,51 @@ A.fbPushLocal=async function(){
 };
 A.fbPushLocalForce=function(){ A._pushForce=false; fbPushLocal(true); };
 A.cancelPushForce=function(){ A._pushForce=false; render(); };
+// 一鍵設為主資料：讓雲端完全等於這台（上傳全部 + 刪除雲端多出來的）
+A.fbMakeMaster=async function(){
+  if(!(typeof FB!=='undefined'&&FB.on&&FB.user&&FB.role==='eloga')){ A.toast('需以依洛嘉管理者登入後再操作'); return; }
+  if(confirmDel!=='makemaster'){ confirmDel='makemaster'; render(); A.toast('再按一次確認：把雲端完全覆蓋成「這台」的資料（其他裝置都會變這份）'); return; }
+  confirmDel=null;
+  const set=(msg,color)=>{ const el=document.getElementById('fb_diag'); if(el){ el.innerHTML=msg; el.style.color=color||'var(--muted)'; } };
+  try{
+    set('設定中…正在把這台的資料覆蓋到雲端,請勿關閉頁面');
+    const em=emailMap();
+    const mirror=async(name,arr,stamp)=>{
+      arr=arr||[];
+      const localIds=new Set();
+      // 1. 上傳本機全部（set by id，覆蓋同 id）
+      for(let i=0;i<arr.length;i+=400){
+        const b=FB.db.batch();
+        arr.slice(i,i+400).forEach(o=>{ const id=o.id||FB.db.collection(name).doc().id; o.id=id; localIds.add(id); const data=stripId(o); if(stamp)stamp(data); b.set(FB.db.collection(name).doc(id),data); });
+        await b.commit();
+      }
+      // 2. 刪除雲端多出來的（本機沒有的 id）
+      const cloud=await FB.db.collection(name).get();
+      const extras=cloud.docs.filter(d=>!localIds.has(d.id));
+      for(let i=0;i<extras.length;i+=400){
+        const b=FB.db.batch();
+        extras.slice(i,i+400).forEach(d=>b.delete(FB.db.collection(name).doc(d.id)));
+        await b.commit();
+      }
+      // 更新 last 快照避免 onSnapshot 反向覆蓋
+      const m={}; arr.forEach(o=>{ m[o.id]=JSON.stringify(stripId(o)); }); FB.last[name]=m;
+      return {up:arr.length, del:extras.length};
+    };
+    const rp=await mirror('products',products,d=>{ if(!d.customerEmail) d.customerEmail=em[d.cust]||''; });
+    const rc=await mirror('customers',customers);
+    await mirror('sharedPIF',sharedPIF);
+    await mirror('showcase',showcase);
+    await mirror('publicShowcase',publicShowcase);
+    await FB.db.collection('meta').doc('config').set({CINFO},{merge:true});
+    FB.cloudEmpty=false; FB.cloudCount=products.length;
+    set('✓ 完成！雲端已設為這台的資料：產品 '+rp.up+' 筆（清掉雲端多餘 '+rp.del+' 筆）、客戶 '+rc.up+' 家。<br>其他手機/電腦用<b>同一管理者帳號</b>登入並重新整理即可看到。', 'var(--s)');
+    render();
+    A.toast('✓ 已將雲端設為這台的資料,其他裝置重新整理即可同步', 5000);
+  }catch(e){
+    set('✗ 設定失敗：'+(e.code||e.message)+(((e.code||'').includes('permission'))?'（Firestore 規則未開放,請先設定規則）':''), '#C0392B');
+    A.toast('設定失敗：'+(e.code||e.message), 5000);
+  }
+};
 A.fbDiagnose=async function(){
   const el=document.getElementById('fb_diag');
   const set=(msg,color)=>{ if(el){ el.innerHTML=msg; el.style.color=color||'var(--muted)'; } };
