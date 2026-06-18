@@ -1161,7 +1161,10 @@ function elgSummary(){
   </div>`;
 
   h+=srchBar('搜尋客戶或品名…');
-  h+=`<div style="text-align:right;margin:-4px 0 10px"><button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;font-size:11.5px" onclick="A.repairCharges()"><i class="ti ti-wand"></i> 清理重複資料</button></div>`;
+  h+=`<div style="text-align:right;margin:-4px 0 10px;display:flex;gap:6px;justify-content:flex-end">
+    <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;font-size:11.5px" onclick="A.diagPayData()"><i class="ti ti-stethoscope"></i> 診斷資料</button>
+    <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;font-size:11.5px" onclick="A.repairCharges()"><i class="ti ti-wand"></i> 清理重複資料</button>
+  </div>`;
 
   // 依客戶分組
   const allCusts=[...new Set(allProd.map(p=>custName(p)))].sort();
@@ -4215,6 +4218,52 @@ const A = {
     save(); render();
     A.toast('已建立 PIF 處理費收款單 '+rec.id+'（'+money(total)+'）');
   },
+  diagPayData(){
+    // 診斷：列出所有進入收款流程的品項的原始欄位，找出金額異常的來源
+    const prods=products.filter(p=>['invoiced','reported','paid','testing','reporting','completed'].includes(p.status)&&custName(p)!==ELG_SELF);
+    let totalCharge=0, totalPaid=0;
+    const rows=prods.map(p=>{
+      const recs=p.payRecords||[];
+      const paid=recs.reduce((s,r)=>s+(r.amt||0),0);
+      totalCharge+=(p.charge||0); totalPaid+=paid;
+      const recStr=recs.length?recs.map(r=>money(r.amt||0)+'('+(r.method||'?')+')').join(' + '):'無';
+      return `<tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:4px 6px">${custName(p)}</td>
+        <td style="padding:4px 6px">${p.name||'—'}</td>
+        <td style="padding:4px 6px;font-size:10px">${p.status}</td>
+        <td style="padding:4px 6px;text-align:right">${money(p.charge||0)}</td>
+        <td style="padding:4px 6px;text-align:right">${money(paid)}</td>
+        <td style="padding:4px 6px;font-size:10px">${recStr}</td>
+        <td style="padding:4px 6px;font-size:10px">${p.batch||'—'}</td>
+      </tr>`;
+    }).join('');
+    const overlay=document.createElement('div');
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:center;justify-content:center;padding:16px';
+    overlay.onclick=e=>{ if(e.target===overlay) overlay.remove(); };
+    overlay.innerHTML=`<div style="background:var(--surface);border-radius:14px;width:100%;max-width:760px;max-height:85vh;overflow:auto;padding:18px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+        <span style="font-size:15px;font-weight:700;flex:1"><i class="ti ti-stethoscope"></i> 收款資料診斷（${prods.length} 筆）</span>
+        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" onclick="this.closest('div[style*=fixed]').remove()">關閉</button>
+      </div>
+      <div class="note" style="margin-bottom:10px;font-size:12px">charge=方案金額(應收)，已收=payRecords加總。若「已收」有錢但「charge」是0，表示開單時金額沒寫入。</div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:11.5px">
+        <thead><tr style="border-bottom:2px solid var(--line2);text-align:left">
+          <th style="padding:6px">客戶</th><th style="padding:6px">品名</th><th style="padding:6px">狀態</th>
+          <th style="padding:6px;text-align:right">應收</th><th style="padding:6px;text-align:right">已收</th>
+          <th style="padding:6px">收款記錄</th><th style="padding:6px">批次</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+        <tfoot><tr style="border-top:2px solid var(--line2);font-weight:700">
+          <td colspan="3" style="padding:6px">合計</td>
+          <td style="padding:6px;text-align:right">${money(totalCharge)}</td>
+          <td style="padding:6px;text-align:right">${money(totalPaid)}</td>
+          <td colspan="2"></td>
+        </tr></tfoot>
+      </table></div>
+    </div>`;
+    document.body.appendChild(overlay);
+  },
+  diagPayData_end(){},
   repairCharges(){
     // 清理重複資料：只移除「PIF 費」重複收款記錄與標記（方案金額 charge 本身就是總收費）
     // 絕不動「合約扣款」記錄，避免誤刪合約客戶的多筆同額扣款
