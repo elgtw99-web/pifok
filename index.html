@@ -88,6 +88,8 @@
   .grp.collapsed .grpbody{ display:none; }
   .pifgrid{ display:grid; grid-template-columns:repeat(auto-fill,minmax(168px,1fr)); gap:10px; }
   .pifgrid .card{ padding:11px 12px; display:flex; flex-direction:column; gap:4px; }
+  .lib-row{ background:var(--surface); }
+  .lib-row.sel{ background:var(--i-bg); }
   .screen.searching .grp .grpbody{ display:block; }
   .screen.searching .grp .chev{ transform:rotate(0deg); }
   .chips{ display:flex;flex-wrap:wrap;gap:7px;margin:0 0 12px; }
@@ -1728,17 +1730,20 @@ function elgLibrary(){
     oncompositionstart="A._composing=true"
     oncompositionend="A._composing=false;A.libSearchInput(this.value)"
     style="margin-bottom:12px">`;
-  // 批量工具列
-  h+=`<div class="card libbar" style="background:var(--n-bg);border:0;margin-bottom:14px">
-      <span class="nm" style="font-size:14px" data-selcount="lib">已選 ${selN} / ${rows.length} 筆</span>
-      <span class="muted" style="font-size:13px;font-weight:600;cursor:pointer" data-selall="lib" onclick="A.libAll()">${selN===rows.length&&rows.length?'取消全選':'全選目前清單'}</span>
-      <span style="flex:1"></span>
-      <select class="fld" id="batchSt" style="width:auto;min-width:150px">${opts}</select>
-      <button class="btn btn--sm" style="width:auto;padding:0 14px" data-needsel ${selN?'':'disabled'} onclick="A.libApply()"><i class="ti ti-send"></i> 套用狀態並同步客戶看板</button>
-      <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" data-needsel ${selN?'':'disabled'} onclick="A.batchGen()"><i class="ti ti-file-stack"></i> 生成合約＋清單</button>
-      <button class="btn btn--sm" style="width:auto;padding:0 14px;background:${confirmDel==='batch'?'#C0392B':'#B23A3A'}" data-needsel ${selN?'':'disabled'} onclick="A.batchDelete()"><i class="ti ti-trash"></i> ${confirmDel==='batch'?'確認刪除？':'刪除所選'}</button>
-      <select class="fld fld--mini" id="batchCust" style="width:auto;min-width:130px">${vendorOpts('')}</select>
-      <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" data-needsel ${selN?'':'disabled'} onclick="A.batchReassign()"><i class="ti ti-arrows-exchange"></i> 轉移廠商</button>
+  // 批量工具列（手機友善）
+  h+=`<div class="card" style="background:var(--n-bg);border:0;margin-bottom:14px;padding:10px 12px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+        <span class="nm" style="font-size:13px;flex:1" data-selcount="lib">已選 ${selN} / ${rows.length} 筆</span>
+        <span class="muted" style="font-size:13px;font-weight:600;cursor:pointer" data-selall="lib" onclick="A.libAll()">${selN===rows.length&&rows.length?'取消全選':'全選'}</span>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:6px">
+        <select class="fld fld--mini" id="batchSt" style="flex:1;min-width:120px">${opts}</select>
+        <button class="btn btn--sm" style="width:auto;padding:0 12px" data-needsel ${selN?'':'disabled'} onclick="A.libApply()"><i class="ti ti-send"></i> 套用</button>
+        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" data-needsel ${selN?'':'disabled'} onclick="A.batchGen()"><i class="ti ti-file-stack"></i> 合約</button>
+        <button class="btn btn--sm" style="width:auto;padding:0 12px;background:${confirmDel==='batch'?'#C0392B':'#B23A3A'}" data-needsel ${selN?'':'disabled'} onclick="A.batchDelete()"><i class="ti ti-trash"></i> ${confirmDel==='batch'?'確認':'刪除'}</button>
+        <select class="fld fld--mini" id="batchCust" style="flex:1;min-width:110px">${vendorOpts('')}</select>
+        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" data-needsel ${selN?'':'disabled'} onclick="A.batchReassign()"><i class="ti ti-arrows-exchange"></i> 轉移</button>
+      </div>
     </div>`;
   // 總表（依客戶分組）
   const groupedCusts=[...new Set(rows.map(p=>custName(p)))];
@@ -1760,27 +1765,20 @@ function elgLibrary(){
           }).join('')}
         </div>
       </div>
-      <div style="overflow-x:auto"><table class="dtable" style="min-width:680px">
-        <thead><tr><th style="width:30px"></th><th>品名</th><th>規格</th><th>數量</th><th>檢驗</th><th>費用</th><th>狀態</th><th style="width:30px"></th></tr></thead>
-        <tbody>${custItems.map(p=>`
-          <tr class="${batch[p.id]?'sel':''}" data-nm="${p.name||''}">
-            <td><span class="ck ${batch[p.id]?'on':''}" onclick="A.toggleBatch('${p.id}')" style="cursor:pointer"><i class="ti ti-check"></i></span></td>
-            <td><span class="nm" style="font-size:13px">${p.name||'—'}</span>${p.alias?`<br><span class="sub">配方：${p.alias}</span>`:''}
-              <div style="display:flex;gap:4px;align-items:center;margin-top:4px">
-                <input class="fld fld--mini" style="flex:1;min-width:0" value="${(p.en||'').replace(/"/g,'&quot;')}" placeholder="英文名" onchange="A.setField('${p.id}','en',this.value)">
-                <button class="btn btn--ghost btn--sm" style="width:26px;padding:0" title="AI" onclick="A.genEnName('${p.id}')"><i class="ti ti-sparkles"></i></button>
-              </div></td>
-            <td style="white-space:nowrap">${p.spec||'—'}</td>
-            <td style="white-space:nowrap">${p.qty||'—'}</td>
-            <td style="white-space:nowrap;font-size:12px">${testText(p.t)}</td>
-            <td style="white-space:nowrap">${money(feeOf(p.t))}</td>
-            <td><select class="fld fld--mini" style="min-width:110px" onchange="A.setStatus('${p.id}',this.value)">
+      <div>
+        ${custItems.map(p=>`
+          <div class="lib-row ${batch[p.id]?'sel':''}" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line)">
+            <span class="ck ${batch[p.id]?'on':''}" onclick="A.toggleBatch('${p.id}')" style="cursor:pointer;flex:none"><i class="ti ti-check"></i></span>
+            <span style="flex:1;min-width:0">
+              <span class="nm" style="font-size:13.5px;display:block">${p.name||'—'}</span>
+              <span class="sub" style="font-size:11.5px">${p.spec||''}${p.qty?' · '+p.qty:''}${feeOf(p.t)?' · '+money(feeOf(p.t)):''}</span>
+            </span>
+            <select class="fld fld--mini" style="width:100px;flex:none" onchange="A.setStatus('${p.id}',this.value)">
               ${order.map(o=>`<option value="${o}" ${p.status===o?'selected':''}>${SM[o][0]}</option>`).join('')}
-            </select></td>
-            <td><span style="cursor:pointer;color:${confirmDel===p.id?'#C0392B':'var(--faint)'}" onclick="A.delProduct('${p.id}')"><i class="ti ti-trash"></i></span></td>
-          </tr>`).join('')}
-        </tbody>
-      </table></div>
+            </select>
+            <span style="cursor:pointer;color:${confirmDel===p.id?'#C0392B':'var(--faint)'};flex:none" onclick="A.delProduct('${p.id}')"><i class="ti ti-trash"></i></span>
+          </div>`).join('')}
+      </div>
     </div>`;
   }).join('');
   if(!rows.length) h+=`<div class="card faint" style="text-align:center;padding:24px">目前篩選沒有符合的樣品</div>`;
@@ -5337,18 +5335,7 @@ function snapApply(name, arr, docs){
 function emailMap(){ const m={}; customers.forEach(c=>{ if(c.name) m[c.name]=c.email||''; }); m[ELG_SELF]=''; return m; }
 async function attachAdmin(){
   fbDetach();
-  try{ if(FB.user) await FB.user.getIdToken(true); }catch(e){ console.warn('token refresh fail',e); }
-  // 先直接抓一次，確保資料立刻顯示（不等 snapshot）
-  try{
-    const [ps,cs]=await Promise.all([
-      FB.db.collection('products').get(),
-      FB.db.collection('customers').get()
-    ]);
-    snapApply('products',products,ps.docs);
-    snapApply('customers',customers,cs.docs);
-    FB.ready=true; render();
-  }catch(e){ console.warn('initial fetch error',e); }
-  // 再設 snapshot 訂閱，讓之後的變更自動同步
+  try{ if(FB.user) await FB.user.getIdToken(true); }catch(e){ console.warn('token refresh',e); }
   const cols=[['products',products],['customers',customers],['staff',staff],['sharedPIF',sharedPIF],['showcase',showcase],['publicShowcase',publicShowcase]];
   cols.forEach(([name,arr])=>{
     FB.unsub.push(FB.db.collection(name).onSnapshot(s=>{
@@ -5356,19 +5343,14 @@ async function attachAdmin(){
     }, e=>{
       console.warn(name,e);
       if((e.code||'').includes('permission'))
-        A.toast('⚠ 雲端讀取被拒（'+name+'）：Firestore 規則未開放', 6000);
+        A.toast('⚠ 雲端讀取被拒（'+name+'）：Firestore 規則未開放', 5000);
     }));
   });
 }
 function attachCustomer(email){
   fbDetach();
   const emailLow=(email||'').toLowerCase();
-  // 先直接查一次，確保資料立刻顯示
-  FB.db.collection('products').where('customerEmail','==',email).get().then(s=>{
-    s.docs.forEach(d=>{ if(!products.some(p=>p.id===d.id)){ const o=Object.assign({},d.data()); o.id=d.id; products.push(o); } });
-    FB.ready=true; render();
-  }).catch(e=>console.warn('customer initial fetch',e));
-  // 再設 snapshot 訂閱
+  // snapshot 訂閱自己的品項（email 比對）
   FB.unsub.push(FB.db.collection('products').where('customerEmail','==',email).onSnapshot(s=>{
     s.docs.forEach(d=>{ if(!products.some(p=>p.id===d.id)){ const o=Object.assign({},d.data()); o.id=d.id; products.push(o); } });
     FB.cloudCount=s.size; FB.ready=true; render();
@@ -5591,7 +5573,8 @@ A.googleSignIn=function(){
   if(!FB.on){ A.toast('Firebase 尚未載入，請檢查網路'); return; }
   const p=new firebase.auth.GoogleAuthProvider();
   p.setCustomParameters({prompt:'select_account'});
-  // 直接用 redirect（不用 popup），避免 Cloudflare Pages 的 COOP 政策擋住彈出視窗
+  // 把登入來源存到 sessionStorage，redirect 回來後頁面重載時能恢復
+  try{ sessionStorage.setItem('_loginSide', window._loginSide||'eloga'); }catch(e){}
   FB.auth.signInWithRedirect(p).catch(e=>A.toast('登入失敗：'+e.message));
 };
 A.fbLogout=function(){ try{ if(FB.on&&FB.user) FB.auth.signOut(); }catch(e){} FB.user=null; FB.role=null; FB.ready=false; role='customer'; me={}; view='entry'; render(); };
@@ -5717,6 +5700,11 @@ A.reloadPage=function(){
 
 fbInit();
 fbHandleRedirect();
+// redirect 登入後頁面重載，從 sessionStorage 恢復登入來源
+try{
+  const savedSide=sessionStorage.getItem('_loginSide');
+  if(savedSide){ window._loginSide=savedSide; sessionStorage.removeItem('_loginSide'); }
+}catch(e){}
 SEED_SNAPSHOT = JSON.parse(JSON.stringify({products,customers,staff,sharedPIF,showcase,CINFO}));
 load();
 render();
