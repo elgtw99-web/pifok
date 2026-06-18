@@ -5294,7 +5294,7 @@ const FB_SYNC_READY = true;
 
 const firebaseConfig = {
   apiKey: "AIzaSyDYZv3jPSYlpfD5SznvF8OfkQsILQTFJ8I",
-  authDomain: "pifok.pages.dev",
+  authDomain: "pifok-20e32.firebaseapp.com",
   projectId: "pifok-20e32",
   storageBucket: "pifok-20e32.firebasestorage.app",
   messagingSenderId: "457227684194",
@@ -5725,10 +5725,12 @@ function fbStart(){
     FB.user=user;
     if(!user){ FB.role=null; FB.ready=false; fbDetach(); render(); return; }
     try{
-      // 強制刷新 token
+      // 強制刷新 token 並等待足夠時間讓 Firestore SDK 接收
       await user.getIdToken(true);
-      // 等待 token 傳遞到 Firestore SDK（redirect 後需要一點時間）
-      await new Promise(r=>setTimeout(r,800));
+      await new Promise(r=>setTimeout(r,1500));
+      // 再次確認 token 有效
+      const tokenResult=await user.getIdTokenResult();
+      if(!tokenResult.token){ throw new Error('token not ready'); }
       // 從後台入口進來的才檢查 staff
       const fromCustomerPortal = window._loginSide==='customer';
       if(!fromCustomerPortal){
