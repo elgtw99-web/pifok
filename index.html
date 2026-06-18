@@ -558,6 +558,7 @@ const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 
 /* ---------- persistence ---------- */
 const SEED_VER='2026-06-17-pif7-fixed';
+const APP_VER='v8.2-sync';  // 版本標記：用來確認裝置是否載入最新版
 function save(){
   if(FB_SYNC_READY && typeof FB!=='undefined' && FB.on && FB.user && FB.role && FB.role!=='pending'){ clearTimeout(FB.syncT); FB.syncT=setTimeout(()=>{ fbSync(); FB.syncT=null; },800); }
   try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,publicShowcase,showcase,invoiceRecs,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO})); }catch(e){}
@@ -1525,6 +1526,8 @@ function elgHome(){
   let h=`<div class="note" style="margin-bottom:14px"><i class="ti ti-layout-dashboard"></i>全流程總覽 · 點任一階段直接前往處理。</div>`;
   if(typeof FB!=='undefined' && FB.on && FB.user){
     const cloudN=(FB.cloudCount===undefined?null:FB.cloudCount);
+    const verStamp=`<div style="text-align:right;font-size:10px;color:var(--faint);margin-bottom:4px">程式版本 ${APP_VER}</div>`;
+    h+=verStamp;
     if(products.length>0 && (cloudN===0 || FB.cloudEmpty)){
       // 本機有資料、雲端空 → 這台是「有資料的電腦」
       h+=`<div class="card" style="border-color:var(--w);margin-bottom:16px">
@@ -5204,14 +5207,23 @@ function attachCustomer(email){
     FB.ready=true; render(); return;
   }
   const myName=me.nameCh||'';
-  // 訂閱 Firestore：抓 customerEmail 匹配的產品
+  const emailLow=(email||'').toLowerCase();
+  // 訂閱 Firestore：抓 customerEmail 匹配的產品（同時試原始與小寫，避免大小寫不一致）
+  const mergeDocs=(docs)=>{
+    docs.forEach(d=>{
+      if(!products.some(p=>p.id===d.id)){ const o=Object.assign({},d.data()); o.id=d.id; products.push(o); }
+    });
+  };
   FB.unsub.push(FB.db.collection('products').where('customerEmail','==',email).onSnapshot(s=>{
-    if(s.docs.length>0){
-      snapApply('products',products,s.docs); FB.ready=true; render();
-    } else {
-      FB.ready=true; FB.cloudEmpty=true; render();
-    }
+    if(s.docs.length>0){ snapApply('products',products,s.docs); FB.ready=true; render(); }
+    else { FB.ready=true; render(); }
   }, e=>{ FB.ready=true; render(); console.warn(e); }));
+  // 小寫版本（若登入 email 與建檔大小寫不同）
+  if(emailLow!==email){
+    FB.unsub.push(FB.db.collection('products').where('customerEmail','==',emailLow).onSnapshot(s=>{
+      if(s.docs.length>0){ mergeDocs(s.docs); FB.ready=true; render(); }
+    }, e=>console.warn(e)));
+  }
   // 額外訂閱：抓公司名匹配但沒 customerEmail 的舊產品，並補上 customerEmail
   if(myName){
     FB.unsub.push(FB.db.collection('products').where('cust','==',myName).onSnapshot(s=>{
