@@ -421,7 +421,7 @@ function defTests(type){
   return {fang:false,chang:true,wen:false};
 }
 function testText(t){ t=t||{}; const a=[]; if(t.fang)a.push('防腐效能測驗'); if(t.chang)a.push('常規9項+念珠菌'); if(t.wen)a.push('穩定性測試'); return a.join('+')||'—'; }
-function feeOf(t){ t=t||{}; return (t.fang?350:0)+(t.chang?200:0)+(t.wen?350:0); }
+function feeOf(t){ t=t||{}; return (t.fang?350:0)+(t.chang?320:0)+(t.wen?350:0); }
 function agreementHTML(list){
   const d=new Date(), ds=d.getFullYear()+'年'+String(d.getMonth()+1).padStart(2,'0')+'月'+String(d.getDate()).padStart(2,'0')+'日';
   const docNo='MC-'+String(d.getFullYear()).slice(2)+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'01';
@@ -1460,9 +1460,15 @@ function elgCustomers(){
       <span class="pill pill--i">${its.length} 件</span></div>`;
   // 狀態儀表板
   const present=order.filter(k=>its.some(p=>p.status===k));
-  h+=`<div class="dash" style="margin-bottom:14px">`+ present.map(k=>`
-      <div class="metric"><div class="mi" style="background:var(--${SM[k][1]}-bg);color:var(--${SM[k][1]})"><i class="ti ti-circle-dot"></i></div>
-        <div class="mv">${its.filter(p=>p.status===k).length}</div><div class="ml">${SM[k][0]}</div></div>`).join('')
+  const statusTabMap={applied:'apply',approved:'apply',shipped:'receive',received:'invoice',invoiced:'invoice',reported:'invoice',paid:'data',testing:'pif',reporting:'pif',completed:'pif'};
+  const statusInvTab={received:'recv',invoiced:'issued',reported:'check'};
+  h+=`<div class="dash" style="margin-bottom:14px">`+ present.map(k=>{
+    const tab=statusTabMap[k]||'library';
+    const invSub=statusInvTab[k]||'';
+    return `<div class="metric" style="cursor:pointer" onclick="A.goStatusTab('${tab}','${invSub}')">
+      <div class="mi" style="background:var(--${SM[k][1]}-bg);color:var(--${SM[k][1]})"><i class="ti ti-circle-dot"></i></div>
+      <div class="mv">${its.filter(p=>p.status===k).length}</div><div class="ml">${SM[k][0]}</div></div>`;
+  }).join('')
     + (present.length?'':`<div class="card faint" style="grid-column:1/-1;text-align:center;padding:16px">此廠商尚無送驗商品</div>`) +`</div>`;
   // 雲端硬碟：儲存 + 授權
   const dv=cobj?(cobj.drive||''):'';
@@ -1949,6 +1955,7 @@ function elgInvoice(){
       const items=toCheck.filter(p=>custName(p)===cn);
       const tot=items.reduce((s,p)=>s+(p.charge||0),0);
       const payNote=items.map(p=>p.payNote).filter(Boolean)[0]||'—';
+      const custKey=cn.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g,'_');
       return `<div class="card" style="border-color:var(--w);margin-bottom:12px">
         <div class="row" style="margin-bottom:8px">
           <span>
@@ -1974,11 +1981,11 @@ function elgInvoice(){
         <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
           <div style="flex:1;min-width:120px">
             <label class="lbl">實收金額</label>
-            <input class="fld fld--mini" id="chk_amt_${cn.replace(/\s/g,'_')}" value="${tot}" type="number">
+            <input class="fld fld--mini" id="chk_amt_${custKey}" value="${tot}" type="number">
           </div>
           <div style="flex:1;min-width:120px">
             <label class="lbl">付款方式</label>
-            <select class="fld fld--mini" id="chk_method_${cn.replace(/\s/g,'_')}">
+            <select class="fld fld--mini" id="chk_method_${custKey}">>
               ${PAY_METHODS.map(m=>`<option>${m}</option>`).join('')}
             </select>
           </div>
@@ -2268,6 +2275,18 @@ function addItemsScreen(){
         ${customers.map(c=>`<option ${c.name===addCust?'selected':''}>${c.name}</option>`).join('')}</select>`;
   }
   h+=`<div class="modeseg">${isElg?seg('photo','camera','照片辨識'):''}${seg('text','clipboard-text','貼文字')}${seg('manual','pencil','手動')}</div>`;
+  if(!isElg){
+    h+=`<div class="card" style="border-color:var(--w);background:var(--w-bg);margin-top:14px;padding:12px 14px">
+      <p class="nm" style="font-size:13.5px;color:var(--w);margin-bottom:6px"><i class="ti ti-alert-triangle"></i> 送樣數量注意事項</p>
+      <p class="sub" style="margin:0;line-height:1.8">
+        · 每項送檢商品樣品總重量 <b>不得低於 240g</b><br>
+        · 液態／膏體：至少 <b>4 瓶（支）</b>以上<br>
+        · 面膜類（25g／片）：至少 <b>10 片</b><br>
+        · 粉狀／固體：至少 <b>4 包（盒）</b>以上<br>
+        · 數量不足可能導致無法完成全部檢測項目
+      </p>
+    </div>`;
+  }
   h+=`<div style="margin-top:14px">${ (isElg && m==='photo')?photoMode() : m==='text'?textMode() : manualMode() }</div>`;
   if(drafts.length){
     h+=`<div class="row sect mt"><span>待確認（${drafts.length}）</span><span class="muted" style="font-size:13px;font-weight:600;cursor:pointer" onclick="A.clearDrafts()">清空草稿</span></div>
@@ -2325,17 +2344,7 @@ function textMode(){
 }
 function manualMode(){
   const isCust=addTarget!=='eloga';
-  return `${isCust?`<div class="card" style="border-color:var(--w);background:var(--w-bg);margin-bottom:14px;padding:12px 14px">
-    <p class="nm" style="font-size:13.5px;color:var(--w);margin-bottom:6px"><i class="ti ti-alert-triangle"></i> 送樣數量注意事項</p>
-    <p class="sub" style="margin:0;line-height:1.8">
-      · 每項送檢商品樣品總重量 <b>不得低於 240g</b><br>
-      · 液態／膏體：至少 <b>4 瓶（支）</b>以上<br>
-      · 面膜類（25g／片）：至少 <b>10 片</b><br>
-      · 粉狀／固體：至少 <b>4 包（盒）</b>以上<br>
-      · 數量不足可能導致無法完成全部檢測項目
-    </p>
-  </div>`:''}
-  <label class="lbl">正確產品品名（會輸出到送驗清單）</label><input id="mi_n" class="fld" placeholder="例：玫瑰臉部精油" style="margin-bottom:10px">
+  return `<label class="lbl">正確產品品名（會輸出到送驗清單）</label><input id="mi_n" class="fld" placeholder="例：玫瑰臉部精油" style="margin-bottom:10px">
     <label class="lbl">別名 / 依洛嘉配方名（內部對照，不輸出）</label><input id="mi_alias" class="fld" placeholder="例：ELG-OIL-07" style="margin-bottom:10px">
     <label class="lbl">英文名</label><input id="mi_e" class="fld" placeholder="English name" style="margin-bottom:10px">
     <div style="display:flex;gap:10px">
@@ -2739,6 +2748,11 @@ const A = {
       products.push({id:'imp'+(uid+i),name:g.name.trim(),alias:'',en:g.en||'',spec:g.spec||'',qty:g.qty||'',type:ty,t:g.t||defTests(ty),cust,mine:cust===CUST,status:libImpStatus,batch:''});
     });
     libDrafts=[]; save(); render(); A.toast('已確認匯入 '+rows.length+' 筆 · '+cset.size+' 個客戶（'+SM[libImpStatus][0]+'）');
+  },
+  goStatusTab(tab,invSub){
+    elgTab=tab; custView=null;
+    if(invSub) invTab=invSub;
+    render();
   },
   toggleNotepad(){ notepadOpen=!notepadOpen; render(); },
   addNote(){
@@ -3357,7 +3371,7 @@ const A = {
       row.getCell(1).value=idx+1; row.getCell(2).value=p.name; row.getCell(3).value=p.en||'';
       row.getCell(4).value=p.spec; row.getCell(5).value=p.qty;
       row.getCell(6).value=t.fang?'V':null; row.getCell(7).value=t.chang?'V':null; row.getCell(8).value=t.wen?'V':null;
-      const amt=(t.fang?350:0)+(t.chang?200:0)+(t.wen?350:0);
+      const amt=(t.fang?350:0)+(t.chang?320:0)+(t.wen?350:0);
       row.getCell(10).value={formula:`IF(F${r}="V",350,0)+IF(G${r}="V",200,0)+IF(H${r}="V",350,0)`,result:amt};
       row.getCell(1).font={name:'新細明體',size:11}; row.getCell(1).alignment={horizontal:'center',vertical:'middle'};
       row.getCell(2).font={name:'新細明體',size:12}; row.getCell(2).alignment={vertical:'middle'};
@@ -3380,9 +3394,9 @@ const A = {
     }
     const tr=last+1, cnt=k=>list.filter(p=>(p.t||{})[k]).length;
     ws.getCell(`F${tr}`).value={formula:`COUNTIF(F2:F${last},"V")*350`,result:cnt('fang')*350};
-    ws.getCell(`G${tr}`).value={formula:`COUNTIF(G2:G${last},"V")*200`,result:cnt('chang')*200};
+    ws.getCell(`G${tr}`).value={formula:`COUNTIF(G2:G${last},"V")*320`,result:cnt('chang')*320};
     ws.getCell(`H${tr}`).value={formula:`COUNTIF(H2:H${last},"V")*350`,result:cnt('wen')*350};
-    const grand=cnt('fang')*350+cnt('chang')*200+cnt('wen')*350;
+    const grand=cnt('fang')*350+cnt('chang')*320+cnt('wen')*350;
     ws.getCell(`I${tr}`).value={formula:`"共"&SUM(J2:J${last})&"元"`,result:`共${grand}元`};
     [6,7,8].forEach(c=>{ const cell=ws.getRow(tr).getCell(c); cell.font={name:'新細明體',size:11}; cell.alignment={horizontal:'center',vertical:'middle'}; });
     ws.getCell(`I${tr}`).font={name:'新細明體',size:11}; ws.getCell(`I${tr}`).alignment={vertical:'middle',wrapText:true};
@@ -3600,14 +3614,13 @@ const A = {
   },
   confirmPayBatch(cn){
     const items=P('reported').filter(p=>custName(p)===cn);
-    if(!items.length) return;
-    const key=cn.replace(/\s/g,'_');
+    if(!items.length){ A.toast('找不到待查帳的品項'); return; }
+    const key=cn.replace(/[^a-zA-Z0-9\u4e00-\u9fff]/g,'_');
     const amtEl=document.getElementById('chk_amt_'+key);
     const mtdEl=document.getElementById('chk_method_'+key);
     const totalAmt=amtEl?Number(amtEl.value):items.reduce((s,p)=>s+(p.charge||0),0);
     const method=mtdEl?mtdEl.value:'匯款';
     const ds=new Date().toLocaleDateString('zh-TW');
-    // 按比例分配實收金額到每筆品項
     const totalCharge=items.reduce((s,p)=>s+(p.charge||0),0);
     items.forEach(p=>{
       const ratio=totalCharge>0?(p.charge||0)/totalCharge:1/items.length;
@@ -3618,7 +3631,12 @@ const A = {
       p.payMethod=method;
       p.status='paid';
     });
-    save(); render(); A.toast('已確認 '+cn+' 整批收款 '+money(totalAmt)+'（'+method+'），'+items.length+' 筆轉待送驗');
+    save(); 
+    // 如果沒有其他待查帳的了，自動跳到送驗資料
+    const remaining=P('reported').length;
+    if(!remaining) elgTab='data';
+    render(); 
+    A.toast('已確認 '+cn+' 整批收款 '+money(totalAmt)+'（'+method+'），'+items.length+' 筆轉待送驗'+(remaining?'':'　→ 已跳到送驗資料'));
   },
   rejectPayBatch(cn){
     const items=P('reported').filter(p=>custName(p)===cn);
