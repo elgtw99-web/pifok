@@ -1547,8 +1547,8 @@ function elgData(){
     <div class="stack">`+ its.map(x=>`
       <div class="selrow ${x.genSel!==false?'on':''}" onclick="A.toggleGen('${x.id}')">
         <span class="ck"><i class="ti ti-check"></i></span>
-        <span style="flex:1"><span class="nm">${x.name}</span><br>
-          <span class="sub">${testText(x.t)} · ${x.spec||''}
+        <span style="flex:1"><span class="nm">${x.name||'未命名'}</span><br>
+          <span class="sub">${testText(x.t)} · ${x.spec||'未填規格'}
           ${(x.en||'').trim()?` · EN: ${x.en}`:'<span style="color:var(--w)"> · 缺英文名</span>'}</span></span>
       </div>`).join('') + `</div>`;
   }).join('');
@@ -1556,12 +1556,12 @@ function elgData(){
   // ===== 設定檢驗項目 =====
   h+=`<label class="lbl" style="margin-top:16px">設定檢驗項目（選擇產品）</label>
     <select class="fld" onchange="A.pickData(this.value)" style="margin-bottom:14px">
-      ${filteredPool.map(x=>`<option value="${x.id}" ${x.id===dataPid?'selected':''}>${custName(x)} · ${x.name}</option>`).join('')}
+      ${filteredPool.map(x=>`<option value="${x.id}" ${x.id===dataPid?'selected':''}>${custName(x)} · ${x.name||'未命名'}</option>`).join('')}
     </select>
     <table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:14px">
       <tr style="border-bottom:1px solid var(--line)">
         <td style="padding:8px;color:var(--muted);font-size:12px;width:90px">送驗廠商</td>
-        <td style="padding:8px;font-weight:600">${custName(p)}${(p.mine&&me.nameEn)?` / ${me.nameEn}`:''}</td>
+        <td style="padding:8px;font-weight:600">${custName(p)||'—'}${(p.mine&&me.nameEn)?` / ${me.nameEn}`:''}</td>
       </tr>
       <tr style="border-bottom:1px solid var(--line)">
         <td style="padding:8px;color:var(--muted);font-size:12px">地址</td>
@@ -1573,7 +1573,11 @@ function elgData(){
       </tr>
       <tr style="border-bottom:1px solid var(--line)">
         <td style="padding:8px;color:var(--muted);font-size:12px">產品名稱</td>
-        <td style="padding:8px"><span class="nm">${p.name}</span> <span class="pill pill--s" style="font-size:10px">輸出至清單</span></td>
+        <td style="padding:8px"><span class="nm">${p.name||'—'}</span> <span class="pill pill--s" style="font-size:10px">輸出至清單</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:8px;color:var(--muted);font-size:12px">英文名</td>
+        <td style="padding:4px 8px"><input class="fld fld--mini" value="${(p.en||'').replace(/"/g,'&quot;')}" placeholder="English name" style="width:100%" onchange="A.setField('${dataPid}','en',this.value)"></td>
       </tr>
       <tr style="border-bottom:1px solid var(--line)">
         <td style="padding:8px;color:var(--muted);font-size:12px">別名</td>
@@ -1581,23 +1585,23 @@ function elgData(){
       </tr>
       <tr style="border-bottom:1px solid var(--line)">
         <td style="padding:8px;color:var(--muted);font-size:12px">型號規格</td>
-        <td style="padding:4px 8px"><input class="fld fld--mini" value="${p.spec||''}" style="width:100%" onchange="A.setField('${dataPid}','spec',this.value)"></td>
+        <td style="padding:4px 8px"><input class="fld fld--mini" value="${(p.spec||'').replace(/"/g,'&quot;')}" placeholder="例：100ml/瓶" style="width:100%" onchange="A.setField('${dataPid}','spec',this.value)"></td>
       </tr>
       <tr style="border-bottom:1px solid var(--line)">
         <td style="padding:8px;color:var(--muted);font-size:12px">數量</td>
-        <td style="padding:4px 8px"><input class="fld fld--mini" value="${p.qty||''}" style="width:100%" onchange="A.setField('${dataPid}','qty',this.value)"></td>
+        <td style="padding:4px 8px"><input class="fld fld--mini" value="${(p.qty||'').replace(/"/g,'&quot;')}" placeholder="例：4瓶" style="width:100%" onchange="A.setField('${dataPid}','qty',this.value)"></td>
       </tr>
       <tr style="border-bottom:1px solid var(--line)">
         <td style="padding:8px;color:var(--muted);font-size:12px">產品類型</td>
         <td style="padding:4px 8px">
           <select class="fld fld--mini" onchange="A.setType('${p.id}',this.value)" style="width:100%">
-            ${['油劑','面膜','液劑霜劑','其他'].map(t=>`<option ${p.type===t?'selected':''}>${t}</option>`).join('')}
+            ${['油劑','面膜','液劑霜劑','其他'].map(t=>`<option ${(p.type||'')=== t?'selected':''}>${t}</option>`).join('')}
           </select>
         </td>
       </tr>
       <tr>
         <td style="padding:8px;color:var(--muted);font-size:12px">樣品量</td>
-        <td style="padding:4px 8px"><input class="fld fld--mini" value="${p.amt||''}" placeholder="如 50g" onchange="A.setAmt('${p.id}',this.value)" style="width:100%"></td>
+        <td style="padding:4px 8px"><input class="fld fld--mini" value="${(p.amt||'').toString().replace(/"/g,'&quot;')}" placeholder="如 50g" onchange="A.setAmt('${p.id}',this.value)" style="width:100%"></td>
       </tr>
     </table>
     <div class="sect mt" style="margin-bottom:6px">檢驗項目（依產品類型自動帶入 · 可調整）</div>
@@ -2817,6 +2821,7 @@ const A = {
       A.toast('已清除 Firestore 所有客戶資料，重新整理後會以本機資料為準');
     }catch(e){ A.toast('清除失敗：'+e.message); }
   },
+  openCustAdd(){ custAddOpen=true; render(); },
   closeCustAdd(){ custAddOpen=false; render(); },
   addCustomer(){
     const nm=(dval('c_name','')||'').trim(); if(!nm){ A.toast('請輸入公司名'); return; }
