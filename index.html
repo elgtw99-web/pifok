@@ -1527,8 +1527,9 @@ function boardBody(){
   h+= srchBar('搜尋展示產品…');
   if(publicShowcase.length){
     h+=`<div class="stack">`+publicShowcase.map(it=>{
-      const stLabel=it.state==='building'?'PIF 建置中':'已完成 PIF';
-      const stColor=it.state==='building'?'var(--w)':'var(--s)';
+      const st=shareState(it);
+      const stLabel=st==='building'?'PIF 建置中':'已完成 PIF';
+      const stColor=st==='building'?'var(--w)':'var(--s)';
       return `<div class="card" data-nm="${it.name} ${it.type||''} ${it.tagline||''}">
         <div class="row" style="align-items:flex-start;gap:10px">
           ${it.cover?`<img src="${it.cover}" style="width:56px;height:56px;border-radius:10px;object-fit:cover;flex:none">`:`<span style="width:56px;height:56px;border-radius:10px;background:var(--accent-tint);color:var(--accent);display:flex;align-items:center;justify-content:center;flex:none"><i class="ti ti-flask" style="font-size:24px"></i></span>`}
@@ -5388,7 +5389,11 @@ function attachCustomer(email){
   FB.unsub.push(FB.db.collection('customers').where('email','==',email).onSnapshot(s=>{
     if(s.docs.length){ s.docs.forEach(d=>{ const o=Object.assign({},d.data()); o.id=d.id; if(!customers.some(c=>c.name===o.name)) customers.push(o); }); render(); }
   }, e=>console.warn(e)));
-  // sharedPIF：全部抓（不篩 state，因為舊資料可能沒有 state 欄位，在本機用 shareState 篩選）
+  // sharedPIF：先直接抓一次確保資料立刻顯示，再設 snapshot
+  FB.db.collection('sharedPIF').get().then(s=>{
+    if(s.docs.length){ snapApply('sharedPIF',sharedPIF,s.docs); render(); }
+  }).catch(e=>console.warn('sharedPIF get',e));
+  // sharedPIF snapshot（監聽後續變更）
   FB.unsub.push(FB.db.collection('sharedPIF').onSnapshot(s=>{
     snapApply('sharedPIF',sharedPIF,s.docs); render();
   }, e=>console.warn('sharedPIF',e)));
