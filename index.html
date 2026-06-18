@@ -2970,12 +2970,20 @@ function elogaAccounts(){
       <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--line)">
         <div class="card" style="border-color:var(--accent);margin-bottom:14px">
           <p class="nm" style="font-size:15px"><i class="ti ti-cloud"></i> 雲端同步（Firebase）</p>
-          <p class="sub" style="margin:4px 0 10px">${FB_SYNC_READY?((typeof FB!=='undefined'&&FB.on&&FB.user)?('已雲端登入：'+(FB.user.email||'')+'　·　資料即時同步到雲端'):'Firebase 同步已開啟，請登入'):'目前「身分驗證模式」：Google 登入只驗身分，資料存在本機。Firestore 規則設好後，把程式碼中 FB_SYNC_READY 改為 true 啟用同步。'}</p>
-          ${(typeof FB!=='undefined'&&FB.on&&FB.user)?`<div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn--sm" style="width:auto;padding:0 16px" onclick="A.fbPushLocal()"><i class="ti ti-cloud-upload"></i> 上傳本機資料到雲端（${products.length} 筆）</button>
-            <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" onclick="A.fbDiagnose()"><i class="ti ti-stethoscope"></i> 測試雲端連線</button>
-            <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" onclick="A.fbLogout()"><i class="ti ti-logout"></i> 雲端登出</button>
-          </div>
+          ${(()=>{
+            const on=(typeof FB!=='undefined'&&FB.on);
+            const user=on&&FB.user;
+            let statusLine, statusColor;
+            if(!on){ statusLine='✗ Firebase 尚未連線（請檢查網路或重新整理）'; statusColor='#C0392B'; }
+            else if(!user){ statusLine='⚠ Firebase 已連線，但尚未偵測到登入。請先用 Google 登入'; statusColor='var(--w)'; }
+            else { statusLine='✓ 已雲端登入：'+(FB.user.email||'')+'　·　資料即時同步'; statusColor='var(--s)'; }
+            return `<p class="sub" style="margin:4px 0 10px;color:${statusColor};font-weight:600">${statusLine}</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn--sm" style="width:auto;padding:0 16px" ${user?'':'disabled'} onclick="A.fbPushLocal()"><i class="ti ti-cloud-upload"></i> 上傳本機資料到雲端（${products.length} 筆）</button>
+              <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" onclick="A.fbDiagnose()"><i class="ti ti-stethoscope"></i> 測試雲端連線</button>
+              ${user?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" onclick="A.fbLogout()"><i class="ti ti-logout"></i> 雲端登出</button>`:''}
+            </div>`;
+          })()}
           ${A._pushForce?`<div class="card" style="border-color:#C0392B;margin-top:8px;background:#FDECEA">
             <p class="sub" style="color:#C0392B;margin-bottom:8px"><i class="ti ti-alert-triangle"></i> 雲端已有資料。「強制上傳」會用<b>這台電腦目前的 ${products.length} 筆</b>覆蓋雲端同名資料（相同 ID 會被取代，雲端多出的不刪）。確定嗎？</p>
             <div style="display:flex;gap:8px">
@@ -2984,7 +2992,7 @@ function elogaAccounts(){
             </div>
           </div>`:''}
           <div id="fb_diag" class="sub" style="margin-top:8px"></div>
-          <p class="sub" style="margin-top:8px"><b>換電腦後資料不見？</b>請在<u>有完整資料的那台電腦</u>按「上傳本機資料到雲端」，其他裝置登入就會同步。「測試雲端連線」可檢查讀寫是否正常。</p>`:''}
+          <p class="sub" style="margin-top:8px"><b>換裝置後資料不見？</b>在<u>有完整資料的那台</u>按「上傳本機資料到雲端」，其他裝置用同一管理者帳號登入即可同步。先按「測試雲端連線」可看出問題在哪。</p>
         </div>
         <div class="card" style="border-color:var(--accent)">
         <div class="card" style="border-color:var(--accent);margin-bottom:14px">
