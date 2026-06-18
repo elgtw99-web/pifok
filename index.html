@@ -1109,17 +1109,21 @@ function elgShowcase(){
   return h;
 }
 function elgSummary(){
-  // 統計
-  const allPaidP=products.filter(p=>p.payRecords&&p.payRecords.length);
-  const total=allPaidP.reduce((s,p)=>(p.payRecords||[]).reduce((a,r)=>a+r.amt,s),0);
-  const totalCharge=products.filter(p=>p.charge>0&&['completed','testing','reporting'].includes(p.status)).reduce((s,p)=>s+(p.charge||0),0);
+  // 統一真相來源：每個品項的 payRecords（已實際收款）+ charge（應收）
+  // 「應收」= 已進入收費階段（invoiced 之後）的品項 charge 總和
+  const billable=p=>['invoiced','reported','paid','testing','reporting','completed'].includes(p.status) && (p.charge||0)>0;
+  const paidOf=p=>(p.payRecords||[]).reduce((s,r)=>s+(r.amt||0),0);
+
+  const billedProd=products.filter(billable);
+  const totalCharge=billedProd.reduce((s,p)=>s+(p.charge||0),0);      // 應收總計
+  const total=billedProd.reduce((s,p)=>s+paidOf(p),0);                 // 已收總計
   const totalDiff=totalCharge-total;
+
+  // 收款方式統計（只統計實際收款記錄）
   const byMethod={};
-  allPaidP.forEach(p=>(p.payRecords||[]).forEach(r=>{ byMethod[r.method]=(byMethod[r.method]||0)+r.amt; }));
+  billedProd.forEach(p=>(p.payRecords||[]).forEach(r=>{ if(r.amt>0) byMethod[r.method]=(byMethod[r.method]||0)+r.amt; }));
 
-  // 搜尋狀態
   const sumQ=(libQ||'').trim().toLowerCase();
-
   let h=``;
 
   // 頂部統計
@@ -1133,21 +1137,19 @@ function elgSummary(){
   h+=srchBar('搜尋客戶或品名…');
 
   // 依客戶分組
-  const allCusts=[...new Set(products.filter(p=>p.charge>0).map(p=>custName(p)))].sort();
-  const filtCusts=sumQ ? allCusts.filter(cn=>cn.toLowerCase().includes(sumQ)||products.some(p=>custName(p)===cn&&p.name.toLowerCase().includes(sumQ))) : allCusts;
+  const allCusts=[...new Set(billedProd.map(p=>custName(p)))].sort();
+  const filtCusts=sumQ ? allCusts.filter(cn=>cn.toLowerCase().includes(sumQ)||billedProd.some(p=>custName(p)===cn&&(p.name||'').toLowerCase().includes(sumQ))) : allCusts;
 
   h+=filtCusts.map(cn=>{
-    const custProd=products.filter(p=>custName(p)===cn&&p.charge>0&&(!sumQ||p.name.toLowerCase().includes(sumQ)||cn.toLowerCase().includes(sumQ)));
+    const custProd=billedProd.filter(p=>custName(p)===cn&&(!sumQ||(p.name||'').toLowerCase().includes(sumQ)||cn.toLowerCase().includes(sumQ)));
     if(!custProd.length) return '';
     const custCharge=custProd.reduce((s,p)=>s+(p.charge||0),0);
-    const custPaid=custProd.reduce((s,p)=>(p.payRecords||[]).reduce((a,r)=>a+r.amt,s),0);
+    const custPaid=custProd.reduce((s,p)=>s+paidOf(p),0);
     const diff=custCharge-custPaid;
-    const allCleared=diff===0&&custPaid>0;
+    const allCleared=diff<=0&&custPaid>0;
     const open=!pifGroupClosed['sum_'+cn];
-    const custInvRecs=invoiceRecs.filter(r=>r.cust===cn);
 
     return `<div class="card" style="margin-bottom:10px;padding:0;overflow:hidden">
-      <!-- 客戶組標題，點擊折疊 -->
       <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--n-bg);cursor:pointer;border-bottom:${open?'1px solid var(--line)':'0'}" onclick="A.togglePifGroup('sum_${cn}')">
         <span style="flex:1;min-width:0">
           <span class="nm" style="font-size:14px">${cn}</span>
@@ -1155,62 +1157,36 @@ function elgSummary(){
         </span>
         <span style="text-align:right;margin-right:6px">
           <span style="font-weight:700;font-size:15px;color:${allCleared?'var(--s)':diff>0?'var(--w)':'var(--ink)'}">
-            ${allCleared?'✓ 已結清':diff>0?'欠 '+money(diff):money(custPaid)}
+            ${allCleared?'✓ 已結清':'欠 '+money(diff)}
           </span><br>
           <span class="sub" style="font-size:11px">已收 ${money(custPaid)} / 應收 ${money(custCharge)}</span>
         </span>
         <i class="ti ti-chevron-${open?'up':'down'}" style="color:var(--muted);flex:none"></i>
       </div>
-      ${open?`<div style="padding:0 0 8px">
-        <!-- 收款單列表 -->
-        ${custInvRecs.length?`<div style="padding:8px 14px 0">
-          <div class="sub" style="font-size:11.5px;font-weight:700;margin-bottom:6px;color:var(--muted)">收款單（${custInvRecs.length} 張）</div>
-          ${custInvRecs.map(rec=>{
-            const inv_open=invDetailOpen===rec.id;
-            return `<div style="border:1px solid ${rec.status==='paid'?'var(--s)40':'var(--line2)'};border-radius:8px;margin-bottom:6px;overflow:hidden">
-              <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;cursor:pointer;background:${rec.status==='paid'?'var(--s-bg)':'var(--surface)'}" onclick="A.toggleInvDetail('${rec.id}')">
-                <span style="font-size:12px;font-weight:700;color:var(--accent);flex:none">${rec.id}</span>
-                <span class="sub" style="font-size:11px;flex:1">${rec.date} · ${rec.method} · ${rec.items.length} 筆</span>
-                <span style="font-weight:700;color:${rec.status==='paid'?'var(--s)':'var(--w)'};">${money(rec.total)}</span>
-                <span class="pill" style="font-size:10px;background:${rec.status==='paid'?'var(--s)':'var(--w)'}20;color:${rec.status==='paid'?'var(--s)':'var(--w)'};border:1px solid ${rec.status==='paid'?'var(--s)':'var(--w)'}40;flex:none">${rec.status==='paid'?'已收款':'待確認'}</span>
-                <i class="ti ti-chevron-${inv_open?'up':'down'}" style="color:var(--muted);font-size:13px;flex:none"></i>
-              </div>
-              ${inv_open?`<div style="padding:10px 12px;border-top:1px solid var(--line);background:var(--n-bg)">
-                <table style="width:100%;font-size:12px;border-collapse:collapse">
-                  <tr style="color:var(--muted)"><td style="padding:2px 4px">品名</td><td style="padding:2px 4px">狀態</td><td style="padding:2px 4px">方案</td><td style="padding:2px 4px;text-align:right">金額</td></tr>
-                  ${rec.items.map(it=>`<tr style="border-top:1px solid var(--line)"><td style="padding:4px">${it.name}</td><td style="padding:4px;color:var(--muted)">${it.statusLabel||''}</td><td style="padding:4px;color:var(--muted)">${it.plan}</td><td style="padding:4px;text-align:right;font-weight:700;color:var(--s)">${money(it.amt)}</td></tr>`).join('')}
-                  <tr style="border-top:2px solid var(--line);font-weight:700"><td colspan="3" style="padding:6px 4px">合計</td><td style="padding:6px 4px;text-align:right;color:var(--s)">${money(rec.total)}</td></tr>
-                </table>
-                ${rec.note?`<div class="sub" style="margin-top:6px;font-size:11.5px">備註：${rec.note}</div>`:''}
-                <div style="display:flex;gap:6px;margin-top:8px">
-                  ${rec.status!=='paid'?`<button class="btn btn--ok btn--sm" style="width:auto;padding:0 12px" onclick="A.markInvPaid('${rec.id}')"><i class="ti ti-check"></i> 標記已收款</button>`:''}
-                  <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;color:#C0392B;border-color:#E7C3BD" onclick="A.deleteInvRec('${rec.id}')"><i class="ti ti-trash"></i> 刪除</button>
-                </div>
-              </div>`:''}
-            </div>`;
-          }).join('')}
-        </div>`:''}
-        <!-- 品項明細 -->
-        <div style="padding:0 14px">
-          ${custProd.map(p=>{
-            const paid=(p.payRecords||[]).reduce((s,r)=>s+r.amt,0);
-            const diff=(p.charge||0)-paid;
-            return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px">
-              <span style="flex:1;min-width:0">
-                <span style="font-weight:600">${p.name}</span>
-                <span class="sub" style="font-size:11px;margin-left:6px">${SM[p.status]?SM[p.status][0]:p.status}</span>
+      ${open?`<div style="padding:8px 14px">
+        ${custProd.map(p=>{
+          const paid=paidOf(p);
+          const pdiff=(p.charge||0)-paid;
+          const method=p.payMethod||(p.payRecords&&p.payRecords[0]&&p.payRecords[0].method)||'';
+          return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px">
+            <span style="flex:1;min-width:0">
+              <span style="font-weight:600">${p.name||'—'}</span>
+              <span class="sub" style="font-size:11px;margin-left:6px">${SM[p.status]?SM[p.status][0]:p.status}${method?' · '+method:''}</span>
+            </span>
+            <span style="text-align:right;white-space:nowrap">
+              <span style="color:${pdiff>0?'var(--w)':paid>0?'var(--s)':'var(--faint)'};font-weight:700;font-size:12.5px">
+                ${paid>0?money(paid):'未收款'}
               </span>
-              <span style="color:${diff>0?'var(--w)':paid>0?'var(--s)':'var(--faint)'};font-weight:700;font-size:12.5px;white-space:nowrap">
-                ${paid>0?money(paid):'未收款'}${diff>0?` / 欠${money(diff)}`:''}
-              </span>
-            </div>`;
-          }).join('')}
-        </div>
+              ${pdiff>0?`<br><span class="sub" style="font-size:10.5px;color:var(--w)">欠 ${money(pdiff)}</span>`:''}
+              <span class="sub" style="font-size:10px;display:block">應收 ${money(p.charge||0)}</span>
+            </span>
+          </div>`;
+        }).join('')}
       </div>`:''}
     </div>`;
   }).join('');
 
-  if(!filtCusts.length||!h.trim()){
+  if(!filtCusts.length||!h.includes('card')){
     h+=`<div class="card faint" style="text-align:center;padding:24px">尚無收款記錄</div>`;
   }
 
@@ -1397,7 +1373,7 @@ function elgLibrary(){
     <div class="chips">`+ stPresent.map(k=>`<span class="fchip ${libStatOff[k]?'':'on'}" onclick="A.libToggleStat('${k}')">${SM[k][0]} ${products.filter(p=>p.status===k).length}</span>`).join('')+`</div>`;
   h+=`<label class="lbl">客戶篩選</label>
     <div class="chips">`+ allCusts.map(nm=>`<span class="fchip ${libCustOff[nm]?'':'on'}" onclick="A.libToggleCust('${nm}')">${nm}</span>`).join('')+`</div>`;
-  h+=`<input class="fld" placeholder="搜尋品名…" value="${libQ}" oninput="A.libSearch(this.value)" style="margin-bottom:12px">`;
+  h+=`<input class="fld" id="lib_search" placeholder="搜尋品名…" value="${libQ}" oninput="A.libSearch(this.value)" style="margin-bottom:12px">`;
   // 批量工具列
   h+=`<div class="card libbar" style="background:var(--n-bg);border:0;margin-bottom:14px">
       <span class="nm" style="font-size:14px" data-selcount="lib">已選 ${selN} / ${rows.length} 筆</span>
@@ -1732,6 +1708,7 @@ function elgData(){
       <input type="file" accept=".xlsx" style="display:none" onchange="A.importSongyan(this)">
     </label>
     <div class="faint" style="font-size:12px;margin-top:8px;text-align:center">依「公司資料」對應客戶名稱，逐筆建立並回送到客戶端。</div></div>`;
+  return h;
 }
 function elgInvoice(){
   const recv=P('received');
@@ -2737,7 +2714,16 @@ const A = {
   openCustDrive(nm){ const c=customers.find(x=>x.name===nm); if(c&&c.drive) window.open(c.drive,'_blank'); else A.toast('尚未設定連結'); },
   libToggleStat(k){ libStatOff[k]=!libStatOff[k]; libPage=0; render(); },
   libToggleCust(nm){ libCustOff[nm]=!libCustOff[nm]; libPage=0; render(); },
-  libSearch(v){ libQ=v||''; libPage=0; render(); },
+  libSearch(v){
+    libQ=v||''; libPage=0;
+    clearTimeout(A._libSearchT);
+    A._libSearchT=setTimeout(()=>{
+      render();
+      // 重繪後把焦點與游標還給搜尋框
+      const el=document.getElementById('lib_search');
+      if(el){ el.focus(); const len=el.value.length; try{ el.setSelectionRange(len,len); }catch(e){} }
+    },300);
+  },
   libToggleCustSel(cn){
     const items=products.filter(p=>custName(p)===cn && !libStatOff[p.status] && !libCustOff[custName(p)] && (!libQ||p.name.indexOf(libQ)>=0));
     const allSel=items.length&&items.every(p=>batch[p.id]);
@@ -3808,6 +3794,7 @@ const A = {
   openDrive(id){ const p=byId(id); const c=customers.find(x=>x.name===custName(p)); const url=p.drive||(c&&c.drive); if(url) window.open(url,'_blank'); else A.toast('尚未設定雲端硬碟連結'); },
 
   _tt:null,
+  _libSearchT:null,
   toast(msg){
     const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
     clearTimeout(A._tt); A._tt=setTimeout(()=>t.classList.remove('show'),2200);
