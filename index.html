@@ -3126,6 +3126,36 @@ function customerSection(){
   const pend=customers.filter(c=>c.status==='待審核');
   const active=customers.filter(c=>c.status==='已啟用');
   const off=customers.filter(c=>c.status==='已停用');
+
+  // 客戶登入狀態總覽（放最上面）
+  const withEmail=active.filter(c=>c.email);
+  const noEmail=active.filter(c=>!c.email);
+  let h=`<div class="card" style="margin-bottom:14px;padding:12px 16px">
+    <div class="nm" style="font-size:13.5px;margin-bottom:10px"><i class="ti ti-users"></i> 客戶登入狀態</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:8px">
+      <div style="flex:1;min-width:120px;padding:10px 14px;background:var(--s-bg);border-radius:10px;border:1px solid var(--s)40">
+        <div style="font-size:20px;font-weight:800;color:var(--s)">${withEmail.length}</div>
+        <div style="font-size:11.5px;color:var(--s);font-weight:600">✓ 可登入看資料</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:2px">已綁定 Gmail</div>
+      </div>
+      <div style="flex:1;min-width:120px;padding:10px 14px;background:var(--w-bg);border-radius:10px;border:1px solid var(--w)40">
+        <div style="font-size:20px;font-weight:800;color:var(--w)">${noEmail.length}</div>
+        <div style="font-size:11.5px;color:var(--w);font-weight:600">⚠ 無法登入</div>
+        <div style="font-size:10.5px;color:var(--muted);margin-top:2px">未填 Gmail，需補填</div>
+      </div>
+    </div>
+    ${withEmail.length?`<div style="font-size:11.5px;color:var(--muted);line-height:1.8">
+      ${withEmail.map(c=>`<span style="display:inline-flex;align-items:center;gap:4px;margin-right:8px;margin-bottom:2px">
+        <i class="ti ti-circle-check" style="color:var(--s);font-size:13px"></i>
+        <b>${c.name}</b> <span style="color:var(--faint)">${c.email}</span>
+      </span>`).join('')}
+    </div>`:''}
+    ${noEmail.length?`<div class="note" style="margin-top:8px;border-color:var(--w);background:var(--w-bg)">
+      <i class="ti ti-alert-triangle" style="color:var(--w)"></i>
+      <b style="color:var(--w)">以下客戶還不能登入：</b>${noEmail.map(c=>`<b> ${c.name}</b>`).join('、')}
+      ——請在下方客戶卡片填入他們的 Gmail。
+    </div>`:''}
+  </div>`;
   const card=(c)=>{
     const i=customers.indexOf(c);
     const sc=c.status==='已啟用'?'s':(c.status==='待審核'||c.status==='臨時'?'w':'n');
@@ -3174,11 +3204,10 @@ function customerSection(){
       <div class="sub" style="margin-top:4px">${c.email||'尚未綁定'} · 登入：${c.login||'—'} · 產品 ${products.filter(p=>custName(p)===c.name).length} 筆</div>${act}${contractBlock}</div>`;
   };
   const temp=customers.filter(c=>c.status==='臨時');
-  const noEmail=customers.filter(c=>!c.email && c.status!=='臨時' && c.status!=='待審核');
   const needActivate=[...temp, ...noEmail];
 
-  let h=`<div style="display:flex;gap:10px;margin:16px 0 14px;flex-wrap:wrap">
-      <div class="card" style="flex:1;text-align:center;padding:12px;min-width:100px"><div style="font-size:24px;font-weight:700">${active.length}</div><div class="sub">已註冊</div></div>
+  h+=`<div style="display:flex;gap:10px;margin:16px 0 14px;flex-wrap:wrap">
+      <div class="card" style="flex:1;text-align:center;padding:12px;min-width:100px"><div style="font-size:24px;font-weight:700">${active.length}</div><div class="sub">已啟用</div></div>
       <div class="card" style="flex:1;text-align:center;padding:12px;min-width:100px;border-color:var(--accent)"><div style="font-size:24px;font-weight:700;color:var(--accent)">${needActivate.length}</div><div class="sub">待綁定 Gmail</div></div>
       <div class="card" style="flex:1;text-align:center;padding:12px;min-width:100px;border-color:var(--w)"><div style="font-size:24px;font-weight:700;color:var(--w)">${pend.length}</div><div class="sub">客戶申請</div></div>
     </div>`;
@@ -5177,145 +5206,72 @@ function fbHandleRedirect(){
 function stripId(o){ const c=Object.assign({},o); delete c.id; return c; }
 function fbDetach(){ FB.unsub.forEach(u=>{try{u();}catch(e){}}); FB.unsub=[]; FB.seeded=false; FB.cloudEmpty=false; }
 function snapApply(name, arr, docs){
-  // 記錄雲端 products 實際筆數，供總覽頁誠實判斷
-  if(name==='products'){ FB.cloudCount=docs.length; }
-  // products 空（Firestore 尚未上傳）→ 保留本機種子，不清空
-  if(name==='products' && docs.length===0 && arr.length>0){ FB.cloudEmpty=true; return; }
-  if(name==='products' && docs.length>0){ FB.cloudEmpty=false; FB.seeded=true; }
-  // 有 pending sync 還沒提交 → 跳過這次 snapshot，避免覆蓋本機最新狀態
-  if(FB.syncT) return;
-  // 其他集合若 products 尚未上傳也先保留
-  if(FB.cloudEmpty && docs.length===0 && arr.length>0) return;
-  arr.length=0; const m={};
-  docs.forEach(d=>{ const o=Object.assign({}, d.data()); o.id=d.id; arr.push(o); m[d.id]=JSON.stringify(stripId(o)); });
+  if(name==='products') FB.cloudCount=docs.length;
+  if(FB.syncT) return;          // 本機有 pending write，先別覆蓋
+  arr.length=0;
+  const m={};
+  docs.forEach(d=>{ const o=Object.assign({},d.data()); o.id=d.id; arr.push(o); m[d.id]=JSON.stringify(stripId(o)); });
   FB.last[name]=m;
 }
 function emailMap(){ const m={}; customers.forEach(c=>{ if(c.name) m[c.name]=c.email||''; }); m[ELG_SELF]=''; return m; }
 function attachAdmin(){
   fbDetach();
-  if(!FB_SYNC_READY) return;
-  const C=(name,arr)=>FB.unsub.push(FB.db.collection(name).onSnapshot(s=>{ snapApply(name,arr,s.docs); FB.ready=true; render(); }, e=>{
-    console.warn(name,e);
-    if(e.code==='permission-denied'){ A.toast('⚠ 雲端讀取被拒（'+name+'）：Firestore 安全規則未開放，請設定規則允許登入者讀寫', 6000); }
-    else { A.toast('雲端讀取錯誤（'+name+'）：'+(e.code||e.message), 5000); }
-  }));
-  C('products',products); C('customers',customers); C('staff',staff); C('sharedPIF',sharedPIF); C('showcase',showcase); C('publicShowcase',publicShowcase);
+  const cols=[['products',products],['customers',customers],['staff',staff],['sharedPIF',sharedPIF],['showcase',showcase],['publicShowcase',publicShowcase]];
+  cols.forEach(([name,arr])=>{
+    FB.unsub.push(FB.db.collection(name).onSnapshot(s=>{
+      snapApply(name,arr,s.docs); FB.ready=true; render();
+    }, e=>{
+      console.warn(name,e);
+      if((e.code||'').includes('permission'))
+        A.toast('⚠ 雲端讀取被拒（'+name+'）：Firestore 規則未開放', 6000);
+    }));
+  });
 }
 function attachCustomer(email){
   fbDetach();
-  if(!FB_SYNC_READY){
-    FB.ready=true; render(); return;
-  }
-  const myName=me.nameCh||'';
   const emailLow=(email||'').toLowerCase();
-  // 訂閱 Firestore：抓 customerEmail 匹配的產品（同時試原始與小寫，避免大小寫不一致）
-  const mergeDocs=(docs)=>{
-    docs.forEach(d=>{
-      if(!products.some(p=>p.id===d.id)){ const o=Object.assign({},d.data()); o.id=d.id; products.push(o); }
-    });
-  };
+  // 訂閱自己的品項（email 完全比對）
   FB.unsub.push(FB.db.collection('products').where('customerEmail','==',email).onSnapshot(s=>{
-    if(s.docs.length>0){ snapApply('products',products,s.docs); FB.ready=true; render(); }
-    else { FB.ready=true; render(); }
+    s.docs.forEach(d=>{ if(!products.some(p=>p.id===d.id)){ const o=Object.assign({},d.data()); o.id=d.id; products.push(o); } });
+    FB.cloudCount=s.size; FB.ready=true; render();
   }, e=>{ FB.ready=true; render(); console.warn(e); }));
-  // 小寫版本（若登入 email 與建檔大小寫不同）
+  // 小寫版（防大小寫不一致）
   if(emailLow!==email){
     FB.unsub.push(FB.db.collection('products').where('customerEmail','==',emailLow).onSnapshot(s=>{
-      if(s.docs.length>0){ mergeDocs(s.docs); FB.ready=true; render(); }
+      s.docs.forEach(d=>{ if(!products.some(p=>p.id===d.id)){ const o=Object.assign({},d.data()); o.id=d.id; products.push(o); } });
+      FB.ready=true; render();
     }, e=>console.warn(e)));
   }
-  // 額外訂閱：抓公司名匹配但沒 customerEmail 的舊產品，並補上 customerEmail
-  if(myName){
-    FB.unsub.push(FB.db.collection('products').where('cust','==',myName).onSnapshot(s=>{
+  // 公司名比對（舊資料，順便補 customerEmail）
+  if(me.nameCh){
+    FB.unsub.push(FB.db.collection('products').where('cust','==',me.nameCh).onSnapshot(s=>{
       s.docs.forEach(d=>{
         const data=d.data();
-        if(!data.customerEmail){
-          // 補寫 customerEmail，讓之後的 ownedByMe 與訂閱都能對應
-          FB.db.collection('products').doc(d.id).update({customerEmail:email}).catch(()=>{});
-        }
-        // 合併進本機 products（若不存在）
-        if(!products.some(p=>p.id===d.id)){
-          const o=Object.assign({},data); o.id=d.id; o.customerEmail=o.customerEmail||email;
-          products.push(o);
-        }
+        if(!data.customerEmail) FB.db.collection('products').doc(d.id).update({customerEmail:email}).catch(()=>{});
+        if(!products.some(p=>p.id===d.id)){ const o=Object.assign({},data); o.id=d.id; o.customerEmail=o.customerEmail||email; products.push(o); }
       });
-      if(s.docs.length>0){ FB.ready=true; render(); }
+      if(s.docs.length){ FB.ready=true; render(); }
     }, e=>console.warn(e)));
   }
+  // 客戶自身資料
   FB.unsub.push(FB.db.collection('customers').where('email','==',email).onSnapshot(s=>{
-    if(s.docs.length>0) snapApply('customers',customers,s.docs);
-    render();
+    if(s.docs.length){ s.docs.forEach(d=>{ const o=Object.assign({},d.data()); o.id=d.id; if(!customers.some(c=>c.name===o.name)) customers.push(o); }); render(); }
   }, e=>console.warn(e)));
   FB.unsub.push(FB.db.collection('sharedPIF').where('state','in',['public','building']).onSnapshot(s=>{
-    if(s.docs.length>0) snapApply('sharedPIF',sharedPIF,s.docs);
-    render();
+    snapApply('sharedPIF',sharedPIF,s.docs); render();
   }, e=>console.warn(e)));
   FB.unsub.push(FB.db.collection('showcase').onSnapshot(s=>{
-    if(s.docs.length>0) snapApply('showcase',showcase,s.docs);
-    render();
+    snapApply('showcase',showcase,s.docs); render();
   }, e=>console.warn(e)));
-}
-function fbStart(){
-  if(!FB.on) return;
-  FB.auth.onAuthStateChanged(async user=>{
-    FB.user=user;
-    if(!user){ FB.role=null; FB.ready=false; fbDetach(); return; }
-    try{
-      // 如果從客戶入口登入，不檢查 staff，直接走客戶流程
-      const fromCustomerPortal = window._loginSide==='customer';
-      if(!fromCustomerPortal){
-        const sd=await FB.db.collection('staff').doc(user.uid).get();
-        if(sd.exists){
-          FB.role='eloga'; role='eloga'; elgRole=(sd.data()&&sd.data().role)||'主要管理者'; zone='back'; elgTab='home'; view='app';
-          attachAdmin(); render(); return;
-        }
-        // 方式 B：查 email 是否在邀請名單（Firestore staff）—— 抓全部同 email 的筆
-        const sq=await FB.db.collection('staff').where('email','==',user.email.toLowerCase()).get();
-        if(!sq.empty){
-          const inv=sq.docs[0].data();
-          // 升格為 UID 帳號
-          await FB.db.collection('staff').doc(user.uid).set({
-            name: inv.name||user.displayName||user.email,
-            email: user.email.toLowerCase(),
-            role: inv.role||'管理',
-            uid: user.uid
-          });
-          // 清掉所有「非 UID 帳號」的重複邀請筆（email 邀請、或舊的重複）
-          for(const d of sq.docs){ if(d.id!==user.uid){ await FB.db.collection('staff').doc(d.id).delete().catch(()=>{}); } }
-          FB.role='eloga'; role='eloga'; elgRole=inv.role||'管理'; zone='back'; elgTab='home'; view='app';
-          attachAdmin(); render(); A.toast('帳號已自動開通，歡迎 '+(inv.name||user.email)); return;
-        }
-      }
-      // 查是否為已知客戶（先查 Firestore lowercase，再查本機）
-      const emailLower=user.email.toLowerCase();
-      let q=await FB.db.collection('customers').where('email','==',emailLower).limit(1).get();
-      if(q.empty) q=await FB.db.collection('customers').where('email','==',user.email).limit(1).get();
-      const localCust=customers.find(c=>c.email&&c.email.toLowerCase()===emailLower);
-      // 客戶登入後：先進資料確認頁，確認後才進主畫面
-      const custData=!q.empty ? q.docs[0].data() : localCust || null;
-      if(custData){
-        FB.role='customer'; role='customer';
-        // 設定 me 的基本資料
-        me=Object.assign({}, me, {nameCh:custData.name, nameEn:custData.nameEn||'', addrCh:CINFO[custData.name]||custData.addrCh||me.addrCh||'', email:user.email, phone:custData.phone||me.phone||'', filled:false});
-        attachCustomer(user.email);
-        view='customer-confirm'; render(); // 先進確認頁
-      } else {
-        FB.role='pending'; role='guest'; view='fb-pending'; render();
-      }
-    }catch(e){ A.toast('登入後讀取失敗：'+e.message); console.warn(e); }
-  });
+  FB.ready=true;
 }
 function fbSync(){
   if(!FB.on||!FB.user||!FB.ready||FB.role==='pending') return;
-  // 安全鎖：本機尚未從雲端載入資料時（cloudEmpty 為 false 代表雲端有資料，但本機 products 為空），
-  // 禁止同步，避免空資料把雲端洗掉。
-  if(FB.role==='eloga' && products.length===0 && !FB.cloudEmpty && !FB._allowEmptySync){
-    console.warn('fbSync 已跳過：本機產品為空，避免覆蓋雲端');
-    return;
-  }
   try{
     const em=emailMap();
-    const cols = FB.role==='eloga' ? ['products','customers','staff','sharedPIF','showcase','publicShowcase'] : ['products'];
+    const cols=FB.role==='eloga'
+      ? ['products','customers','staff','sharedPIF','showcase','publicShowcase']
+      : ['products'];
     const ref={products,customers,staff,sharedPIF,showcase,publicShowcase};
     const batch=FB.db.batch(); let ops=0;
     cols.forEach(name=>{
@@ -5323,21 +5279,20 @@ function fbSync(){
       arr.forEach(o=>{
         if(!o.id) o.id=FB.db.collection(name).doc().id;
         const data=stripId(o);
-        if(name==='products' && !data.customerEmail) { data.customerEmail=em[data.cust]||''; o.customerEmail=data.customerEmail; }
+        if(name==='products'&&!data.customerEmail){ data.customerEmail=em[data.cust]||''; o.customerEmail=data.customerEmail; }
         seen[o.id]=true;
         const j=JSON.stringify(data);
         if(last[o.id]!==j){ batch.set(FB.db.collection(name).doc(o.id),data); last[o.id]=j; ops++; }
       });
-      // 安全鎖：只在本機這個集合「非空」時，才刪除雲端多出的（避免空陣列清空雲端）
       if(arr.length>0){
         Object.keys(last).forEach(id=>{ if(!seen[id]){ batch.delete(FB.db.collection(name).doc(id)); delete last[id]; ops++; } });
       }
       FB.last[name]=last;
     });
     if(FB.role==='eloga'){ batch.set(FB.db.collection('meta').doc('config'),{CINFO},{merge:true}); ops++; }
-    if(ops>0 && ops<=450) batch.commit().catch(e=>{
-      console.warn('sync',e);
-      if(e.code==='permission-denied'){ A.toast('⚠ 雲端寫入被拒：Firestore 安全規則未開放，資料無法上傳同步', 6000); }
+    if(ops>0&&ops<=450) batch.commit().catch(e=>{
+      console.warn('sync error',e);
+      if((e.code||'').includes('permission')) A.toast('⚠ 雲端寫入被拒：Firestore 規則未開放', 6000);
     });
   }catch(e){ console.warn('fbSync',e); }
 }
