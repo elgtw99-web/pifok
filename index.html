@@ -5294,7 +5294,7 @@ const FB_SYNC_READY = true;
 
 const firebaseConfig = {
   apiKey: "AIzaSyDYZv3jPSYlpfD5SznvF8OfkQsILQTFJ8I",
-  authDomain: "pifok-20e32.firebaseapp.com",
+  authDomain: "pifok.pages.dev",
   projectId: "pifok-20e32",
   storageBucket: "pifok-20e32.firebasestorage.app",
   messagingSenderId: "457227684194",
@@ -5335,16 +5335,27 @@ function snapApply(name, arr, docs){
 function emailMap(){ const m={}; customers.forEach(c=>{ if(c.name) m[c.name]=c.email||''; }); m[ELG_SELF]=''; return m; }
 async function attachAdmin(){
   fbDetach();
-  try{ if(FB.user) await FB.user.getIdToken(true); }catch(e){ console.warn('token refresh',e); }
-  const cols=[['products',products],['customers',customers],['staff',staff],['sharedPIF',sharedPIF],['showcase',showcase],['publicShowcase',publicShowcase]];
-  cols.forEach(([name,arr])=>{
+  try{
+    if(FB.user) await FB.user.getIdToken(true);
+    await new Promise(r=>setTimeout(r,500));
+  }catch(e){ console.warn('token refresh',e); }
+  // 只訂閱最核心的集合，減少 Firestore 讀取配額消耗
+  const core=[['products',products],['customers',customers],['staff',staff]];
+  core.forEach(([name,arr])=>{
     FB.unsub.push(FB.db.collection(name).onSnapshot(s=>{
       snapApply(name,arr,s.docs); FB.ready=true; render();
     }, e=>{
       console.warn(name,e);
       if((e.code||'').includes('permission'))
         A.toast('⚠ 雲端讀取被拒（'+name+'）：Firestore 規則未開放', 5000);
+      if((e.code||'').includes('resource-exhausted'))
+        A.toast('⚠ Firebase 今日讀取配額已用完，明天 8:00 後恢復，或升級 Blaze 方案', 8000);
     }));
+  });
+  // 非核心集合只抓一次（不訂閱，節省配額）
+  ['sharedPIF','showcase','publicShowcase'].forEach((name)=>{
+    const arr=name==='sharedPIF'?sharedPIF:name==='showcase'?showcase:publicShowcase;
+    FB.db.collection(name).get().then(s=>{ snapApply(name,arr,s.docs); render(); }).catch(()=>{});
   });
 }
 function attachCustomer(email){
@@ -5714,8 +5725,10 @@ function fbStart(){
     FB.user=user;
     if(!user){ FB.role=null; FB.ready=false; fbDetach(); render(); return; }
     try{
-      // 強制刷新 token，避免 Firestore 403
+      // 強制刷新 token
       await user.getIdToken(true);
+      // 等待 token 傳遞到 Firestore SDK（redirect 後需要一點時間）
+      await new Promise(r=>setTimeout(r,800));
       // 從後台入口進來的才檢查 staff
       const fromCustomerPortal = window._loginSide==='customer';
       if(!fromCustomerPortal){
