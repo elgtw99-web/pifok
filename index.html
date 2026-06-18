@@ -3091,7 +3091,9 @@ function staffSection(){
   const hasDup=Object.values(emailCount).some(n=>n>1);
   let h=`<div class="sect" style="margin-bottom:10px;display:flex;align-items:center;gap:8px">
     <span style="flex:1">內部帳號（${staff.length}）</span>
-    ${hasDup&&elgRole==='主要管理者'?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;font-size:11.5px;color:#C0392B;border-color:#E7C3BD" onclick="A.dedupeStaff()"><i class="ti ti-eraser"></i> 清除重複邀請</button>`:''}
+    ${elgRole==='主要管理者'?`
+      ${hasDup?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;font-size:11.5px;color:#C0392B;border-color:#E7C3BD" onclick="A.dedupeStaff()"><i class="ti ti-eraser"></i> 清除重複</button>`:''}
+      <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;font-size:11.5px;color:#C0392B;border-color:#E7C3BD" onclick="A.clearAllStaff()"><i class="ti ti-trash"></i> ${confirmDel==='clearallstaff'?'再按確認：清除全部':'全部清除重建'}</button>`:''}
   </div>`;
   if(hasDup){ h+=`<div class="note" style="margin-bottom:10px;border-color:#E7C3BD;background:#FDECEA"><i class="ti ti-alert-triangle" style="color:#C0392B"></i> 偵測到同一個 Gmail 有多筆，按上方「清除重複邀請」一鍵整理（每個 Gmail 只留一筆，優先保留已驗證的）。</div>`; }
   h+=`<div class="stack">`+staff.map((x,i)=>`
@@ -3800,6 +3802,22 @@ const A = {
   closeAccounts(){ view='app'; render(); },
   acctTab(t){ acctTab=t; addOpen=false; custAddOpen=false; confirmDel=null; render(); },
   openAdd(){ addOpen=true; render(); },
+  async clearAllStaff(){
+    if(confirmDel!=='clearallstaff'){ confirmDel='clearallstaff'; render(); A.toast('再按一次確認：清除全部內部帳號，之後重新邀請'); return; }
+    confirmDel=null;
+    // 從雲端刪除全部 staff 文件
+    if(typeof FB!=='undefined'&&FB.on&&FB.db){
+      try{
+        const snap=await FB.db.collection('staff').get();
+        const batch=FB.db.batch();
+        snap.docs.forEach(d=>batch.delete(FB.db.collection('staff').doc(d.id)));
+        await batch.commit();
+      }catch(e){ A.toast('雲端清除失敗：'+(e.code||e.message)); return; }
+    }
+    staff.length=0;
+    save(); render();
+    A.toast('✓ 已清除全部內部帳號，可重新邀請建立');
+  },
   async dedupeStaff(){
     if(confirmDel!=='dedupestaff'){ confirmDel='dedupestaff'; render(); A.toast('再按一次確認：清除重複的員工邀請（每個 Gmail 只留一筆）'); return; }
     confirmDel=null;
