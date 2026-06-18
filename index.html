@@ -306,7 +306,14 @@ const custName = p => p.cust || CUST;
 const CINFO = {
   '依洛嘉國際實業有限公司':'台南市佳里區佳興里宅興二街600號',
 };
-const custAddr = p => CINFO[custName(p)] || (p.mine ? (me.addrCh||'') : '');
+const custAddr = p => {
+  const cn=custName(p);
+  if(CINFO[cn]) return CINFO[cn];
+  const c=customers.find(x=>x.name===cn);
+  if(c && c.addrCh) return c.addrCh;
+  if(p.mine && me.addrCh) return me.addrCh;
+  return '';
+};
 const ownedByMe = p => {
   if(!me.nameCh && !me.email) return false;
   if(me.nameCh && (p.cust||CUST)===me.nameCh) return true;
@@ -403,7 +410,7 @@ function defTests(type){
   if(type==='液劑霜劑') return {fang:true,chang:true,wen:false};   // 其他液劑霜劑：防腐＋常规
   return {fang:false,chang:true,wen:false};
 }
-function testText(t){ t=t||{}; const a=[]; if(t.fang)a.push('防腐效能測驗'); if(t.chang)a.push('常規9項'); if(t.wen)a.push('穩定性測試'); return a.join('+')||'—'; }
+function testText(t){ t=t||{}; const a=[]; if(t.fang)a.push('防腐效能測驗'); if(t.chang)a.push('常規9項+念珠菌'); if(t.wen)a.push('穩定性測試'); return a.join('+')||'—'; }
 function feeOf(t){ t=t||{}; return (t.fang?350:0)+(t.chang?200:0)+(t.wen?350:0); }
 function agreementHTML(list){
   const d=new Date(), ds=d.getFullYear()+'年'+String(d.getMonth()+1).padStart(2,'0')+'月'+String(d.getDate()).padStart(2,'0')+'日';
@@ -476,7 +483,7 @@ function parseCompany(t){
   return { cname:nm.trim(), caddr:ad.trim() };
 }
 let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='', wipeOpen=false, ocrBusy=false, custAddOpen=false, pendingRestore=null, scQ='', scPage=0, scOpen=null, scDraft={name:'',en:'',tagline:'',cover:'',html:'',link:''}, pifSel={}, scSel={}, selScope=[],
-pifAddOpen=false, pifDraft={name:'',cust:'',drive:'',plan:'shared',note:'',toPublic:false}, pifDetailOpen=null, retroCust='', pifGroupClosed={}, invTab='recv', invDetailOpen=null;
+pifAddOpen=false, pifDraft={name:'',cust:'',drive:'',plan:'shared',note:'',toPublic:false}, pifDetailOpen=null, retroCust='', pifGroupClosed={}, invTab='recv', invDetailOpen=null, dataVendorFilter='';
 let sharedPIF=[];
 let staff=[]; // 員工帳號只從 Firestore 認證，不在本機種子
 let customers=[
@@ -1489,72 +1496,129 @@ function elgData(){
   if(!pool.length) return `<div class="empty"><i class="ti ti-file-off"></i>沒有待送驗的項目（需先完成收款查帳）</div>`;
   if(!dataPid || !pool.find(p=>p.id===dataPid)) dataPid=pool[0].id;
   const p=byId(dataPid); p.t=p.t||{fang:true,chang:true,wen:false};
-  const prices={fang:500,chang:200,wen:350};
+  const prices={fang:350,chang:320,wen:350};
   const sum=Object.keys(prices).reduce((s,k)=>s+(p.t[k]?prices[k]:0),0);
+  const testItems=[
+    {k:'wen',  label:'穩定性測試（安定性）', price:350},
+    {k:'fang', label:'防腐效能測驗',         price:350},
+    {k:'chang',label:'常規9項＋白色念珠菌檢測', price:320},
+  ];
   const trow=(k,label,price)=>`
     <div class="selrow ${p.t[k]?'on':''}" onclick="A.toggleTest('${k}')">
       <span class="ck"><i class="ti ti-check"></i></span>
       <span style="flex:1" class="nm">${label}</span><span class="muted">${money(price)}</span></div>`;
   const sel=pool.filter(x=>x.genSel!==false);
-  return `<div class="pane">
-    <div class="note" style="margin-bottom:14px"><i class="ti ti-file-invoice"></i>已收款、待送驗的「送驗總清單」，可跨廠商勾選合併成同一份清單與合約。</div>
-    <div class="row" style="margin-bottom:4px"><span class="sect" style="margin:0">送驗總清單（已勾 ${sel.length}/${pool.length} 筆 · ${[...new Set(pool.map(x=>custName(x)))].length} 家廠商）</span>
-      <span class="muted" style="font-size:12px;font-weight:600;cursor:pointer" onclick="A.toggleGenAll()">${pool.every(x=>x.genSel!==false)?'全不選':'全選'}</span></div>
-    <div class="faint" style="font-size:12px;margin:0 0 10px">勾選不同廠商的樣品，會合併到同一份送驗清單與合作協議。</div>
-    ${[...new Set(pool.map(x=>custName(x)))].map(v=>{
-      const its=pool.filter(x=>custName(x)===v); const allSel=its.every(x=>x.genSel!==false);
-      return `<div class="row" style="margin:12px 0 6px"><span class="nm" style="font-size:14px"><i class="ti ti-building-store"></i> ${v}</span>
-        <span class="muted" style="font-size:12px;font-weight:600;cursor:pointer" onclick="A.toggleVendor('${v}')">${allSel?'全不選':'全選'}</span></div>
-        <div class="stack">`+ its.map(x=>`
-          <div class="selrow ${x.genSel!==false?'on':''}" onclick="A.toggleGen('${x.id}')">
-            <span class="ck"><i class="ti ti-check"></i></span>
-            <span style="flex:1"><span class="nm">${x.name}</span><br><span class="sub">${testText(x.t)} · ${x.spec||''} · ${(x.en||'').trim()?('EN: '+x.en):'<span style="color:var(--w)">缺英文名</span>'}</span></span>
-          </div>`).join('') + `</div>`;
-    }).join('')}
-    <label class="lbl" style="margin-top:16px">設定檢驗項目（選擇產品）</label>
-    <select class="fld" onchange="A.pickData(this.value)">
-      ${pool.map(x=>`<option value="${x.id}" ${x.id===dataPid?'selected':''}>${custName(x)} · ${x.name}</option>`).join('')}
+  const allVendors=[...new Set(pool.map(x=>custName(x)))];
+  const missN=sel.filter(x=>!(x.en||'').trim()).length;
+
+  // ===== 頂部：客戶篩選 + AI 補齊 =====
+  let h=`<div class="pane">
+    <div class="note" style="margin-bottom:14px"><i class="ti ti-file-invoice"></i>已收款待送驗的品項，可按客戶篩選、分批生成送驗清單。</div>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:14px;align-items:flex-end">
+      <div style="flex:1;min-width:160px">
+        <label class="lbl">篩選客戶</label>
+        <select class="fld" onchange="A.filterDataVendor(this.value)" id="data_vendor_filter">
+          <option value="">全部客戶（${allVendors.length} 家）</option>
+          ${allVendors.map(v=>`<option value="${v}" ${dataVendorFilter===v?'selected':''}>${v}（${pool.filter(x=>custName(x)===v).length} 筆）</option>`).join('')}
+        </select>
+      </div>
+      ${missN?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;color:var(--accent);white-space:nowrap" onclick="A.genEnMissing()">
+        <i class="ti ti-sparkles"></i> AI 補齊英文名（${missN} 筆）</button>`
+        :`<span class="sub" style="white-space:nowrap;padding:8px 0"><i class="ti ti-check" style="color:var(--s)"></i> 英文名已齊全</span>`}
+    </div>`;
+
+  // ===== 送驗清單（依客戶分組）=====
+  const filteredVendors=dataVendorFilter ? allVendors.filter(v=>v===dataVendorFilter) : allVendors;
+  const filteredPool=dataVendorFilter ? pool.filter(x=>custName(x)===dataVendorFilter) : pool;
+  const filteredSel=filteredPool.filter(x=>x.genSel!==false);
+
+  h+=`<div class="row" style="margin-bottom:4px">
+    <span class="sect" style="margin:0">送驗清單（已勾 ${filteredSel.length}/${filteredPool.length} 筆）</span>
+    <span class="muted" style="font-size:12px;font-weight:600;cursor:pointer" onclick="A.toggleGenAll()">${filteredPool.every(x=>x.genSel!==false)?'全不選':'全選'}</span>
+  </div>`;
+
+  h+=filteredVendors.map(v=>{
+    const its=pool.filter(x=>custName(x)===v); const allSel=its.every(x=>x.genSel!==false);
+    return `<div class="row" style="margin:12px 0 6px">
+      <span class="nm" style="font-size:14px"><i class="ti ti-building-store"></i> ${v}</span>
+      <span class="muted" style="font-size:12px;font-weight:600;cursor:pointer" onclick="A.toggleVendor('${v}')">${allSel?'全不選':'全選'}</span>
+    </div>
+    <div class="stack">`+ its.map(x=>`
+      <div class="selrow ${x.genSel!==false?'on':''}" onclick="A.toggleGen('${x.id}')">
+        <span class="ck"><i class="ti ti-check"></i></span>
+        <span style="flex:1"><span class="nm">${x.name}</span><br>
+          <span class="sub">${testText(x.t)} · ${x.spec||''}
+          ${(x.en||'').trim()?` · EN: ${x.en}`:'<span style="color:var(--w)"> · 缺英文名</span>'}</span></span>
+      </div>`).join('') + `</div>`;
+  }).join('');
+
+  // ===== 設定檢驗項目 =====
+  h+=`<label class="lbl" style="margin-top:16px">設定檢驗項目（選擇產品）</label>
+    <select class="fld" onchange="A.pickData(this.value)" style="margin-bottom:14px">
+      ${filteredPool.map(x=>`<option value="${x.id}" ${x.id===dataPid?'selected':''}>${custName(x)} · ${x.name}</option>`).join('')}
     </select>
-    <div class="card" style="margin-top:14px;background:var(--n-bg);border:0">
-      <div class="sub" style="margin:0 0 6px">送驗廠商（帶入客戶廠商資料 → Excel 公司資料欄）</div>
-      <div class="nm" style="font-size:15px">${custName(p)}${(p.mine&&me.nameEn)?` / ${me.nameEn}`:''}</div>
-      <div class="sub">${custAddr(p)||'—'}</div>
-      <div class="sub" style="margin-top:6px">工廠：${FACTORY}</div>
-    </div>
-    <div class="card" style="margin-top:12px">
-      <div class="sub" style="margin:0 0 4px">產品名稱</div>
-      <div class="nm" style="font-size:15px">${p.name}　<span class="pill pill--s" style="font-size:11px">輸出至清單</span></div>
-      <div class="sub" style="margin-top:6px">別名（配方名）：${p.alias||'—'}　<span class="faint">僅供內部對照，不輸出</span></div>
-    </div>
-    <div style="display:flex;gap:12px;margin-top:14px">
-      <div style="flex:1"><label class="lbl">型號規格</label><input class="fld" value="${p.spec}"></div>
-      <div style="flex:1"><label class="lbl">數量</label><input class="fld" value="${p.qty}"></div>
-    </div>
-    <div style="display:flex;gap:12px;margin-top:12px">
-      <div style="flex:1"><label class="lbl">產品類型</label>
-        <select class="fld" onchange="A.setType('${p.id}',this.value)">
-          ${['油劑','面膜','液劑霜劑','其他'].map(t=>`<option ${p.type===t?'selected':''}>${t}</option>`).join('')}
-        </select></div>
-      <div style="flex:1"><label class="lbl">樣品量</label>
-        <input class="fld" value="${p.amt||''}" placeholder="如 50g" onchange="A.setAmt('${p.id}',this.value)"></div>
-    </div>
+    <table style="width:100%;border-collapse:collapse;font-size:13.5px;margin-bottom:14px">
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:8px;color:var(--muted);font-size:12px;width:90px">送驗廠商</td>
+        <td style="padding:8px;font-weight:600">${custName(p)}${(p.mine&&me.nameEn)?` / ${me.nameEn}`:''}</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:8px;color:var(--muted);font-size:12px">地址</td>
+        <td style="padding:8px">${custAddr(p)||'—'}</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:8px;color:var(--muted);font-size:12px">工廠</td>
+        <td style="padding:8px">${FACTORY}</td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:8px;color:var(--muted);font-size:12px">產品名稱</td>
+        <td style="padding:8px"><span class="nm">${p.name}</span> <span class="pill pill--s" style="font-size:10px">輸出至清單</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:8px;color:var(--muted);font-size:12px">別名</td>
+        <td style="padding:8px">${p.alias||'—'} <span class="faint" style="font-size:11px">（內部對照，不輸出）</span></td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:8px;color:var(--muted);font-size:12px">型號規格</td>
+        <td style="padding:4px 8px"><input class="fld fld--mini" value="${p.spec}" style="width:100%"></td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:8px;color:var(--muted);font-size:12px">數量</td>
+        <td style="padding:4px 8px"><input class="fld fld--mini" value="${p.qty}" style="width:100%"></td>
+      </tr>
+      <tr style="border-bottom:1px solid var(--line)">
+        <td style="padding:8px;color:var(--muted);font-size:12px">產品類型</td>
+        <td style="padding:4px 8px">
+          <select class="fld fld--mini" onchange="A.setType('${p.id}',this.value)" style="width:100%">
+            ${['油劑','面膜','液劑霜劑','其他'].map(t=>`<option ${p.type===t?'selected':''}>${t}</option>`).join('')}
+          </select>
+        </td>
+      </tr>
+      <tr>
+        <td style="padding:8px;color:var(--muted);font-size:12px">樣品量</td>
+        <td style="padding:4px 8px"><input class="fld fld--mini" value="${p.amt||''}" placeholder="如 50g" onchange="A.setAmt('${p.id}',this.value)" style="width:100%"></td>
+      </tr>
+    </table>
     <div class="sect mt" style="margin-bottom:6px">檢驗項目（依產品類型自動帶入 · 可調整）</div>
-    <div class="faint" style="font-size:12px;margin:0 0 10px">油劑→安定性、面膜→微生物、液劑霜劑→防腐＋常规</div>
-    <div class="stack">
-      ${trow('fang','防腐效能測驗',500)}
-      ${trow('chang','常规9项（微生物）',200)}
-      ${trow('wen','穩定性測試（安定性）',350)}
-    </div>
-    <div class="row" style="margin-top:13px"><span class="muted" style="font-size:14px">本筆送驗成本</span>
-      <span style="font-size:20px;font-weight:700">${money(sum)}</span></div>
+    <div class="faint" style="font-size:12px;margin:0 0 10px">油劑→安定性、面膜→微生物＋念珠菌、液劑霜劑→防腐＋常规</div>
+    <table style="width:100%;border-collapse:collapse;font-size:13.5px">
+      ${testItems.map(t=>`<tr style="border-bottom:1px solid var(--line);cursor:pointer" onclick="A.toggleTest('${t.k}')">
+        <td style="padding:10px 8px;width:32px"><span class="ck ${p.t[t.k]?'on':''}" style="pointer-events:none"><i class="ti ti-check"></i></span></td>
+        <td style="padding:10px 4px;font-weight:${p.t[t.k]?'700':'400'};color:${p.t[t.k]?'var(--ink)':'var(--muted)'}">${t.label}</td>
+        <td style="padding:10px 8px;text-align:right;font-weight:700;color:${p.t[t.k]?'var(--s)':'var(--faint)'};white-space:nowrap">${money(t.price)}</td>
+      </tr>`).join('')}
+      <tr style="border-top:2px solid var(--accent);font-weight:700">
+        <td colspan="2" style="padding:10px 8px">本筆送驗成本</td>
+        <td style="padding:10px 8px;text-align:right;font-size:16px;color:var(--s)">${money(sum)}</td>
+      </tr>
+    </table>
     <div class="faint" style="font-size:12px;margin-top:6px">此為送驗成本，與對客戶請款（5000／10000）分開。</div>
     <label class="lbl" style="margin-top:16px">功能性測試（手寫輸入 · 選填）</label>
     <textarea class="fld" style="height:64px;line-height:1.5" placeholder="如需功能性測試，描述項目／方法" onchange="A.setFunc('${p.id}',this.value)">${p.func||''}</textarea>
     <button class="btn btn--ghost" style="margin-top:16px" onclick="A.openAddItems('eloga')"><i class="ti ti-plus"></i> 新增品項（手動／辨識）</button>
-    ${(()=>{ const missN=sel.filter(x=>!(x.en||'').trim()).length; return missN?`<button class="btn btn--ghost" style="margin-top:10px;color:var(--accent)" onclick="A.genEnMissing()"><i class="ti ti-sparkles"></i> AI 補齊缺漏英文名（${missN} 筆）</button>
-    <div class="faint" style="font-size:12px;margin-top:6px;text-align:center">清單需有英文名；客戶沒填的可由 AI 生成，產生前請核對。</div>`:`<div class="faint" style="font-size:12px;margin-top:10px;text-align:center"><i class="ti ti-check"></i> 已勾選項目皆有英文名</div>`; })()}
-    <button class="btn" style="margin-top:10px" ${sel.length?'':'disabled'} onclick="A.exportSongyan()">
-      <i class="ti ti-file-stack"></i> 生成合作協議＋樣品清單並送驗（已勾選 ${sel.length} 筆）</button>
+    <button class="btn" style="margin-top:10px" ${filteredSel.length?'':'disabled'} onclick="A.exportSongyan()">
+      <i class="ti ti-file-stack"></i> 生成合作協議＋樣品清單並送驗${dataVendorFilter?'（'+dataVendorFilter+'　'+filteredSel.length+' 筆）':'（已勾選 '+filteredSel.length+' 筆）'}</button>
     <div class="faint" style="font-size:12px;margin-top:8px;text-align:center">同時產出：給實驗室的樣品清單 Excel（依客戶合併）＋ 依洛嘉與微化檢驗的合作協議 Word；並把這些項目轉為「送驗中」。</div>
     <label class="btn btn--ghost" style="margin-top:14px;display:flex;cursor:pointer">
       <i class="ti ti-file-import"></i> 匯入送驗清單 XLSX（回送客戶）
@@ -2359,16 +2423,17 @@ function customerSection(){
         <button class="btn btn--ok btn--sm" onclick="A.approveCust(${i})"><i class="ti ti-check"></i> 審核通過</button>
         <button class="btn btn--ghost btn--sm" onclick="A.disableCust(${i})">拒絕</button></div>`;
     else if(c.status==='臨時') act=`
-      <div class="sub" style="margin-top:8px;color:var(--w)"><i class="ti ti-user-question"></i> 臨時帳號（匯入自動建立，尚未驗證）</div>
-      ${c.verifyToken?`<div class="card" style="background:var(--n-bg);border:0;margin-top:8px;padding:10px">
-          <div class="sub" style="margin-bottom:4px">驗證連結（傳給客戶 · 以 Google 信箱驗證後轉為正式帳號）</div>
-          <input class="fld fld--mini" readonly value="${verifyURL(c)}" onclick="this.select()">
-          <div style="display:flex;gap:8px;margin-top:8px;flex-wrap:wrap">
-            <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" onclick="A.copyVerify(${i})"><i class="ti ti-copy"></i> 複製連結</button>
-            <button class="btn btn--ok btn--sm" style="width:auto;padding:0 12px" onclick="A.simVerify(${i})"><i class="ti ti-brand-google"></i> （示範）客戶完成驗證</button>
-          </div></div>`
-        :`<button class="btn btn--sm" style="margin-top:8px;width:auto;padding:0 14px" onclick="A.genVerifyLink(${i})"><i class="ti ti-link"></i> 產生驗證連結</button>`}
-      <button class="btn btn--ghost btn--sm" style="margin-top:8px;width:auto;padding:0 14px;color:#C0392B;border-color:#E7C3BD" onclick="A.delCustomer(${i})"><i class="ti ti-trash"></i> ${confirmDel==='ca'+i?'確認刪除？':'刪除帳號'}</button>`;
+      <div style="margin-top:10px;padding:10px 12px;border:1.5px dashed var(--accent);border-radius:10px;background:var(--accent-tint)">
+        <div class="sub" style="margin-bottom:6px;color:var(--accent);font-weight:700"><i class="ti ti-user-plus"></i> 臨時帳號 → 填入客戶 Gmail 即轉為正式帳號</div>
+        <div style="display:flex;gap:8px">
+          <input class="fld fld--mini" id="set_email_${i}" placeholder="客戶 Gmail" type="email" style="flex:1" value="${c.email||''}">
+          <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px;flex:none" onclick="A.activateTempCust(${i})"><i class="ti ti-check"></i> 啟用</button>
+        </div>
+        <div class="sub" style="margin-top:6px;font-size:11.5px">填入 Gmail 後客戶即可用 Google 登入查看自己的產品</div>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;color:#C0392B;border-color:#E7C3BD" onclick="A.delCustomer(${i})"><i class="ti ti-trash"></i> ${confirmDel==='ca'+i?'確認刪除？':'刪除帳號'}</button>
+      </div>`;
     else if(c.status==='已啟用') act=`<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
         <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.disableCust(${i})"><i class="ti ti-ban"></i> 停用</button>
         <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;color:#C0392B;border-color:#E7C3BD" onclick="A.delCustomer(${i})"><i class="ti ti-trash"></i> ${confirmDel==='ca'+i?'確認刪除？':'刪除帳號'}</button></div>
@@ -2404,8 +2469,8 @@ function customerSection(){
   if(pend.length){ h+=`<div class="sect">客戶申請（待審核）</div><div class="stack">`+pend.map(card).join('')+`</div>`; }
   const temp=customers.filter(c=>c.status==='臨時');
   if(temp.length){
-    h+=`<div class="row sect mt"><span>臨時帳號（匯入未註冊 · 待客戶 Google 驗證）</span><span class="pill pill--w">${temp.length}</span></div>`;
-    h+=`<div class="note" style="margin:6px 0 10px"><i class="ti ti-link"></i>這些公司是從匯入清單自動建立、尚未註冊。產生驗證連結傳給客戶，客戶以 Google 信箱驗證後即轉為正式帳號。</div>`;
+    h+=`<div class="row sect mt"><span>臨時帳號 → 填 Gmail 即啟用</span><span class="pill pill--w">${temp.length}</span></div>`;
+    h+=`<div class="note" style="margin:6px 0 10px"><i class="ti ti-user-plus"></i>這些公司是從匯入清單自動建立，尚未綁定 Gmail。填入客戶的 Gmail 後按「啟用」，客戶即可用 Google 登入查看自己的產品進度與帳務。</div>`;
     h+=`<div class="stack">`+temp.map(card).join('')+`</div>`;
   }
   const reg=active.concat(off);
@@ -2670,6 +2735,27 @@ const A = {
     } else {
       A.toast('已刪除客戶帳號：'+nm);
     }
+  },
+  activateTempCust(i){
+    const c=customers[i]; if(!c) return;
+    const el=document.getElementById('set_email_'+i);
+    const email=(el?el.value:'').trim().toLowerCase();
+    if(!email||!email.includes('@')){ A.toast('請填入有效的 Gmail'); return; }
+    if(customers.some((x,j)=>j!==i&&x.email&&x.email.toLowerCase()===email)){ A.toast('這個 Gmail 已被其他帳號使用'); return; }
+    c.email=email; c.login='Google'; c.status='已啟用'; c.temp=false;
+    // 更新所有屬於這個客戶的產品的 customerEmail
+    products.filter(p=>custName(p)===c.name).forEach(p=>{ p.customerEmail=email; });
+    // 直接寫入 Firestore
+    if(typeof FB!=='undefined'&&FB.on&&FB.db){
+      const docId=c.id||FB.db.collection('customers').doc().id;
+      c.id=docId;
+      FB.db.collection('customers').doc(docId).set(Object.assign({},c))
+        .then(()=>A.toast('✓ '+c.name+' 已啟用！客戶用 '+email+' 登入即可看到自己的產品'))
+        .catch(e=>A.toast('本機已更新，雲端同步失敗：'+e.message));
+    } else {
+      A.toast('✓ '+c.name+' 已啟用！客戶用 '+email+' 登入即可');
+    }
+    save(); render();
   },
   setCustEmail(i){
     const c=customers[i]; if(!c) return;
@@ -3056,7 +3142,8 @@ const A = {
   },
   batchReceiveReport(){ const list=products.filter(p=>batch[p.id]&&p.status==='testing'); if(!list.length){ A.toast('請先勾選送驗中項目'); return; } list.forEach(p=>{ p.status='reporting'; }); batch={}; save(); render(); A.toast('已將 '+list.length+' 筆轉為 PIF 製作中'); },
   toggleInvVendor(cn){ const its=products.filter(p=>p.status==='received'&&custName(p)===cn); const allOn=its.length>0&&its.every(p=>p.invSel); its.forEach(p=>{ p.invSel=!allOn; }); render(); },
-  toggleGenAll(){ const pool=products.filter(p=>p.status==='paid'); const allOn=pool.length>0&&pool.every(p=>p.genSel!==false); pool.forEach(p=>{ p.genSel = allOn?false:true; }); render(); },
+  filterDataVendor(v){ dataVendorFilter=v; render(); },
+  toggleGenAll(){ const pool=products.filter(p=>p.status==='paid'&&(!dataVendorFilter||custName(p)===dataVendorFilter)); const allOn=pool.length>0&&pool.every(p=>p.genSel!==false); pool.forEach(p=>{ p.genSel = allOn?false:true; }); render(); },
   shipAll(){ const sel=products.filter(p=>ownedByMe(p)&&(p.status==='approved'||p.status==='pending')); const allOn=sel.length>0&&sel.every(p=>p.shipSel); sel.forEach(p=>{ p.shipSel=!allOn; }); render(); },
   scToggleSel(id){ if(scSel[id]) delete scSel[id]; else scSel[id]=true; render(); },
   scSelAll(on){ scSel={}; if(on) showcase.forEach(it=>{ scSel[it.id]=true; }); render(); },
@@ -3122,7 +3209,7 @@ const A = {
     const thin={style:'thin'}, BD={top:thin,left:thin,right:thin,bottom:thin};
     const wb=new ExcelJS.Workbook(), ws=wb.addWorksheet('Sheet1');
     [7.3,40.9,60.7,17.4,10.4,11.1,11.1,11.1,54.1,9.0].forEach((w,i)=>ws.getColumn(i+1).width=w);
-    const heads=['序号','样品名称','英文名稱','型号规格','数量','防腐效能測驗\n$350','常规9项\n$200','穩定性測試\n$350','公司資料'];
+    const heads=['序号','样品名称','英文名稱','型号规格','数量','防腐效能測驗\n$350','常規9項+念珠菌\n$320','穩定性測試\n$350','公司資料'];
     const hr=ws.getRow(1);
     heads.forEach((t,i)=>{ const c=hr.getCell(i+1); c.value=t;
       c.font={name:i===8?'新細明體':'仿宋',size:i===8?11:14};
