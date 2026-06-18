@@ -822,40 +822,118 @@ function custBilling(){
   return h;
 }
 function custBoard(){
-  const order=['applied','approved','shipped','received','invoiced','reported','paid','testing','reporting','completed'];
-  const mine=products.filter(p=>ownedByMe(p)).slice().sort((a,b)=>order.indexOf(a.status)-order.indexOf(b.status));
+  const mine=products.filter(p=>ownedByMe(p));
   const myc=customers.find(c=>c.name===me.nameCh);
-  let h=`<div class="lnk" onclick="A.openMyFolder()" style="margin-bottom:12px">
-      <span class="l"><i class="ti ti-cloud lead"></i>
-      <span><span class="nm">我的 PIF 雲端資料夾</span><br><span class="sub">${(myc&&myc.drive&&myc.driveAuth)?'點此開啟下載 PIF':(myc&&myc.drive?'依洛嘉尚未授權存取':'依洛嘉尚未提供連結')}</span></span></span>
-      <i class="ti ti-external-link faint" style="font-size:18px"></i></div>`;
-  h+=`<div class="sect">我的產品進度</div>`;
-  h+= srchBar('搜尋我的產品…');
-  if(mine.length){
-    const present=order.filter(k=>mine.some(p=>p.status===k));
-    h+= present.map(k=>{
-      const grp=mine.filter(p=>p.status===k);
-      const body=`<div class="stack">`+ grp.map(p=>`
-        <div class="card compact" data-nm="${p.name}"><div class="row"><span><span class="nm" style="font-size:13.5px">${p.name}</span>${p.paused?' <span class="pill pill--n" style="font-size:10px"><i class="ti ti-player-pause"></i> 已暫停</span>':''}${p.alias?`<br><span class="sub">配方名：${p.alias}</span>`:''}</span>
-          ${p.status==='completed'?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" onclick="A.openDrive('${p.id}')"><i class="ti ti-download"></i> PIF</button>`:''}</div>
-        </div>`).join('')+`</div>`;
-      return collGroup(SM[k][1], SM[k][0], grp.length, body);
-    }).join('');
-  } else {
+  const cnt=st=>mine.filter(p=>p.status===st).length;
+  const grp=st=>mine.filter(p=>p.status===st);
+  const total=mine.length;
+
+  // 階段定義：對齊依洛嘉動作
+  const phases=[
+    { title:'申請與寄送', icon:'truck-delivery', statuses:[
+      {id:'applied',  label:'等待確認中',   who:'依洛嘉確認允許寄送', color:'var(--w)', ic:'clock'},
+      {id:'approved', label:'可寄送',       who:'請備樣寄出到依洛嘉', color:'var(--accent)', ic:'package-export'},
+      {id:'shipped',  label:'已寄出',       who:'依洛嘉收件中',       color:'var(--accent)', ic:'truck'},
+    ]},
+    { title:'收款流程', icon:'receipt-2', statuses:[
+      {id:'received', label:'依洛嘉已收樣', who:'依洛嘉開收款單中',   color:'var(--accent)', ic:'inbox'},
+      {id:'invoiced', label:'收到收款單',   who:'請匯款並回報',       color:'var(--w)', ic:'cash'},
+      {id:'reported', label:'已回報匯款',   who:'依洛嘉查帳中',       color:'var(--accent)', ic:'search'},
+    ]},
+    { title:'送驗與製作', icon:'flask', statuses:[
+      {id:'paid',      label:'已確認收款', who:'依洛嘉安排送驗',      color:'var(--accent)', ic:'check'},
+      {id:'testing',   label:'送驗中',     who:'檢測中心檢測進行中',  color:'var(--accent)', ic:'flask'},
+      {id:'reporting', label:'PIF 製作中', who:'依洛嘉製作 PIF 報告', color:'var(--accent)', ic:'file-text'},
+    ]},
+    { title:'已完成', icon:'circle-check', statuses:[
+      {id:'completed', label:'已完成 PIF', who:'可到雲端資料夾下載',  color:'var(--s)', ic:'download'},
+    ]},
+  ];
+
+  let h='';
+
+  // 總覽統計
+  const activeN=mine.filter(p=>p.status!=='completed').length;
+  const doneN=cnt('completed');
+  h+=`<div class="dash" style="margin-bottom:16px">
+    <div class="metric"><div class="mi" style="background:var(--accent-tint);color:var(--accent)"><i class="ti ti-list-check"></i></div><div class="mv">${total}</div><div class="ml">全部品項</div></div>
+    <div class="metric"><div class="mi" style="background:var(--w-bg);color:var(--w)"><i class="ti ti-loader"></i></div><div class="mv">${activeN}</div><div class="ml">進行中</div></div>
+    <div class="metric"><div class="mi" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-circle-check"></i></div><div class="mv">${doneN}</div><div class="ml">已完成</div></div>
+  </div>`;
+
+  // 雲端資料夾
+  h+=`<div class="lnk" onclick="A.openMyFolder()" style="margin-bottom:16px">
+    <span class="l"><i class="ti ti-cloud lead"></i>
+    <span><span class="nm">我的 PIF 雲端資料夾</span><br><span class="sub">${(myc&&myc.drive&&myc.driveAuth)?'點此開啟下載 PIF':(myc&&myc.drive?'依洛嘉尚未授權存取':'依洛嘉尚未提供連結')}</span></span></span>
+    <i class="ti ti-external-link faint" style="font-size:18px"></i></div>`;
+
+  // 搜尋
+  if(mine.length>5) h+=srchBar('搜尋我的產品…');
+
+  // 各階段流程
+  phases.forEach(phase=>{
+    const phaseItems=phase.statuses.flatMap(s=>grp(s.id));
+    if(!phaseItems.length) return; // 沒品項的階段不顯示
+
+    h+=`<div style="margin-bottom:18px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px">
+        <i class="ti ti-${phase.icon}" style="font-size:18px;color:var(--accent)"></i>
+        <span class="nm" style="font-size:15px">${phase.title}</span>
+        <span class="sub" style="font-size:12px">${phaseItems.length} 筆</span>
+      </div>`;
+
+    phase.statuses.forEach(st=>{
+      const items=grp(st.id);
+      if(!items.length) return;
+
+      h+=`<div class="card" style="margin-bottom:8px;border-left:4px solid ${st.color};padding:12px 14px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:${items.length>0?'8':'0'}px">
+          <i class="ti ti-${st.ic}" style="color:${st.color};font-size:18px;flex:none"></i>
+          <span style="flex:1">
+            <span class="nm" style="font-size:13.5px">${st.label}</span>
+            <span class="pill" style="font-size:10px;margin-left:6px;background:${st.color}15;color:${st.color};border:1px solid ${st.color}40">${items.length}</span>
+            <br><span class="sub" style="font-size:11.5px;color:var(--muted)">${st.who}</span>
+          </span>
+        </div>
+        ${items.map(p=>`
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-top:1px solid var(--line);margin-left:26px" data-nm="${p.name}">
+            <span style="flex:1;min-width:0">
+              <span style="font-size:13px;font-weight:600">${p.name}</span>
+              ${p.alias?`<span class="sub" style="margin-left:4px;font-size:11px">（${p.alias}）</span>`:''}
+              ${p.paused?'<span class="pill pill--n" style="font-size:10px;margin-left:4px"><i class="ti ti-player-pause"></i> 暫停</span>':''}
+            </span>
+            ${st.id==='invoiced'?`<span style="font-weight:700;color:var(--w);font-size:13px">${money(p.charge||0)}</span>`:''}
+            ${st.id==='completed'?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 10px;font-size:12px" onclick="A.openDrive('${p.id}')"><i class="ti ti-download"></i> PIF</button>`:''}
+          </div>`).join('')}
+      </div>`;
+    });
+
+    h+=`</div>`;
+  });
+
+  if(!mine.length){
     h+=`<div class="empty"><i class="ti ti-clipboard"></i>還沒有產品，請到「送驗」新增</div>`;
   }
-  h+=`<div class="sect mt">依洛嘉目前可共用的 PIF 產品</div>`;
+
+  // 可共用 PIF
+  h+=`<div style="margin-top:20px;padding-top:16px;border-top:2px solid var(--line)">
+    <div class="sect">依洛嘉可共用的 PIF 產品</div>`;
   const pubS=sharedPIF.filter(it=>shareState(it)==='public');
-  h+= collGroup('s','可共用 PIF', pubS.length, `<div class="stack">`+ sharedPIF.map((it,i)=> shareState(it)==='public'?`
+  if(pubS.length){
+    h+=`<div class="stack">`+pubS.map((it,i)=>`
       <div class="card compact row" data-nm="${it.name}"><span><span class="nm" style="font-size:13.5px">${it.name}</span><br><span class="sub">${it.type} · 已有 PIF</span></span>
-        <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px" onclick="A.sharePIF(${i})">共用</button></div>`:'').join('')+`</div>`);
+        <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px" onclick="A.sharePIF(${sharedPIF.indexOf(it)})">共用</button></div>`).join('')+`</div>`;
+  } else {
+    h+=`<div class="card faint" style="text-align:center;padding:14px">目前沒有可共用的 PIF</div>`;
+  }
   const bldS=sharedPIF.filter(it=>shareState(it)==='building');
   if(bldS.length){
-    h+= collGroup('w','可共用·建置中', bldS.length, `<div class="stack">`+ bldS.map(it=>`
-      <div class="card compact row" data-nm="${it.name}"><span><span class="nm" style="font-size:13.5px">${it.name}</span><br><span class="sub">${it.type} · PIF 建置中，敬請期待</span></span>
-        <span class="pill pill--w" style="font-size:11px">建置中</span></div>`).join('')+`</div>`);
+    h+=`<div class="stack" style="margin-top:8px">`+bldS.map(it=>`
+      <div class="card compact row" data-nm="${it.name}"><span><span class="nm" style="font-size:13.5px">${it.name}</span><br><span class="sub">${it.type} · PIF 建置中</span></span>
+        <span class="pill pill--w" style="font-size:11px">建置中</span></div>`).join('')+`</div>`;
   }
-  h+=`<div class="faint" style="font-size:12px;margin-top:12px"><i class="ti ti-lock"></i> 只顯示你自己的產品與依洛嘉可共用清單，看不到其他客戶資料。</div>`;
+  h+=`</div>`;
+  h+=`<div class="faint" style="font-size:12px;margin-top:12px"><i class="ti ti-lock"></i> 只顯示你自己的產品，看不到其他客戶資料。</div>`;
   return h;
 }
 
