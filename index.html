@@ -48,7 +48,9 @@
   .hd .ic{ font-size:23px;color:var(--faint); }
 
   .screen{ flex:1; overflow-y:auto; padding:18px 20px 24px; }
-  .tabbar{ display:flex; border-top:1px solid var(--line); flex:none; background:var(--surface); }
+  .tabbar{ display:flex; border-top:1px solid var(--line); flex:none; background:var(--surface);
+    overflow-x:auto; overflow-y:hidden; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+  .tabbar::-webkit-scrollbar{ display:none; }
   #fab{ position:absolute; z-index:62; left:16px; bottom:88px; }
   #fab.hide{ display:none; }
   .fabbtn{ height:48px; border-radius:999px; border:0; background:#06C755; color:#fff;
@@ -62,9 +64,9 @@
   .backbtn:active{ background:var(--n-bg); }
   .backbtn i{ font-size:17px; }
   .tabbar button{
-    flex:1; border:0; background:transparent; padding:9px 2px 12px; cursor:pointer; font-family:inherit;
-    color:var(--muted); font-size:11.5px; font-weight:700; display:flex; flex-direction:column; align-items:center; gap:4px;
-    transition:color .12s;
+    flex:0 0 auto; min-width:66px; border:0; background:transparent; padding:9px 8px 12px; cursor:pointer; font-family:inherit;
+    color:var(--muted); font-size:11px; font-weight:700; display:flex; flex-direction:column; align-items:center; gap:4px;
+    transition:color .12s; white-space:nowrap;
   }
   .tabbar button i{ font-size:22px; }
   .tabbar button.on{ color:var(--accent); }
@@ -254,7 +256,7 @@
     #app.mode-full .full{ max-width:460px; margin:0 auto; width:100%; }
     #app.mode-app .tabbar{ position:absolute; top:0; left:0; bottom:0; width:230px; flex-direction:column;
       align-items:stretch; justify-content:flex-start; border-top:0; border-right:1px solid var(--line);
-      padding:18px 0; gap:2px; background:var(--surface); border-radius:18px 0 0 18px; overflow-y:auto; z-index:2; }
+      padding:18px 0; gap:2px; background:var(--surface); border-radius:18px 0 0 18px; overflow-y:auto; overflow-x:hidden; z-index:2; }
     #app.mode-app .tabbar button{ flex:none; flex-direction:row; justify-content:flex-start; gap:13px;
       padding:13px 18px; margin:0 12px; font-size:15px; border-radius:10px; }
     #app.mode-app .tabbar button i{ font-size:22px; }
@@ -5399,24 +5401,37 @@ A.fbDiagnose=async function(){
   if(!(FB.on&&FB.db&&FB.user)){ set('✗ 尚未雲端登入，無法測試','#C0392B'); return; }
   set('測試中…請稍候');
   const lines=[];
+  let writeOk=false, cloudProducts=null, ruleBlocked=false;
   // 1. 寫入測試
   try{
     await FB.db.collection('meta').doc('_diag').set({ts:new Date().toISOString(), by:FB.user.email||''});
-    lines.push('✓ 雲端寫入正常');
-  }catch(e){ lines.push('✗ 雲端寫入失敗：'+(e.code||e.message)); }
+    lines.push('✓ 雲端寫入正常'); writeOk=true;
+  }catch(e){ lines.push('✗ 雲端寫入失敗：'+(e.code||e.message)); if((e.code||'').includes('permission')) ruleBlocked=true; }
   // 2. 讀取測試（各 collection 筆數）
-  try{
-    const cols=['products','customers','sharedPIF','publicShowcase'];
-    for(const c of cols){
-      try{ const s=await FB.db.collection(c).limit(500).get(); lines.push('✓ '+c+'：雲端 '+s.size+' 筆'); }
-      catch(e){ lines.push('✗ '+c+' 讀取失敗：'+(e.code||e.message)); }
-    }
-  }catch(e){ lines.push('✗ 讀取測試失敗：'+(e.code||e.message)); }
-  // 3. 本機 vs 雲端產品筆數
+  const cols=['products','customers','staff','sharedPIF'];
+  for(const c of cols){
+    try{ const s=await FB.db.collection(c).limit(500).get(); lines.push('✓ '+c+'：雲端 '+s.size+' 筆'); if(c==='products') cloudProducts=s.size; }
+    catch(e){ lines.push('✗ '+c+' 讀取失敗：'+(e.code||e.message)); if((e.code||'').includes('permission')) ruleBlocked=true; }
+  }
+  // 3. 本機 vs 雲端
   lines.push('· 本機目前產品 '+products.length+' 筆');
-  const ok=lines.every(l=>l.startsWith('✓')||l.startsWith('·'));
+  // 4. 白話結論 + 下一步
+  lines.push('<hr style="border:0;border-top:1px solid var(--line);margin:6px 0">');
+  if(ruleBlocked){
+    lines.push('<b style="color:#C0392B">⚠ 問題：Firestore 安全規則沒開放</b>');
+    lines.push('→ 到 Firebase 主控台設定規則允許登入者讀寫（見下方說明），這是手機看不到資料的主因。');
+  } else if(cloudProducts===0 && products.length>0){
+    lines.push('<b style="color:#C0392B">⚠ 問題：雲端沒有資料，但這台有 '+products.length+' 筆</b>');
+    lines.push('→ 請按上方「上傳本機資料到雲端」，手機才看得到。');
+  } else if(cloudProducts>0){
+    lines.push('<b style="color:var(--s)">✓ 雲端有 '+cloudProducts+' 筆資料，同步管道正常</b>');
+    lines.push('→ 手機請用「同一個管理者 Google 帳號」登入即可看到。新帳號需先被邀請為員工或建檔為客戶。');
+  } else {
+    lines.push('· 雲端與本機都沒有產品資料。');
+  }
+  const ok=writeOk && !ruleBlocked && (cloudProducts>0 || products.length===0);
   set(lines.join('<br>'), ok?'var(--s)':'#C0392B');
-  A.toast(ok?'雲端連線正常，電腦↔手機同步暢通':'雲端連線有問題，請看診斷訊息', 4000);
+  A.toast(ok?'雲端同步正常':'發現問題，請看診斷訊息與下一步', 4000);
 };
 A.reloadPage=function(){
   if(typeof FB!=='undefined'&&FB.on&&FB.auth){
