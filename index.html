@@ -1825,28 +1825,57 @@ function elgInvoice(){
   // ===== 查帳 =====
   if(invTab==='check'){
   h += `<div class="row sect"><span>收款查帳（客戶已回報匯款）</span><span class="pill pill--w">${toCheck.length}</span></div>`;
-  h += toCheck.length ? `<div class="stack">`+ toCheck.map(p=>`
-      <div class="card" style="border-color:var(--w)">
-        <div class="row"><span><span class="nm">${p.name}</span><br>
-          <span class="sub">${custName(p)} · 應收 ${money(p.charge||0)}</span></span>
-          <span class="pill pill--w">待查帳</span></div>
-        <div class="sub" style="margin-top:6px"><i class="ti ti-cash"></i> 匯款資訊：${p.payNote||'—'}</div>
-        <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+  if(toCheck.length){
+    const checkCusts=[...new Set(toCheck.map(p=>custName(p)))];
+    h+=checkCusts.map(cn=>{
+      const items=toCheck.filter(p=>custName(p)===cn);
+      const tot=items.reduce((s,p)=>s+(p.charge||0),0);
+      const payNote=items.map(p=>p.payNote).filter(Boolean)[0]||'—';
+      return `<div class="card" style="border-color:var(--w);margin-bottom:12px">
+        <div class="row" style="margin-bottom:8px">
+          <span>
+            <span class="nm" style="font-size:15px"><i class="ti ti-building-store"></i> ${cn}</span><br>
+            <span class="sub">${items.length} 筆 · 應收合計 ${money(tot)}</span>
+          </span>
+          <span class="pill pill--w">待查帳</span>
+        </div>
+        <div class="sub" style="margin-bottom:10px;padding:8px 12px;background:var(--n-bg);border-radius:8px">
+          <i class="ti ti-cash"></i> 客戶匯款資訊：<b>${payNote}</b>
+        </div>
+        <table style="width:100%;font-size:13px;border-collapse:collapse;margin-bottom:10px">
+          <tr style="color:var(--muted);font-size:12px;font-weight:600"><td style="padding:4px 8px">品名</td><td style="padding:4px 8px;text-align:right">應收金額</td></tr>
+          ${items.map(p=>`<tr style="border-top:1px solid var(--line)">
+            <td style="padding:6px 8px">${p.name}</td>
+            <td style="padding:6px 8px;text-align:right;font-weight:700">${money(p.charge||0)}</td>
+          </tr>`).join('')}
+          <tr style="border-top:2px solid var(--accent);font-weight:700;font-size:14px">
+            <td style="padding:8px">合計</td>
+            <td style="padding:8px;text-align:right;color:var(--s)">${money(tot)}</td>
+          </tr>
+        </table>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:10px">
           <div style="flex:1;min-width:120px">
             <label class="lbl">實收金額</label>
-            <input class="fld fld--mini" id="pay_amt_${p.id}" value="${p.charge||''}" placeholder="${money(p.charge||0)}" type="number">
+            <input class="fld fld--mini" id="chk_amt_${cn.replace(/\s/g,'_')}" value="${tot}" type="number">
           </div>
           <div style="flex:1;min-width:120px">
             <label class="lbl">付款方式</label>
-            <select class="fld fld--mini" id="pay_method_${p.id}">
-              ${PAY_METHODS.map(m=>`<option ${(p.payMethod||'匯款')===m?'selected':''}>${m}</option>`).join('')}
+            <select class="fld fld--mini" id="chk_method_${cn.replace(/\s/g,'_')}">
+              ${PAY_METHODS.map(m=>`<option>${m}</option>`).join('')}
             </select>
           </div>
         </div>
-        <button class="btn btn--ok btn--sm" style="margin-top:10px" onclick="A.confirmPay('${p.id}')">
-          <i class="ti ti-checkbook"></i> 確認收到貨款</button>
-      </div>`).join('')+`</div>`
-    : `<div class="card faint" style="text-align:center;padding:16px">沒有待查帳項目</div>`;
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button class="btn btn--ok btn--sm" style="flex:1;min-width:140px" onclick="A.confirmPayBatch('${cn}')">
+            <i class="ti ti-checkbook"></i> 整批確認收到貨款（${items.length} 筆）</button>
+          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;color:#C0392B;border-color:#E7C3BD" onclick="A.rejectPayBatch('${cn}')">
+            <i class="ti ti-arrow-back-up"></i> 退回重開</button>
+        </div>
+      </div>`;
+    }).join('');
+  } else {
+    h+=`<div class="card faint" style="text-align:center;padding:16px">沒有待查帳項目</div>`;
+  }
   } // end invTab==='check'
 
   return h;
@@ -2500,7 +2529,7 @@ const A = {
     refreshSelUI();
   },
   batchAll(nm){ const its=products.filter(p=>custName(p)===nm); const all=its.every(p=>batch[p.id]); its.forEach(p=>batch[p.id]=all?false:true); render(); },
-  batchStatus(){ const st=(document.getElementById('batchSt')||{}).value; const ids=Object.keys(batch).filter(k=>batch[k]); if(!ids.length){ A.toast('請先勾選項目'); return; } ids.forEach(id=>{ const p=byId(id); if(p) p.status=st; }); A.toast('已將 '+ids.length+' 筆設為「'+SM[st][0]+'」'); render(); },
+  batchStatus(){ const st=(document.getElementById('batchSt')||{}).value; const ids=Object.keys(batch).filter(k=>batch[k]); if(!ids.length){ A.toast('請先勾選項目'); return; } ids.forEach(id=>{ const p=byId(id); if(p) p.status=st; }); save(); A.toast('已將 '+ids.length+' 筆設為「'+SM[st][0]+'」'); render(); },
   batchGen(){ const ids=Object.keys(batch).filter(k=>batch[k]); const list=products.filter(p=>ids.includes(p.id)); if(!list.length){ A.toast('請先勾選項目'); return; } batch={}; A.exportSongyan(list); },
   setCustDriveByName(nm,v){ const c=customers.find(x=>x.name===nm); if(c){ c.drive=(v||'').trim(); if(!c.drive) c.driveAuth=false; save(); A.toast('已更新 PIF 資料夾連結'); render(); } },
   toggleCustAuth(nm){ const c=customers.find(x=>x.name===nm); if(!c) return; if(!c.drive){ A.toast('請先儲存資料夾連結'); return; } c.driveAuth=!c.driveAuth; save(); A.toast(c.driveAuth?('已授權 '+nm+' 存取雲端硬碟'):'已取消授權'); render(); },
@@ -2627,7 +2656,7 @@ const A = {
   },
   approveCust(i){ customers[i].status='已啟用'; save(); render(); A.toast('已審核通過：'+customers[i].name); },
   disableCust(i){ customers[i].status='已停用'; save(); render(); A.toast('已停用：'+customers[i].name); },
-  enableCust(i){ customers[i].status='已啟用'; render(); A.toast('已重新啟用：'+customers[i].name); },
+  enableCust(i){ customers[i].status='已啟用'; save(); render(); A.toast('已重新啟用：'+customers[i].name); },
   delCustomer(i){
     const c=customers[i]; if(!c) return;
     if(confirmDel!=='ca'+i){ confirmDel='ca'+i; render(); A.toast('再按一次「刪除帳號」以確認刪除'); return; }
@@ -3146,20 +3175,20 @@ const A = {
     aa.href=au; aa.download='合作協議.doc'; document.body.appendChild(aa); aa.click(); aa.remove(); URL.revokeObjectURL(au);
     list.forEach(p=>{ p.status='testing'; delete p.genSel; });
     const vd=[...new Set(list.map(p=>custName(p)))].length;
-    render(); A.toast('已生成合作協議＋樣品清單（'+vd+' 家廠商 · '+list.length+' 筆），轉為送驗中');
+    save(); render(); A.toast('已生成合作協議＋樣品清單（'+vd+' 家廠商 · '+list.length+' 筆），轉為送驗中');
   },
   toggleShip(id){ const p=byId(id); p.shipSel=!p.shipSel; render(); },
   deleteMyProduct(id){
     const p=byId(id); if(!p||!ownedByMe(p)) return;
     if(p.status!=='applied'){ A.toast('已確認項目請改用「申請撤銷」'); return; }
     const i=products.findIndex(x=>x.id===id); if(i>=0) products.splice(i,1);
-    render(); A.toast('已撤銷並刪除');
+    save(); render(); A.toast('已撤銷並刪除');
   },
-  requestCancel(id){ const p=byId(id); if(!p) return; if(['testing','reporting','completed'].includes(p.status)){ A.toast('已進入送驗，無法撤銷（如需暫停請洽依洛嘉）'); return; } p.cancelReq=true; render(); A.toast('已送出撤銷申請，待依洛嘉同意'); },
+  requestCancel(id){ const p=byId(id); if(!p) return; if(['testing','reporting','completed'].includes(p.status)){ A.toast('已進入送驗，無法撤銷（如需暫停請洽依洛嘉）'); return; } p.cancelReq=true; save(); render(); A.toast('已送出撤銷申請，待依洛嘉同意'); },
   togglePause(id){ const p=byId(id); if(p){ p.paused=!p.paused; if(p.paused) delete p.cancelReq; save(); render(); A.toast(p.paused?'已暫停此樣品（不退款）':'已恢復此樣品'); } },
-  undoCancelReq(id){ const p=byId(id); if(p){ delete p.cancelReq; } render(); A.toast('已取消撤銷申請'); },
-  approveCancel(id){ const i=products.findIndex(x=>x.id===id); if(i>=0) products.splice(i,1); render(); A.toast('已同意撤銷並移除'); },
-  rejectCancel(id){ const p=byId(id); if(p){ delete p.cancelReq; } render(); A.toast('已駁回撤銷申請'); },
+  undoCancelReq(id){ const p=byId(id); if(p){ delete p.cancelReq; } save(); render(); A.toast('已取消撤銷申請'); },
+  approveCancel(id){ const i=products.findIndex(x=>x.id===id); if(i>=0) products.splice(i,1); save(); render(); A.toast('已同意撤銷並移除'); },
+  rejectCancel(id){ const p=byId(id); if(p){ delete p.cancelReq; } save(); render(); A.toast('已駁回撤銷申請'); },
   toggleInv(id){
     const p=byId(id); if(!p) return;
     p.invSel=!p.invSel;
@@ -3193,9 +3222,9 @@ const A = {
     const sel=products.filter(p=>ownedByMe(p) && (p.status==='approved'||p.status==='pending') && p.shipSel);
     if(!sel.length) return;
     sel.forEach(p=>{ p.status='shipped'; p.shipSel=false; });
-    render(); A.toast(`已安排寄送 ${sel.length} 項，清單已送依洛嘉前臺收件`);
+    save(); render(); A.toast(`已安排寄送 ${sel.length} 項，清單已送依洛嘉前臺收件`);
   },
-  allowShip(id){ const p=byId(id); if(p){ p.status='approved'; p.shipSel=true; } render(); A.toast('已確認允許寄送，回送客戶端'); },
+  allowShip(id){ const p=byId(id); if(p){ p.status='approved'; p.shipSel=true; } save(); render(); A.toast('已確認允許寄送，回送客戶端'); },
   openMyFolder(){ const c=customers.find(x=>x.name===me.nameCh); if(c&&c.drive&&c.driveAuth) window.open(c.drive,'_blank'); else A.toast(c&&c.drive&&!c.driveAuth?'依洛嘉尚未授權存取你的 PIF 雲端資料夾':'依洛嘉尚未提供你的 PIF 雲端資料夾連結'); },
   setCustDrive(i,v){ if(customers[i]){ customers[i].drive=(v||'').trim(); save(); A.toast('已更新客戶 PIF 資料夾連結'); } },
   receive(id){ const p=byId(id); if(p){ p.status='received'; if(p.invSel===undefined)p.invSel=true; if(!p.feeSel)p.feeSel=10000; save(); } render(); A.toast('已收樣，可到「帳款明細」開收款單'); },
@@ -3344,7 +3373,34 @@ const A = {
     const note=((document.getElementById('pn_'+batch)||{}).value||'').trim();
     if(!note){ A.toast('請填匯款末五碼或匯款人姓名'); return; }
     products.filter(p=>ownedByMe(p) && p.status==='invoiced' && p.batch===batch).forEach(p=>{ p.status='reported'; p.payNote=note; });
-    render(); A.toast('已回報匯款（'+note+'），依洛嘉查帳中');
+    save(); render(); A.toast('已回報匯款（'+note+'），依洛嘉查帳中');
+  },
+  confirmPayBatch(cn){
+    const items=P('reported').filter(p=>custName(p)===cn);
+    if(!items.length) return;
+    const key=cn.replace(/\s/g,'_');
+    const amtEl=document.getElementById('chk_amt_'+key);
+    const mtdEl=document.getElementById('chk_method_'+key);
+    const totalAmt=amtEl?Number(amtEl.value):items.reduce((s,p)=>s+(p.charge||0),0);
+    const method=mtdEl?mtdEl.value:'匯款';
+    const ds=new Date().toLocaleDateString('zh-TW');
+    // 按比例分配實收金額到每筆品項
+    const totalCharge=items.reduce((s,p)=>s+(p.charge||0),0);
+    items.forEach(p=>{
+      const ratio=totalCharge>0?(p.charge||0)/totalCharge:1/items.length;
+      const amt=Math.round(totalAmt*ratio);
+      p.payRecords=p.payRecords||[];
+      p.payRecords.push({date:ds, amt, method, note:p.payNote||''});
+      p.paidAmt=(p.paidAmt||0)+amt;
+      p.payMethod=method;
+      p.status='paid';
+    });
+    save(); render(); A.toast('已確認 '+cn+' 整批收款 '+money(totalAmt)+'（'+method+'），'+items.length+' 筆轉待送驗');
+  },
+  rejectPayBatch(cn){
+    const items=P('reported').filter(p=>custName(p)===cn);
+    items.forEach(p=>{ p.status='received'; p.invSel=true; delete p.payNote; });
+    save(); render(); A.toast(cn+' '+items.length+' 筆已退回「開收款單」，可重新調整後再開單');
   },
   confirmPay(id){
     const p=byId(id); if(!p) return;
@@ -3360,7 +3416,7 @@ const A = {
     p.status='paid';
     save(); render(); A.toast('已確認收款 '+money(amt)+'（'+method+'），轉待送驗');
   },
-  receiveReport(id){ const p=byId(id); if(p) p.status='reporting'; render(); A.toast('已收到檢驗報告，轉 PIF 製作中'); },
+  receiveReport(id){ const p=byId(id); if(p) p.status='reporting'; save(); render(); A.toast('已收到檢驗報告，轉 PIF 製作中'); },
   editPayRecord(id,i,field,val){
     const p=byId(id); if(!p||!p.payRecords||!p.payRecords[i]) return;
     const old=p.payRecords[i].amt||0;
@@ -3427,7 +3483,7 @@ const A = {
     p.status='reporting'; p.batch=p.batch||'PIF製作中';
     save(); render(); A.toast(p.name+' 已移回 PIF 製作中');
   },
-  setPifPlan(id,planId){ const p=byId(id); if(p){ p.pifPlan=planId; render(); } },
+  setPifPlan(id,planId){ const p=byId(id); if(p){ p.pifPlan=planId; save(); render(); } },
   complete(id){
     const el=document.getElementById('dl_'+id);
     const p=byId(id); if(!p) return;
@@ -3436,7 +3492,7 @@ const A = {
     const plan=PIF_PLANS.find(x=>x.id===(p.pifPlan||'shared'))||PIF_PLANS[0];
     p.charge=plan.amt; p.pifPlanLabel=plan.label;
     p.status='completed';
-    render(); A.toast('已完成 PIF：'+p.name+'　費用 '+money(plan.amt)+' 回傳客戶');
+    save(); render(); A.toast('已完成 PIF：'+p.name+'　費用 '+money(plan.amt)+' 回傳客戶');
   },
   openDrive(id){ const p=byId(id); const c=customers.find(x=>x.name===custName(p)); const url=p.drive||(c&&c.drive); if(url) window.open(url,'_blank'); else A.toast('尚未設定雲端硬碟連結'); },
 
