@@ -3757,7 +3757,12 @@ const A = {
     save(); render(); A.toast(`已安排寄送 ${sel.length} 項，清單已送依洛嘉前臺收件`);
   },
   allowShip(id){ const p=byId(id); if(p){ p.status='approved'; p.shipSel=true; } save(); render(); A.toast('已確認允許寄送，回送客戶端'); },
-  openMyFolder(){ const c=customers.find(x=>x.name===me.nameCh); if(c&&c.drive&&c.driveAuth) window.open(c.drive,'_blank'); else A.toast(c&&c.drive&&!c.driveAuth?'依洛嘉尚未授權存取你的 PIF 雲端資料夾':'依洛嘉尚未提供你的 PIF 雲端資料夾連結'); },
+  openMyFolder(){
+    const c=customers.find(x=>x.name===me.nameCh)
+          || (me.email && customers.find(x=>x.email&&x.email.toLowerCase()===me.email.toLowerCase()));
+    if(c&&c.drive&&c.driveAuth) window.open(c.drive,'_blank');
+    else A.toast(c&&c.drive&&!c.driveAuth?'依洛嘉尚未授權存取你的 PIF 雲端資料夾':'依洛嘉尚未提供你的 PIF 雲端資料夾連結');
+  },
   setCustDrive(i,v){ if(customers[i]){ customers[i].drive=(v||'').trim(); save(); A.toast('已更新客戶 PIF 資料夾連結'); } },
   receive(id){ const p=byId(id); if(p){ p.status='received'; if(p.invSel===undefined)p.invSel=true; if(!p.feeSel)p.feeSel=10000; save(); } render(); A.toast('已收樣，可到「帳款明細」開收款單'); },
   toggleInvDetail(id){ invDetailOpen=(invDetailOpen===id?null:id); render(); },
@@ -4103,7 +4108,15 @@ const A = {
     p.status='completed';
     save(); render(); A.toast('已完成 PIF：'+p.name+'　費用 '+money(plan.amt)+' 回傳客戶');
   },
-  openDrive(id){ const p=byId(id); const c=customers.find(x=>x.name===custName(p)); const url=p.drive||(c&&c.drive); if(url) window.open(url,'_blank'); else A.toast('尚未設定雲端硬碟連結'); },
+  openDrive(id){
+    const p=byId(id);
+    const c=customers.find(x=>x.name===custName(p))
+          || (me.email && customers.find(x=>x.email&&x.email.toLowerCase()===me.email.toLowerCase()));
+    // 品項自帶的 drive 連結優先，其次用客戶的資料夾（需已授權）
+    const url=p.drive||(c&&c.drive&&c.driveAuth?c.drive:'');
+    if(url) window.open(url,'_blank');
+    else A.toast(c&&c.drive&&!c.driveAuth?'依洛嘉尚未授權存取此資料夾':'尚未設定雲端硬碟連結');
+  },
 
   _tt:null,
   _libSearchT:null,
