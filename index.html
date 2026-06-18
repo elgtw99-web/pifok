@@ -1168,10 +1168,18 @@ function elgSummary(){
           const paid=paidOf(p);
           const pdiff=(p.charge||0)-paid;
           const method=p.payMethod||(p.payRecords&&p.payRecords[0]&&p.payRecords[0].method)||'';
+          // PIF 費狀態
+          const pifInvoiced=!!p.pifFeeInvoice;
+          const pifPaid=!!p.pifFeePaid;
+          let pifBadge='';
+          if(pifPaid) pifBadge=`<span class="pill pill--s" style="font-size:9.5px">PIF費已收</span>`;
+          else if(pifInvoiced) pifBadge=`<span class="pill pill--w" style="font-size:9.5px">PIF費請款中</span>`;
+          else pifBadge=`<span class="pill pill--n" style="font-size:9.5px">PIF費未開單</span>`;
           return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px">
             <span style="flex:1;min-width:0">
               <span style="font-weight:600">${p.name||'—'}</span>
               <span class="sub" style="font-size:11px;margin-left:6px">${SM[p.status]?SM[p.status][0]:p.status}${method?' · '+method:''}</span>
+              <br>${pifBadge}
             </span>
             <span style="text-align:right;white-space:nowrap">
               <span style="color:${pdiff>0?'var(--w)':paid>0?'var(--s)':'var(--faint)'};font-weight:700;font-size:12.5px">
@@ -1373,7 +1381,11 @@ function elgLibrary(){
     <div class="chips">`+ stPresent.map(k=>`<span class="fchip ${libStatOff[k]?'':'on'}" onclick="A.libToggleStat('${k}')">${SM[k][0]} ${products.filter(p=>p.status===k).length}</span>`).join('')+`</div>`;
   h+=`<label class="lbl">客戶篩選</label>
     <div class="chips">`+ allCusts.map(nm=>`<span class="fchip ${libCustOff[nm]?'':'on'}" onclick="A.libToggleCust('${nm}')">${nm}</span>`).join('')+`</div>`;
-  h+=`<input class="fld" id="lib_search" placeholder="搜尋品名…" value="${libQ}" oninput="A.libSearch(this.value)" style="margin-bottom:12px">`;
+  h+=`<input class="fld" id="lib_search" placeholder="搜尋品名…" value="${libQ}"
+    oninput="A.libSearchInput(this.value)"
+    oncompositionstart="A._composing=true"
+    oncompositionend="A._composing=false;A.libSearchInput(this.value)"
+    style="margin-bottom:12px">`;
   // 批量工具列
   h+=`<div class="card libbar" style="background:var(--n-bg);border:0;margin-bottom:14px">
       <span class="nm" style="font-size:14px" data-selcount="lib">已選 ${selN} / ${rows.length} 筆</span>
@@ -1716,8 +1728,8 @@ function elgInvoice(){
   const toCheck=P('reported');
   const testing=P('testing');
   const testingUnpaid=products.filter(p=>
-    (p.status==='completed'||p.status==='testing') &&
-    (!p.paidAmt||p.paidAmt===0) &&
+    (p.status==='completed'||p.status==='testing'||p.status==='reporting') &&
+    !p.pifFeePaid &&
     custName(p)!==ELG_SELF
   );
   const allPaid=products.filter(p=>['paid','testing','reporting','completed'].includes(p.status)&&p.payRecords&&p.payRecords.length);
@@ -1760,7 +1772,8 @@ function elgInvoice(){
     // 已建立的收款單（所有客戶）
     const myInvRecs=invoiceRecs.filter(r=>r.cust===activeCust);
 
-    h+=`<div class="sect" style="margin-bottom:10px">補錄收款 · 選客戶</div>`;
+    h+=`<div class="sect" style="margin-bottom:6px">補收 PIF 處理費 · 選客戶</div>`;
+    h+=`<div class="note" style="margin-bottom:10px"><i class="ti ti-info-circle"></i>這些品項<b>檢驗費已收、已送驗</b>，此處補收「PIF 處理費」（對客戶的服務費）。選擇方案後建立收款單。</div>`;
     if(tCusts.length){
       h+=`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
         ${tCusts.map(cn=>`<button onclick="A.setRetroCust('${cn}')"
@@ -2226,6 +2239,17 @@ function elgPif(){
   const hid=sharedPIF.filter(it=>shareState(it)==='hidden');
   h += `<div class="row sect mt"><span>可共用 PIF（公開顯示設定）</span><span class="pill pill--s">公開 ${pub.length} · 建置中 ${bld.length} · 隱藏 ${hid.length}</span></div>`;
   h += `<div class="note" style="margin:6px 0 10px"><i class="ti ti-eye"></i>勾選多筆後用上方批次鈕一次改狀態；或用每筆右側下拉個別調整。建置中會以「建置中」標籤對客戶顯示但不可共用；隱藏只有後臺看得到。</div>`;
+  // 一鍵把依洛嘉自有產品加入共用（建置中）
+  const elgOwn=products.filter(p=>custName(p)===ELG_SELF);
+  const elgNotShared=elgOwn.filter(p=>!sharedPIF.some(s=>s.name===p.name));
+  if(elgNotShared.length){
+    h += `<div class="card" style="border-color:var(--accent);margin-bottom:12px">
+      <p class="nm" style="font-size:14px;margin-bottom:4px"><i class="ti ti-building-store"></i> 依洛嘉自有產品</p>
+      <p class="sub" style="margin-bottom:10px">有 <b>${elgNotShared.length}</b> 個依洛嘉自有產品尚未加入共用清單，可一鍵全部加入並設為「建置中」（PIF 處理中）。</p>
+      <button class="btn btn--ok btn--sm" style="width:auto;padding:0 16px" onclick="A.addElgOwnToShared()">
+        <i class="ti ti-world-share"></i> 全部加入共用（建置中 · ${elgNotShared.length} 項）</button>
+    </div>`;
+  }
   if(sharedPIF.length){
     const selIdx=Object.keys(pifSel).filter(k=>pifSel[k]).map(Number);
     const selN=selIdx.length, allOn=selN===sharedPIF.length;
@@ -2714,16 +2738,18 @@ const A = {
   openCustDrive(nm){ const c=customers.find(x=>x.name===nm); if(c&&c.drive) window.open(c.drive,'_blank'); else A.toast('尚未設定連結'); },
   libToggleStat(k){ libStatOff[k]=!libStatOff[k]; libPage=0; render(); },
   libToggleCust(nm){ libCustOff[nm]=!libCustOff[nm]; libPage=0; render(); },
-  libSearch(v){
+  libSearchInput(v){
     libQ=v||''; libPage=0;
+    // 中文輸入法組字中，不重繪（會中斷組字）
+    if(A._composing) return;
     clearTimeout(A._libSearchT);
     A._libSearchT=setTimeout(()=>{
       render();
-      // 重繪後把焦點與游標還給搜尋框
       const el=document.getElementById('lib_search');
       if(el){ el.focus(); const len=el.value.length; try{ el.setSelectionRange(len,len); }catch(e){} }
-    },300);
+    },350);
   },
+  libSearch(v){ libQ=v||''; libPage=0; render(); },
   libToggleCustSel(cn){
     const items=products.filter(p=>custName(p)===cn && !libStatOff[p.status] && !libCustOff[custName(p)] && (!libQ||p.name.indexOf(libQ)>=0));
     const allSel=items.length&&items.every(p=>batch[p.id]);
@@ -3312,6 +3338,18 @@ const A = {
     batch={}; save(); render(); A.toast('已允許 '+list.length+' 筆寄送，回送客戶端');
   },
   batchReceive(){ const list=products.filter(p=>batch[p.id]&&p.status==='shipped'); if(!list.length){ A.toast('請先勾選待收件項目'); return; } list.forEach(p=>{ p.status='received'; if(p.invSel===undefined)p.invSel=true; if(!p.feeSel)p.feeSel=5000; }); batch={}; save(); render(); A.toast('已接收 '+list.length+' 筆'); },
+  addElgOwnToShared(){
+    const elgOwn=products.filter(p=>custName(p)===ELG_SELF);
+    const elgNotShared=elgOwn.filter(p=>!sharedPIF.some(s=>s.name===p.name));
+    if(!elgNotShared.length){ A.toast('依洛嘉自有產品都已在共用清單中'); return; }
+    let added=0;
+    elgNotShared.forEach(p=>{
+      sharedPIF.push({id:'sp'+Date.now()+added, name:p.name, type:p.type||inferType(p.name)||'化妝品', state:'building'});
+      added++;
+    });
+    save(); render();
+    A.toast('已將依洛嘉 '+added+' 個自有產品加入共用清單（建置中）');
+  },
   batchAddSharedPIF(state){
     const ids=Object.keys(batch).filter(k=>batch[k]);
     if(!ids.length){ A.toast('請先勾選送驗中的品項'); return; }
@@ -3518,10 +3556,10 @@ const A = {
   toggleInvDetail(id){ invDetailOpen=(invDetailOpen===id?null:id); render(); },
   createInvoiceRec(cn){
     const items=products.filter(p=>
-      (p.status==='completed'||p.status==='testing') &&
-      custName(p)===cn && (!p.paidAmt||p.paidAmt===0)
+      (p.status==='completed'||p.status==='testing'||p.status==='reporting') &&
+      custName(p)===cn && !p.pifFeePaid
     );
-    if(!items.length){ A.toast('沒有未收款的品項'); return; }
+    if(!items.length){ A.toast('沒有待收 PIF 費的品項'); return; }
     const dateEl=document.getElementById('retro_date_all');
     const methodEl=document.getElementById('retro_method_all');
     const noteEl=document.getElementById('retro_note_all');
@@ -3536,34 +3574,43 @@ const A = {
       return {pid:p.id, name:p.name, amt, plan:planLabel, statusLabel:p.status==='completed'?'已完成 PIF':'送驗中'};
     });
     const total=invItems.reduce((s,it)=>s+it.amt,0);
-    const rec={id:genInvNo(), cust:cn, date, method, note, items:invItems, total, status:'pending', createdAt:new Date().toISOString()};
+    const rec={id:genInvNo(), cust:cn, date, method, note, items:invItems, total, status:'pending', kind:'pif', createdAt:new Date().toISOString()};
     invoiceRecs.push(rec);
-    // 更新各 product 的 payRecords
+    // 更新各 product：標記 PIF 費已開單（但尚未確認收款）
     invItems.forEach(it=>{
       const p=byId(it.pid); if(!p) return;
-      p.payRecords=p.payRecords||[];
-      p.payRecords.push({date, amt:it.amt, method, note:'收款單 '+rec.id});
-      p.paidAmt=(p.paidAmt||0)+it.amt;
-      p.charge=it.amt;
+      p.pifFeeInvoice=rec.id;
+      p.pifPlanLabel=it.plan;
+      p.pifCharge=it.amt;
       delete p.retroPlans;
     });
     invDetailOpen=rec.id;
     save(); render();
-    A.toast('已建立收款單 '+rec.id+'（'+money(total)+'）');
+    A.toast('已建立 PIF 處理費收款單 '+rec.id+'（'+money(total)+'）');
   },
   markInvPaid(id){
     const rec=invoiceRecs.find(r=>r.id===id); if(!rec) return;
     rec.status='paid'; rec.paidAt=new Date().toISOString();
-    save(); render(); A.toast('收款單 '+id+' 已標記收款完成');
+    // 確認收款後，把 PIF 費記入品項並標記已收
+    rec.items.forEach(it=>{
+      const p=byId(it.pid); if(!p) return;
+      p.payRecords=p.payRecords||[];
+      p.payRecords.push({date:rec.date, amt:it.amt, method:rec.method, note:'PIF費 '+rec.id});
+      p.paidAmt=(p.paidAmt||0)+it.amt;
+      p.charge=(p.charge||0)+it.amt;
+      if(rec.kind==='pif') p.pifFeePaid=true;
+    });
+    save(); render(); A.toast('收款單 '+id+' 已標記收款完成，PIF 費已記入');
   },
   deleteInvRec(id){
     const idx=invoiceRecs.findIndex(r=>r.id===id); if(idx<0) return;
     const rec=invoiceRecs[idx];
-    // 撤回 product payRecords
+    // 撤回 product 的 PIF 費標記與收款記錄
     rec.items.forEach(it=>{
       const p=byId(it.pid); if(!p) return;
-      p.payRecords=(p.payRecords||[]).filter(r=>r.note!=='收款單 '+id);
-      p.paidAmt=Math.max(0,(p.paidAmt||0)-it.amt);
+      p.payRecords=(p.payRecords||[]).filter(r=>r.note!=='PIF費 '+id && r.note!=='收款單 '+id);
+      if(rec.status==='paid'){ p.paidAmt=Math.max(0,(p.paidAmt||0)-it.amt); p.charge=Math.max(0,(p.charge||0)-it.amt); }
+      if(p.pifFeeInvoice===id){ delete p.pifFeeInvoice; delete p.pifFeePaid; delete p.pifCharge; }
     });
     invoiceRecs.splice(idx,1);
     invDetailOpen=null; save(); render(); A.toast('已刪除收款單 '+id);
@@ -3795,6 +3842,7 @@ const A = {
 
   _tt:null,
   _libSearchT:null,
+  _composing:false,
   toast(msg){
     const t=document.getElementById('toast'); t.textContent=msg; t.classList.add('show');
     clearTimeout(A._tt); A._tt=setTimeout(()=>t.classList.remove('show'),2200);
