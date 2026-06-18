@@ -2031,14 +2031,21 @@ function elgInvoice(){
         !autoItems.includes(p)
       );
       const allCustItems=[...autoItems, ...forcedItems];
-      // 該客戶可手動追加的候選（不在自動清單、也還沒開 PIF 單、未強制加入）
+      // 可開單候選（樣品庫挑選用）：不在自動清單、未強制加入
       const addCandidates=products.filter(p=>
-        custName(p)===activeCust && !p.pifFeeInvoice && !p.pifFeePaid &&
+        custName(p)===activeCust &&
         !autoItems.includes(p) && !p.retroForce
       );
-      const notInvoiced=allCustItems.filter(p=>!p.pifFeeInvoice && !p.pifFeePaid); // 未開 PIF 單
-      const invoicing=allCustItems.filter(p=>p.pifFeeInvoice && !p.pifFeePaid);     // 已開單請款中
-      const pifDone=allCustItems.filter(p=>p.pifFeePaid);                            // PIF 費已收
+      // PIF 分期感知：用 invoices 帳本判斷
+      const pifInvs=p=>itemInvoices(p).filter(iv=>iv.kind==='pif');
+      const pifDueOf=p=>pifInvs(p).reduce((s,iv)=>{ const pd=(iv.payRecords||[]).reduce((a,r)=>a+(r.amt||0),0); return s+Math.max(0,(iv.amount||0)-pd); },0);
+      const pifBilledOf=p=>pifInvs(p).reduce((s,iv)=>s+(iv.amount||0),0);
+      // 待開：可再開一張 PIF 單的品項（一律列出，方便分期反覆開單）
+      const notInvoiced=allCustItems;
+      // 請款中：有 PIF 單但還有待收的
+      const invoicing=allCustItems.filter(p=> pifInvs(p).length>0 && pifDueOf(p)>0 );
+      // 已收：有 PIF 單且全部收齊
+      const pifDone=allCustItems.filter(p=> pifInvs(p).length>0 && pifDueOf(p)<=0 );
 
       // 手動追加面板（樣品庫挑選 + 手寫新增），兩處共用
       const retroAddPanel=(compact)=>{
@@ -2093,7 +2100,7 @@ function elgInvoice(){
             <span class="nm" style="font-size:14px"><i class="ti ti-receipt-2"></i> 待開 PIF 收款單（${notInvoiced.length}）</span>
             <span class="muted" style="font-size:12px;font-weight:600;cursor:pointer" onclick="A.retroSelAll('${activeCust}')">${selItems.length===notInvoiced.length?'全不選':'全選'}</span>
           </div>
-          <div class="note" style="margin-bottom:10px"><i class="ti ti-info-circle"></i>勾選要開單的品項、選 PIF 方案，建立收款單。未勾選的這次不開單。</div>
+          <div class="note" style="margin-bottom:10px"><i class="ti ti-info-circle"></i>勾選要開單的品項、選 PIF 方案、填「本單說明」（例：訂金、尾款），建立收款單。<b>每開一張都是獨立記錄，不會覆蓋先前已收的明細。</b></div>
           ${notInvoiced.map(p=>{
             const sel=p.retroPlans||['shared'];
             const itemTotal=PIF_PLANS.filter(pl=>sel.includes(pl.id)).reduce((s,pl)=>s+pl.amt,0);
@@ -2123,7 +2130,7 @@ function elgInvoice(){
           <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;align-items:flex-end">
             <div><label class="lbl">收款日期</label><input class="fld fld--mini" type="date" id="retro_date_all" value="${new Date().toISOString().slice(0,10)}" style="width:130px"></div>
             <div><label class="lbl">付款方式</label><select class="fld fld--mini" id="retro_method_all">${PAY_METHODS.map(m=>`<option>${m}</option>`).join('')}</select></div>
-            <div style="flex:1;min-width:120px"><label class="lbl">備註</label><input class="fld fld--mini" id="retro_note_all" placeholder="例：末五碼 12345"></div>
+            <div style="flex:1;min-width:140px"><label class="lbl">本單說明（區分多張單）</label><input class="fld fld--mini" id="retro_note_all" placeholder="例：訂金 / 尾款 / 末五碼12345"></div>
             <button class="btn btn--ok btn--sm" style="width:auto;padding:0 16px;flex:none;align-self:flex-end" ${selItems.length?'':'disabled'} onclick="A.createInvoiceRec('${activeCust}')">
               <i class="ti ti-file-invoice"></i> 建立收款單（${selItems.length} 筆 · ${money(custTotal)}）</button>
           </div>
@@ -2136,25 +2143,37 @@ function elgInvoice(){
         </div>`;
       }
 
-      // === 2. 請款中：已開單等收款 ===
+      // === 2. 請款中：已開單等收款（逐張分期單顯示，互不覆蓋）===
       if(invoicing.length){
         h+=`<div class="sect" style="font-size:13px;margin-top:14px">請款中（已開單 · 待收款）${invoicing.length}</div>`;
-        h+=`<div class="stack">`+invoicing.map(p=>`
-          <div class="card compact row" style="gap:8px;border-color:var(--w)">
-            <span style="flex:1;min-width:0"><span class="nm" style="font-size:13px">${p.name}</span><br>
-              <span class="sub" style="font-size:11px">${p.pifPlanLabel||''} · 收款單 ${p.pifFeeInvoice||''}</span></span>
-            <span class="amt" style="font-size:13.5px;color:var(--w);margin-right:4px">${money(p.pifCharge||0)}</span>
-            <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 8px;color:#C0392B;border-color:#E7C3BD;flex:none"
-              onclick="A.revertPifInvoice('${p.id}')">
-              <i class="ti ti-arrow-back-up"></i> ${confirmDel==='rpi'+p.id?'確認撤銷':'撤銷'}</button>
-          </div>`).join('')+`</div>`;
-        h+=`<div class="faint" style="font-size:11.5px;margin-top:6px"><i class="ti ti-info-circle"></i> 收到匯款後，到下方「已建立的收款單」展開 → 標記已收款。</div>`;
+        h+=`<div class="stack">`+invoicing.map(p=>{
+          const dues=pifInvs(p).filter(iv=>{ const pd=(iv.payRecords||[]).reduce((a,r)=>a+(r.amt||0),0); return (iv.amount||0)-pd>0; });
+          const rows=dues.map(iv=>{
+            const pd=(iv.payRecords||[]).reduce((a,r)=>a+(r.amt||0),0);
+            const due=Math.max(0,(iv.amount||0)-pd);
+            return `<div class="row" style="gap:8px;padding:6px 0;border-top:1px dashed var(--line2)">
+              <span style="flex:1;min-width:0">
+                <span class="sub" style="font-size:11.5px;color:var(--ink);font-weight:600">${iv.note||iv.label||'PIF費'}</span>
+                <span class="sub" style="font-size:10.5px;margin-left:6px">${iv.id||''}${iv.date?' · '+iv.date:''}${pd>0?' · 已收 '+money(pd):''}</span>
+              </span>
+              <span class="amt" style="font-size:13px;color:var(--w);margin-right:4px">${money(due)}</span>
+              <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 8px;color:#C0392B;border-color:#E7C3BD;flex:none"
+                onclick="A.revertPifInvoiceLedger('${p.id}','${iv.id}')">
+                <i class="ti ti-arrow-back-up"></i> ${confirmDel==='rpil'+p.id+'_'+iv.id?'確認撤銷':'撤銷此單'}</button>
+            </div>`;
+          }).join('');
+          return `<div class="card compact" style="border-color:var(--w)">
+            <span class="nm" style="font-size:13px">${p.name}</span>
+            ${rows}
+          </div>`;
+        }).join('')+`</div>`;
+        h+=`<div class="faint" style="font-size:11.5px;margin-top:6px"><i class="ti ti-info-circle"></i> 收到匯款後，到下方「已建立的收款單」展開 → 標記已收款；或在「收款匯總」逐張確認。每張單獨立計算，不會互相覆蓋。</div>`;
       }
 
       // === 3. PIF 費已收 ===
       if(pifDone.length){
         const doneOpen=pifGroupClosed['retro_done_'+activeCust]==='open';
-        const doneTotal=pifDone.reduce((s,p)=>s+(p.pifCharge||0),0);
+        const doneTotal=pifDone.reduce((s,p)=>s+pifBilledOf(p),0);
         h+=`<div class="card" style="margin-top:14px;padding:0;overflow:hidden;border-color:var(--s)">
           <div style="display:flex;align-items:center;gap:8px;padding:10px 14px;background:var(--s-bg);cursor:pointer" onclick="A.toggleRetroDone('${activeCust}')">
             <span style="flex:1;min-width:0"><span class="nm" style="font-size:13px;color:var(--s)"><i class="ti ti-circle-check"></i> PIF 費已收</span>
@@ -2162,10 +2181,11 @@ function elgInvoice(){
             <i class="ti ti-chevron-${doneOpen?'up':'down'}" style="color:var(--s);flex:none"></i>
           </div>
           ${doneOpen?`<div style="padding:8px 12px"><div class="stack">`+pifDone.map(p=>`
-            <div class="card compact row" style="gap:8px;border-color:var(--s)">
-              <span style="flex:1;min-width:0"><span class="nm" style="font-size:13px">${p.name}</span><br>
-                <span class="sub" style="font-size:11px">${p.pifPlanLabel||''}</span></span>
-              <span class="pill pill--s" style="font-size:10px">✓ ${money(p.pifCharge||0)}</span>
+            <div class="card compact" style="border-color:var(--s)">
+              <span class="nm" style="font-size:13px">${p.name}</span>
+              ${pifInvs(p).map(iv=>`<div class="row" style="gap:8px;padding:4px 0;border-top:1px dashed var(--line2)">
+                <span class="sub" style="font-size:11px;flex:1">${iv.note||iv.label||'PIF費'}${iv.id?' · '+iv.id:''}</span>
+                <span class="pill pill--s" style="font-size:10px">✓ ${money(iv.amount||0)}</span></div>`).join('')}
             </div>`).join('')+`</div></div>`:''}
         </div>`;
       }
@@ -4367,7 +4387,7 @@ const A = {
     const noteEl=document.getElementById('retro_note_all');
     const date=dateEl?dateEl.value:new Date().toLocaleDateString('zh-TW');
     const method=methodEl?methodEl.value:'匯款';
-    const note=noteEl?noteEl.value:'';
+    const note=noteEl?noteEl.value.trim():'';
     const invItems=items.map(p=>{
       const sel=p.retroPlans||['shared'];
       const plans=PIF_PLANS.filter(pl=>sel.includes(pl.id));
@@ -4378,18 +4398,33 @@ const A = {
     const total=invItems.reduce((s,it)=>s+it.amt,0);
     const rec={id:genInvNo(), cust:cn, date, method, note, items:invItems, total, status:'pending', kind:'pif', createdAt:new Date().toISOString()};
     invoiceRecs.push(rec);
-    // 更新各 product：標記 PIF 費已開單（但尚未確認收款）
+    // 把這張收款單「新增」進每個品項的分期帳本 invoices（不覆蓋任何既有資料）
     invItems.forEach(it=>{
       const p=byId(it.pid); if(!p) return;
-      p.pifFeeInvoice=rec.id;
-      p.pifPlanLabel=it.plan;
-      p.pifCharge=it.amt;
+      // 首次轉分期：把品項既有的 charge/payRecords 先封存為「原請款單」
+      if(!Array.isArray(p.invoices)){
+        p.invoices=[];
+        if((p.charge||0)>0 || (p.payRecords||[]).length){
+          p.invoices.push({
+            id:'orig', label:'原請款單', amount:p.charge||0,
+            date:'', method:p.payMethod||'匯款', note:'既有資料',
+            status:(p.payRecords||[]).length?'paid':'pending',
+            payRecords:(p.payRecords||[]).slice()
+          });
+        }
+      }
+      // 新增這張 PIF 收款單為獨立一筆
+      p.invoices.push({
+        id:rec.id, label:note||it.plan||'PIF費', amount:it.amt,
+        date, method, note, kind:'pif',
+        status:'pending', payRecords:[]
+      });
       delete p.retroPlans;
       delete p.retroForce;
     });
     invDetailOpen=rec.id;
     save(); render();
-    A.toast('已建立 PIF 處理費收款單 '+rec.id+'（'+money(total)+'）');
+    A.toast('已新增 PIF 收款單 '+rec.id+'（'+money(total)+'）'+(note?'｜'+note:'')+'，先前明細完整保留');
   },
   diagPayData(){
     // 診斷：列出所有進入收款流程的品項的原始欄位，找出金額異常的來源
@@ -4469,6 +4504,22 @@ const A = {
     if(cleaned||recsDel){ save(); render(); A.toast('✓ 已清理 '+cleaned+' 筆品項（移除 '+pifRecRemoved+' 筆 PIF 費收款、'+recsDel+' 張 PIF 費單），合約扣款記錄完整保留'); }
     else A.toast('沒有發現需要清理的重複資料');
   },
+  revertPifInvoiceLedger(pid,ivId){
+    const p=byId(pid); if(!p||!Array.isArray(p.invoices)) return;
+    if(confirmDel!=='rpil'+pid+'_'+ivId){ confirmDel='rpil'+pid+'_'+ivId; render(); A.toast('再按一次確認：撤銷此張 PIF 收款單（不影響其他單）'); return; }
+    const iv=p.invoices.find(x=>x.id===ivId);
+    p.invoices=p.invoices.filter(x=>x.id!==ivId);
+    if(p.invoices.length===0) delete p.invoices;
+    // 同步移除 invoiceRecs 中對應此品項的條目
+    const rec=invoiceRecs.find(r=>r.id===ivId);
+    if(rec){
+      rec.items=(rec.items||[]).filter(it=>it.pid!==pid);
+      rec.total=(rec.items||[]).reduce((s,it)=>s+(it.amt||0),0);
+      if(!rec.items.length){ invoiceRecs=invoiceRecs.filter(r=>r.id!==ivId); if(typeof FB!=='undefined'&&FB.on&&FB.db) FB.db.collection('invoiceRecs').doc(ivId).delete().catch(()=>{}); }
+    }
+    confirmDel=null; save(); render();
+    A.toast('已撤銷該張 PIF 收款單（'+money(iv&&iv.amount||0)+'），其他單明細完整保留');
+  },
   revertPifInvoice(id){
     const p=byId(id); if(!p||!p.pifFeeInvoice) return;
     if(confirmDel!=='rpi'+id){ confirmDel='rpi'+id; render(); A.toast('再按一次確認：撤回「'+p.name+'」的 PIF 請款，可重新開單'); return; }
@@ -4534,12 +4585,21 @@ const A = {
       rec.status='paid'; rec.paidAt=new Date().toISOString();
       rec.items.forEach(it=>{
         const p=byId(it.pid); if(!p) return;
-        p.payRecords=p.payRecords||[];
-        if(!p.payRecords.some(r=>r.note==='PIF費 '+rec.id)){
-          p.payRecords.push({date:ds, amt:it.amt, method:'手動確認', note:'PIF費 '+rec.id+'（手動確認免匯款）'});
-          p.paidAmt=(p.paidAmt||0)+it.amt;
+        const iv=Array.isArray(p.invoices)?p.invoices.find(x=>x.id===rec.id):null;
+        if(iv){
+          const pd=(iv.payRecords||[]).reduce((s,r)=>s+(r.amt||0),0);
+          const due=Math.max(0,(iv.amount||0)-pd);
+          iv.payRecords=iv.payRecords||[];
+          if(due>0) iv.payRecords.push({date:ds, amt:due, method:'手動確認', note:'手動確認免匯款 '+rec.id});
+          iv.status='paid';
+        } else {
+          p.payRecords=p.payRecords||[];
+          if(!p.payRecords.some(r=>r.note==='PIF費 '+rec.id)){
+            p.payRecords.push({date:ds, amt:it.amt, method:'手動確認', note:'PIF費 '+rec.id+'（手動確認免匯款）'});
+            p.paidAmt=(p.paidAmt||0)+it.amt;
+          }
+          if(rec.kind==='pif'){ p.pifFeePaid=true; p.pifCharge=it.amt; }
         }
-        if(rec.kind==='pif'){ p.pifFeePaid=true; p.pifCharge=it.amt; }
       });
     } else {
       // invoiceRecs 找不到（舊資料） → 直接從 product 的 pifFeeInvoice 標記
@@ -4560,27 +4620,30 @@ const A = {
   },
   markInvPaid(id){
     const rec=invoiceRecs.find(r=>r.id===id); if(!rec) return;
-    // 重複收款警示：已是已收款狀態
     if(rec.status==='paid'){ A.toast('⚠ 收款單 '+id+' 已經是「已收款」狀態，無需重複標記', 3500); return; }
     rec.status='paid'; rec.paidAt=new Date().toISOString();
-    // 確認收款後，把 PIF 費記入品項並標記已收
     rec.items.forEach(it=>{
       const p=byId(it.pid); if(!p) return;
-      p.payRecords=p.payRecords||[];
-      // 防重複：同一張收款單只記一次
-      if(!p.payRecords.some(r=>r.note==='PIF費 '+rec.id)){
-        p.payRecords.push({date:rec.date, amt:it.amt, method:rec.method, note:'PIF費 '+rec.id});
-        p.paidAmt=(p.paidAmt||0)+it.amt;
-      }
-      if(rec.kind==='pif'){
-        p.pifFeePaid=true;
-        p.pifCharge=it.amt; // PIF 費獨立記錄，不污染 charge（檢驗費應收）
+      // 優先更新分期帳本中對應這張單的記錄（id === rec.id）
+      const iv=Array.isArray(p.invoices)?p.invoices.find(x=>x.id===rec.id):null;
+      if(iv){
+        const pd=(iv.payRecords||[]).reduce((s,r)=>s+(r.amt||0),0);
+        const due=Math.max(0,(iv.amount||0)-pd);
+        iv.payRecords=iv.payRecords||[];
+        if(due>0) iv.payRecords.push({date:rec.date, amt:due, method:rec.method, note:'確認收款 '+rec.id});
+        iv.status='paid';
       } else {
-        // 非 PIF 類的補錄收款才累加 charge
-        p.charge=(p.charge||0)+it.amt;
+        // 舊資料相容：沒有分期帳本就用舊欄位
+        p.payRecords=p.payRecords||[];
+        if(!p.payRecords.some(r=>r.note==='PIF費 '+rec.id)){
+          p.payRecords.push({date:rec.date, amt:it.amt, method:rec.method, note:'PIF費 '+rec.id});
+          p.paidAmt=(p.paidAmt||0)+it.amt;
+        }
+        if(rec.kind==='pif'){ p.pifFeePaid=true; p.pifCharge=it.amt; }
+        else { p.charge=(p.charge||0)+it.amt; }
       }
     });
-    save(); render(); A.toast('收款單 '+id+' 已標記收款完成，PIF 費已記入');
+    save(); render(); A.toast('收款單 '+id+' 已標記收款完成');
   },
   deleteInvRec(id){
     const idx=invoiceRecs.findIndex(r=>r.id===id); if(idx<0) return;
