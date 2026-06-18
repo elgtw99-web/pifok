@@ -563,6 +563,7 @@ function render(){
   else if(view==='add-items') html=addItemsScreen();
   else if(view==='shared-pif') html=sharedPifScreen();
   else if(view==='cust-self-register') html=custSelfRegisterScreen();
+  else if(view==='cust-register-done') html=custRegisterDoneScreen();
   else if(view==='customer-confirm') html=custConfirmScreen();
   else if(view==='fb-pending') html=fbPendingScreen();
   else html = (role==='customer') ? custApp() : elgApp();
@@ -2512,12 +2513,21 @@ const A = {
     const contact=g('sr_contact'), phone=g('sr_phone'), note=g('sr_note');
     if(!name){ A.toast('請填公司名稱'); return; }
     if(!email||!email.includes('@')){ A.toast('請填有效的 Gmail'); return; }
-    if(customers.some(c=>c.email===email)){ A.toast('這個 Gmail 已有帳號，請直接登入'); view='customer-login'; render(); return; }
+    const existing=customers.find(c=>c.email&&c.email.toLowerCase()===email);
+    if(existing){
+      if(existing.status==='已啟用'){
+        A.toast('這個 Gmail 已有帳號，請直接登入');
+        view='customer-login'; render(); return;
+      } else if(existing.status==='待審核'){
+        A.toast('已送出申請，請等待依洛嘉審核');
+        view='customer-login'; render(); return;
+      }
+    }
     // 加入待審核名單
     customers.push({name, email, contact, phone, note, login:'Google', status:'待審核', appliedAt:new Date().toLocaleDateString('zh-TW')});
     save();
-    view='customer-login'; render();
-    A.toast('申請已送出！依洛嘉審核後會通知你，謝謝。');
+    // 顯示成功畫面，引導用 Gmail 登入
+    view='cust-register-done'; render();
   },
   approveCust(i){ customers[i].status='已啟用'; save(); render(); A.toast('已審核通過：'+customers[i].name); },
   disableCust(i){ customers[i].status='已停用'; save(); render(); A.toast('已停用：'+customers[i].name); },
@@ -3466,6 +3476,30 @@ function custConfirmScreen(){
     <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.fbLogout()"><i class="ti ti-logout"></i> 登出</button>
   </div>`;
 }
+function custRegisterDoneScreen(){
+  const pending=customers.filter(c=>c.status==='待審核').slice(-1)[0]||{};
+  return `<div class="full">
+    <div class="logintop">
+      <div class="logo sm" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-circle-check"></i></div>
+      <h2>申請已送出</h2>
+      <p class="muted">依洛嘉會盡快審核你的申請</p>
+    </div>
+    <div class="card" style="border-color:var(--s);margin-bottom:16px">
+      <p class="nm" style="color:var(--s)"><i class="ti ti-check"></i> 申請成功</p>
+      <p class="sub" style="margin:8px 0">公司名稱：<b>${pending.name||''}</b></p>
+      <p class="sub" style="margin:8px 0">Gmail：<b>${pending.email||''}</b></p>
+      <p class="sub" style="margin:8px 0">申請日期：<b>${pending.appliedAt||''}</b></p>
+    </div>
+    <div class="note" style="margin-bottom:16px">
+      <i class="ti ti-info-circle"></i> 審核通過後，用 <b>${pending.email||'你的 Gmail'}</b> 登入即可進入系統。
+      審核期間你可以先用 Google 登入查看申請狀態。
+    </div>
+    <button class="btn" style="margin-bottom:10px" onclick="A.googleSignIn()">
+      <i class="ti ti-brand-google"></i> 用 Google 登入查看狀態</button>
+    <button class="btn btn--ghost" onclick="A.goLogin('customer')">
+      <i class="ti ti-arrow-left"></i> 返回登入頁</button>
+  </div>`;
+}
 function custSelfRegisterScreen(){
   return `<div class="full">
     <button class="back" onclick="A.goLogin('customer')"><i class="ti ti-arrow-left"></i> 返回登入</button>
@@ -3490,7 +3524,7 @@ function custSelfRegisterScreen(){
 }
 function fbPendingScreen(){
   const u=FB.user||{};
-  const alreadyApplied=customers.some(c=>c.email===u.email&&c.status==='待審核');
+  const alreadyApplied=customers.some(c=>c.email&&c.email.toLowerCase()===(u.email||'').toLowerCase()&&c.status==='待審核');
   return `<div class="full">
     <div class="brand"><div class="logo">依</div><h1>帳號待開通</h1></div>
     <div class="card" style="margin-top:20px">
