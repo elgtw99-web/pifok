@@ -3056,7 +3056,15 @@ function elogaAccounts(){
   return h;
 }
 function staffSection(){
-  let h=`<div class="sect" style="margin-bottom:10px">內部帳號（${staff.length}）</div>`;
+  // 偵測重複 email
+  const emailCount={};
+  staff.forEach(x=>{ const e=(x.email||'').toLowerCase(); if(e) emailCount[e]=(emailCount[e]||0)+1; });
+  const hasDup=Object.values(emailCount).some(n=>n>1);
+  let h=`<div class="sect" style="margin-bottom:10px;display:flex;align-items:center;gap:8px">
+    <span style="flex:1">內部帳號（${staff.length}）</span>
+    ${hasDup&&elgRole==='主要管理者'?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;font-size:11.5px;color:#C0392B;border-color:#E7C3BD" onclick="A.dedupeStaff()"><i class="ti ti-eraser"></i> 清除重複邀請</button>`:''}
+  </div>`;
+  if(hasDup){ h+=`<div class="note" style="margin-bottom:10px;border-color:#E7C3BD;background:#FDECEA"><i class="ti ti-alert-triangle" style="color:#C0392B"></i> 偵測到同一個 Gmail 有多筆，按上方「清除重複邀請」一鍵整理（每個 Gmail 只留一筆，優先保留已驗證的）。</div>`; }
   h+=`<div class="stack">`+staff.map((x,i)=>`
     <div class="card compact row" style="gap:10px">
       <span style="flex:1;min-width:0">
@@ -3734,14 +3742,49 @@ const A = {
   closeAccounts(){ view='app'; render(); },
   acctTab(t){ acctTab=t; addOpen=false; custAddOpen=false; confirmDel=null; render(); },
   openAdd(){ addOpen=true; render(); },
-  addStaff(){
+  async dedupeStaff(){
+    if(confirmDel!=='dedupestaff'){ confirmDel='dedupestaff'; render(); A.toast('再按一次確認：清除重複的員工邀請（每個 Gmail 只留一筆）'); return; }
+    confirmDel=null;
+    // 依 email 分組，每組優先保留已驗證(uid)的，否則留第一筆
+    const groups={};
+    staff.forEach(x=>{ const e=(x.email||'').toLowerCase(); if(!e) return; (groups[e]=groups[e]||[]).push(x); });
+    let removed=0;
+    const keep=[];
+    Object.keys(groups).forEach(e=>{
+      const list=groups[e];
+      const verified=list.find(x=>x.uid);
+      const survivor=verified||list[0];
+      keep.push(survivor);
+      // 刪除其餘
+      list.forEach(x=>{
+        if(x===survivor) return;
+        removed++;
+        if(typeof FB!=='undefined'&&FB.on&&FB.db){
+          const docId=x.uid||((x.email||'').replace(/[@.]/g,'_'));
+          FB.db.collection('staff').doc(docId).delete().catch(()=>{});
+        }
+      });
+    });
+    // 保留沒有 email 的（理論上不會有）
+    staff.forEach(x=>{ if(!x.email) keep.push(x); });
+    staff.length=0; keep.forEach(x=>staff.push(x));
+    save(); render();
+    A.toast(removed?('✓ 已清除 '+removed+' 筆重複邀請，每個 Gmail 只留一筆'):'沒有發現重複');
+  },
+  async addStaff(){
     const g=id=>((document.getElementById(id)||{}).value||'').trim();
     const nm=g('s_name'), ml=g('s_mail').toLowerCase(), rl=(document.getElementById('s_role')||{}).value||'管理';
     if(!ml||!ml.includes('@')){ A.toast('請填入有效的 Gmail'); return; }
     if(staff.some(s=>s.email===ml)){ A.toast('這個 Gmail 已在名單中'); return; }
+    // 先查雲端是否已存在（含已驗證的 UID 帳號），避免重複
+    if(typeof FB!=='undefined'&&FB.on&&FB.db){
+      try{
+        const ex=await FB.db.collection('staff').where('email','==',ml).get();
+        if(!ex.empty){ A.toast('這個 Gmail 雲端已有員工帳號，無需重複邀請'); addOpen=false; render(); return; }
+      }catch(e){}
+    }
     const newStaff={name:nm||ml, email:ml, role:rl, uid:null};
     staff.push(newStaff);
-    // 直接寫入 Firestore（以 email 為暫時 key，登入時再升格為 UID doc）
     if(typeof FB!=='undefined'&&FB.on&&FB.db){
       const docId=ml.replace(/[@.]/g,'_');
       FB.db.collection('staff').doc(docId).set({name:nm||ml, email:ml, role:rl})
@@ -5151,17 +5194,19 @@ function fbStart(){
           FB.role='eloga'; role='eloga'; elgRole=(sd.data()&&sd.data().role)||'主要管理者'; zone='back'; elgTab='home'; view='app';
           attachAdmin(); render(); return;
         }
-        // 方式 B：查 email 是否在邀請名單（Firestore staff）
-        const sq=await FB.db.collection('staff').where('email','==',user.email.toLowerCase()).limit(1).get();
+        // 方式 B：查 email 是否在邀請名單（Firestore staff）—— 抓全部同 email 的筆
+        const sq=await FB.db.collection('staff').where('email','==',user.email.toLowerCase()).get();
         if(!sq.empty){
-          const inv=sq.docs[0].data(); const invId=sq.docs[0].id;
+          const inv=sq.docs[0].data();
+          // 升格為 UID 帳號
           await FB.db.collection('staff').doc(user.uid).set({
             name: inv.name||user.displayName||user.email,
             email: user.email.toLowerCase(),
             role: inv.role||'管理',
             uid: user.uid
           });
-          if(invId!==user.uid) await FB.db.collection('staff').doc(invId).delete();
+          // 清掉所有「非 UID 帳號」的重複邀請筆（email 邀請、或舊的重複）
+          for(const d of sq.docs){ if(d.id!==user.uid){ await FB.db.collection('staff').doc(d.id).delete().catch(()=>{}); } }
           FB.role='eloga'; role='eloga'; elgRole=inv.role||'管理'; zone='back'; elgTab='home'; view='app';
           attachAdmin(); render(); A.toast('帳號已自動開通，歡迎 '+(inv.name||user.email)); return;
         }
