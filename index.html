@@ -3420,9 +3420,11 @@ function fbStart(){
           attachAdmin(); render(); A.toast('帳號已自動開通，歡迎 '+(inv.name||user.email)); return;
         }
       }
-      // 查是否為已知客戶（先查 Firestore，查不到再查本機）
-      const q=await FB.db.collection('customers').where('email','==',user.email).limit(1).get();
-      const localCust=customers.find(c=>c.email&&c.email.toLowerCase()===user.email.toLowerCase());
+      // 查是否為已知客戶（先查 Firestore lowercase，再查本機）
+      const emailLower=user.email.toLowerCase();
+      let q=await FB.db.collection('customers').where('email','==',emailLower).limit(1).get();
+      if(q.empty) q=await FB.db.collection('customers').where('email','==',user.email).limit(1).get();
+      const localCust=customers.find(c=>c.email&&c.email.toLowerCase()===emailLower);
       // 客戶登入後：先進資料確認頁，確認後才進主畫面
       const custData=!q.empty ? q.docs[0].data() : localCust || null;
       if(custData){
@@ -3607,7 +3609,13 @@ A.googleSignIn=function(){
 };
 A.fbLogout=function(){ try{ if(FB.on&&FB.user) FB.auth.signOut(); }catch(e){} FB.user=null; FB.role=null; FB.ready=false; role='customer'; me={}; view='entry'; render(); };
 A.fbUploadSeed=function(){ fbUploadSeed(); };
-A.reloadPage=function(){ try{ location.reload(); }catch(e){} };
+A.reloadPage=function(){
+  if(typeof FB!=='undefined'&&FB.on&&FB.auth){
+    const user=FB.user;
+    if(user){ fbDetach(); fbStart(); }
+    else { try{ location.reload(); }catch(e){} }
+  } else { try{ location.reload(); }catch(e){} }
+};
 
 fbInit();
 fbHandleRedirect();
