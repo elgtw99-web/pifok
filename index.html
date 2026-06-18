@@ -308,7 +308,7 @@ const ELG_SELF = '依洛嘉國際實業有限公司';
 const ADDR = '台南市佳里區佳興里宅興二街600號 · 洪莉晴 收';
 const ELG_TEL = '06-7228888';
 const FACTORY = 'E.L.G International Trading（依洛嘉）· 台南市佳里區佳興里宅興二街600號';
-let view='entry', role='customer', custTab='submit', elgTab='receive', dataPid=null, editingProfile=false, devOpen=false, custView=null, batch={}, libStatOff={}, libCustOff={}, libQ='', libImpCust='', libDrafts=[], libImpStatus='applied', confirmDel=null;
+let view='entry', role='customer', custTab='submit', elgTab='receive', dataPid=null, editingProfile=false, devOpen=false, custView=null, batch={}, libStatOff={completed:true}, libCustOff={}, libQ='', libImpCust='', libDrafts=[], libImpStatus='applied', confirmDel=null, libPage=0;
 let me={ nameCh:'', nameEn:'', addrCh:'', addrEn:'', phone:'', filled:false };
 const SAMPLE_ME={ nameCh:'晶寶企業行', nameEn:'Jingbao Co., Ltd.', addrCh:'高雄市大寮區琉球里巷尾路89之1號', addrEn:'No.89-1, Xiangwei Rd., Daliao Dist., Kaohsiung', phone:'07-1234567' };
 const SAMPLE_ME2={ nameCh:'', nameEn:'', addrCh:'', addrEn:'', phone:'' };
@@ -843,16 +843,17 @@ function custBilling(){
   h += `<div class="sect${myc&&myc.contract?' mt':''}">待匯款</div>`;
   if(batches.length){
     h += batches.map(b=>{
-      const items=inv.filter(p=>p.batch===b);
-      const tot=items.reduce((s,p)=>s+p.charge,0);
+      const items=inv.filter(p=>p.batch==b);
+      const tot=items.reduce((s,p)=>s+(p.charge||0),0);
+      const bLabel=b||'收款單';
       return `<div class="card" style="border-color:var(--w)">
-        <div class="row"><span class="nm">${b} 收款單</span><span class="pill pill--w">待匯款</span></div>
+        <div class="row"><span class="nm">${bLabel}</span><span class="pill pill--w">待匯款</span></div>
         <div class="sub" style="margin-bottom:8px">${items.length} 項樣品</div>
-        ${items.map(p=>`<div class="miniline"><span>${p.name}</span><span>${money(p.charge)}</span></div>`).join('')}
+        ${items.map(p=>`<div class="miniline"><span>${p.name||'—'}</span><span>${money(p.charge||0)}</span></div>`).join('')}
         <div class="total"><span class="muted">整批合計</span><span class="amt">${money(tot)}</span></div>
         <label class="lbl" style="margin-top:12px">匯款末五碼 或 匯款人姓名</label>
-        <input class="fld" id="pn_${b}" placeholder="例：12345 或 王小明">
-        <button class="btn" style="margin-top:10px" onclick="A.reportPay('${b}')"><i class="ti ti-check"></i> 匯款回報</button>
+        <input class="fld" id="pn_${b||'default'}" placeholder="例：12345 或 王小明">
+        <button class="btn" style="margin-top:10px" onclick="A.reportPay('${b||'default'}')"><i class="ti ti-check"></i> 匯款回報</button>
       </div>`;
     }).join('');
   } else {
@@ -1339,9 +1340,16 @@ function elgLibrary(){
   const stPresent=order.filter(k=>products.some(p=>p.status===k));
   const rows=products.filter(p=> !libStatOff[p.status] && !libCustOff[custName(p)] && (!libQ || p.name.indexOf(libQ)>=0))
     .slice().sort((a,b)=> custName(a).localeCompare(custName(b),'zh-Hant') || order.indexOf(a.status)-order.indexOf(b.status));
+  const PAGE_SIZE=20;
+  const totalPages=Math.ceil(rows.length/PAGE_SIZE);
+  if(libPage>=totalPages) libPage=Math.max(0,totalPages-1);
+  const pageRows=rows.slice(libPage*PAGE_SIZE, (libPage+1)*PAGE_SIZE);
   const selN=rows.filter(p=>batch[p.id]).length;
   const opts=order.map(k=>`<option value="${k}">${SM[k][0]}</option>`).join('');
-  let h=`<div class="note" style="margin-bottom:12px"><i class="ti ti-database"></i>樣品庫 · 所有客戶送出／已收款／完成的樣品總表。每筆可直接用「狀態」欄下拉個別調整；或勾選多筆後用上方工具列一次套用狀態，並同步客戶看板。</div>`;
+  let h=`<div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+    <span class="nm" style="font-size:16px"><i class="ti ti-database"></i> 樣品庫</span>
+    <span class="sub">共 ${products.length} 筆 · 篩選後 ${rows.length} 筆 · 第 ${libPage+1}/${totalPages||1} 頁</span>
+  </div>`;
   // 匯入庫：Excel + 照片 OCR
   const impCusts=[...new Set(products.map(p=>custName(p)))].concat(customers.map(c=>c.name)).filter((v,i,a)=>v&&a.indexOf(v)===i);
   const tgt=libImpCust||impCusts[0]||'';
@@ -1402,28 +1410,50 @@ function elgLibrary(){
       <select class="fld fld--mini" id="batchCust" style="width:auto;min-width:130px">${vendorOpts('')}</select>
       <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" data-needsel ${selN?'':'disabled'} onclick="A.batchReassign()"><i class="ti ti-arrows-exchange"></i> 轉移廠商</button>
     </div>`;
-  // 總表
-  h+=`<div class="tablewrap"><table class="dtable">
-    <thead><tr><th style="width:34px"></th><th>客戶</th><th>品名</th><th>規格</th><th>數量</th><th>檢驗項目</th><th>費用</th><th>狀態</th><th style="width:40px"></th></tr></thead>
-    <tbody>`+ (rows.length ? rows.map(p=>`
-      <tr class="${batch[p.id]?'sel':''}" data-nm="${p.name}">
-        <td data-label=""><span class="ck ${batch[p.id]?'on':''}" data-ckid="${p.id}" onclick="A.toggleBatch('${p.id}')" style="cursor:pointer"><i class="ti ti-check"></i></span></td>
-        <td data-label="客戶" style="white-space:nowrap">${custName(p)}</td>
-        <td data-label="品名"><span class="nm" style="font-size:13.5px">${p.name}</span>${p.alias?`<br><span class="sub">配方名：${p.alias}</span>`:''}${p.cancelReq?`<br><span class="sub" style="color:var(--w)">客戶申請撤銷中</span>`:''}
-          <div style="display:flex;gap:6px;align-items:center;margin-top:5px">
-            <input class="fld fld--mini" style="flex:1;min-width:0" value="${(p.en||'').replace(/"/g,'&quot;')}" placeholder="英文名（檢驗用）" onchange="A.setField('${p.id}','en',this.value)">
-            <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 9px" title="AI 生成英文名" onclick="A.genEnName('${p.id}')"><i class="ti ti-sparkles"></i> AI</button>
-          </div></td>
-        <td data-label="規格" style="white-space:nowrap">${p.spec||'—'}</td>
-        <td data-label="數量" style="white-space:nowrap">${p.qty||'—'}</td>
-        <td data-label="檢驗項目" style="white-space:nowrap">${testText(p.t)}</td>
-        <td data-label="費用" style="white-space:nowrap">${money(feeOf(p.t))}</td>
-        <td data-label="狀態"><select class="fld fld--mini" style="min-width:120px" onchange="A.setStatus('${p.id}',this.value)">
-          ${order.map(o=>`<option value="${o}" ${p.status===o?'selected':''}>${SM[o][0]}</option>`).join('')}
-        </select></td>
-        <td data-label=""><span style="cursor:pointer;color:${confirmDel===p.id?'#C0392B':'var(--faint)'}" title="刪除" onclick="A.delProduct('${p.id}')"><i class="ti ti-trash"></i></span></td>
-      </tr>`).join('') : `<tr><td colspan="9" style="text-align:center;padding:24px;color:var(--muted)">目前篩選沒有符合的樣品</td></tr>`)
-    +`</tbody></table></div>`;
+  // 總表（依客戶分組）
+  const groupedCusts=[...new Set(rows.map(p=>custName(p)))];
+  h+=groupedCusts.map(cn=>{
+    const custItems=rows.filter(p=>custName(p)===cn);
+    const custSelN=custItems.filter(p=>batch[p.id]).length;
+    const allSel=custSelN===custItems.length && custItems.length>0;
+    return `<div class="card" style="margin-bottom:10px;padding:0;overflow:hidden">
+      <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--n-bg);border-bottom:1px solid var(--line)">
+        <span class="ck ${allSel?'on':custSelN>0?'partial':''}" onclick="A.libToggleCustSel('${cn}')" style="cursor:pointer;flex:none"><i class="ti ti-check"></i></span>
+        <span style="flex:1;min-width:0">
+          <span class="nm" style="font-size:14px">${cn}</span>
+          <span class="sub" style="margin-left:8px">${custItems.length} 筆${custSelN?' · 已選 '+custSelN:''}</span>
+        </span>
+        <div style="display:flex;flex-wrap:wrap;gap:4px">
+          ${order.filter(k=>custItems.some(p=>p.status===k)).map(k=>{
+            const n=custItems.filter(p=>p.status===k).length;
+            return `<span class="pill pill--${SM[k][1]}" style="font-size:10px">${SM[k][0]} ${n}</span>`;
+          }).join('')}
+        </div>
+      </div>
+      <div style="overflow-x:auto"><table class="dtable" style="min-width:680px">
+        <thead><tr><th style="width:30px"></th><th>品名</th><th>規格</th><th>數量</th><th>檢驗</th><th>費用</th><th>狀態</th><th style="width:30px"></th></tr></thead>
+        <tbody>${custItems.map(p=>`
+          <tr class="${batch[p.id]?'sel':''}" data-nm="${p.name||''}">
+            <td><span class="ck ${batch[p.id]?'on':''}" onclick="A.toggleBatch('${p.id}')" style="cursor:pointer"><i class="ti ti-check"></i></span></td>
+            <td><span class="nm" style="font-size:13px">${p.name||'—'}</span>${p.alias?`<br><span class="sub">配方：${p.alias}</span>`:''}
+              <div style="display:flex;gap:4px;align-items:center;margin-top:4px">
+                <input class="fld fld--mini" style="flex:1;min-width:0" value="${(p.en||'').replace(/"/g,'&quot;')}" placeholder="英文名" onchange="A.setField('${p.id}','en',this.value)">
+                <button class="btn btn--ghost btn--sm" style="width:26px;padding:0" title="AI" onclick="A.genEnName('${p.id}')"><i class="ti ti-sparkles"></i></button>
+              </div></td>
+            <td style="white-space:nowrap">${p.spec||'—'}</td>
+            <td style="white-space:nowrap">${p.qty||'—'}</td>
+            <td style="white-space:nowrap;font-size:12px">${testText(p.t)}</td>
+            <td style="white-space:nowrap">${money(feeOf(p.t))}</td>
+            <td><select class="fld fld--mini" style="min-width:110px" onchange="A.setStatus('${p.id}',this.value)">
+              ${order.map(o=>`<option value="${o}" ${p.status===o?'selected':''}>${SM[o][0]}</option>`).join('')}
+            </select></td>
+            <td><span style="cursor:pointer;color:${confirmDel===p.id?'#C0392B':'var(--faint)'}" onclick="A.delProduct('${p.id}')"><i class="ti ti-trash"></i></span></td>
+          </tr>`).join('')}
+        </tbody>
+      </table></div>
+    </div>`;
+  }).join('');
+  if(!rows.length) h+=`<div class="card faint" style="text-align:center;padding:24px">目前篩選沒有符合的樣品</div>`;
   return h;
 }
 function elgCustomers(){
@@ -1540,11 +1570,28 @@ function elgReceive(){
         <button class="btn btn--ok btn--sm" style="width:auto;padding:0 16px" onclick="A.receive('${p.id}')">接收</button>
       </div></div>`).join('')+`</div>`
     : `<div class="card faint" style="text-align:center;padding:20px">沒有待收件樣品</div>`;
-  h += `<div class="row sect mt"><span>已接收</span><span class="pill pill--s">${recent.length}</span></div>`;
-  h += recent.length ? `<div class="stack">`+ recent.map(p=>`
-      <div class="card row"><span><span class="nm" style="font-size:15px">${p.name}</span><br><span class="sub">${custName(p)}</span></span>
-      <span class="pill pill--s"><i class="ti ti-check"></i> 已接收</span></div>`).join('')+`</div>`
-    : `<div class="empty" style="padding:24px"><i class="ti ti-inbox"></i>尚未接收</div>`;
+  h += `<div class="row sect mt"><span>已接收（待開收款單）</span><span class="pill pill--s">${recent.length}</span></div>`;
+  if(recent.length){
+    const recvCusts=[...new Set(recent.map(p=>custName(p)))];
+    h+=recvCusts.map(cn=>{
+      const items=recent.filter(p=>custName(p)===cn);
+      return `<div class="card" style="margin-bottom:8px">
+        <div class="row">
+          <span>
+            <span class="nm" style="font-size:14px"><i class="ti ti-building-store"></i> ${cn}</span>
+            <span class="sub" style="margin-left:6px">${items.length} 筆已收樣</span>
+          </span>
+          <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px" onclick="A.goStatusTab('invoice','recv')">
+            <i class="ti ti-receipt-2"></i> 去開收款單</button>
+        </div>
+        <div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px">
+          ${items.map(p=>`<span class="pill pill--s" style="font-size:11.5px">${p.name||'—'}</span>`).join('')}
+        </div>
+      </div>`;
+    }).join('');
+  } else {
+    h+=`<div class="card faint" style="text-align:center;padding:20px">尚未有已接收樣品<br><span class="sub">接收後會出現在這裡，可直接跳到「帳款明細」開收款單</span></div>`;
+  }
   return h;
 }
 function elgData(){
@@ -2688,9 +2735,16 @@ const A = {
   setCustDriveByName(nm,v){ const c=customers.find(x=>x.name===nm); if(c){ c.drive=(v||'').trim(); if(!c.drive) c.driveAuth=false; save(); A.toast('已更新 PIF 資料夾連結'); render(); } },
   toggleCustAuth(nm){ const c=customers.find(x=>x.name===nm); if(!c) return; if(!c.drive){ A.toast('請先儲存資料夾連結'); return; } c.driveAuth=!c.driveAuth; save(); A.toast(c.driveAuth?('已授權 '+nm+' 存取雲端硬碟'):'已取消授權'); render(); },
   openCustDrive(nm){ const c=customers.find(x=>x.name===nm); if(c&&c.drive) window.open(c.drive,'_blank'); else A.toast('尚未設定連結'); },
-  libToggleStat(k){ libStatOff[k]=!libStatOff[k]; render(); },
-  libToggleCust(nm){ libCustOff[nm]=!libCustOff[nm]; render(); },
-  libSearch(v){ libQ=v||''; document.querySelectorAll('table.dtable tbody tr[data-nm]').forEach(tr=>{ tr.style.display=(!libQ || (tr.getAttribute('data-nm')||'').indexOf(libQ)>=0)?'':'none'; }); },
+  libToggleStat(k){ libStatOff[k]=!libStatOff[k]; libPage=0; render(); },
+  libToggleCust(nm){ libCustOff[nm]=!libCustOff[nm]; libPage=0; render(); },
+  libSearch(v){ libQ=v||''; libPage=0; render(); },
+  libToggleCustSel(cn){
+    const items=products.filter(p=>custName(p)===cn && !libStatOff[p.status] && !libCustOff[custName(p)] && (!libQ||p.name.indexOf(libQ)>=0));
+    const allSel=items.length&&items.every(p=>batch[p.id]);
+    items.forEach(p=>{ batch[p.id]=allSel?false:true; });
+    render();
+  },
+  libSetPage(n){ libPage=Math.max(0,n); render(); },
   libAll(){ const rows=products.filter(p=> !libStatOff[p.status] && !libCustOff[custName(p)] && (!libQ||p.name.indexOf(libQ)>=0)); const all=rows.length&&rows.every(p=>batch[p.id]); rows.forEach(p=>batch[p.id]=all?false:true); render(); },
   libApply(){ const st=(document.getElementById('batchSt')||{}).value; const ids=Object.keys(batch).filter(k=>batch[k]); if(!ids.length){ A.toast('請先勾選樣品'); return; } ids.forEach(id=>{ const p=byId(id); if(p) p.status=st; }); save(); A.toast('已將 '+ids.length+' 筆設為「'+SM[st][0]+'」並同步到客戶狀態看板'); render(); },
   setLibImpCust(v){ libImpCust=v||''; },
@@ -3351,8 +3405,13 @@ const A = {
   },
   async exportSongyan(explicitList){
     if(typeof ExcelJS==='undefined'){ A.toast('Excel 函式庫載入中，請稍候再按'); return; }
-    const list=(explicitList && explicitList.length ? explicitList.slice() : products.filter(p=>p.status==='paid' && p.genSel!==false))
-                       .sort((a,b)=>custName(a).localeCompare(custName(b),'zh-Hant'));
+    let baseList;
+    if(explicitList && explicitList.length){
+      baseList=explicitList.slice();
+    } else {
+      baseList=products.filter(p=>p.status==='paid' && p.genSel!==false && (!dataVendorFilter||custName(p)===dataVendorFilter));
+    }
+    const list=baseList.sort((a,b)=>custName(a).localeCompare(custName(b),'zh-Hant'));
     if(!list.length){ A.toast('請先勾選要送驗的項目'); return; }
     const FN='E.L.G INTERNATIONAL TRADING CO., LTD.';
     const FA='No. 600, Zhaixing 2nd St., Jiaxing Vil., Jiali Dist., Tainan City 722013, Taiwan (R.O.C.)';
@@ -3402,17 +3461,22 @@ const A = {
     ws.getCell(`I${tr}`).font={name:'新細明體',size:11}; ws.getCell(`I${tr}`).alignment={vertical:'middle',wrapText:true};
     for(let row=1;row<=tr;row++) for(let col=1;col<=10;col++) ws.getRow(row).getCell(col).border=BD;
     ws.views=[{state:'frozen',ySplit:1}];
-    const buf=await wb.xlsx.writeBuffer();
-    const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
-    const url=URL.createObjectURL(blob), a=document.createElement('a');
-    a.href=url; a.download='送驗清單.xlsx'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
-    const ah=agreementHTML(list);
-    const ab=new Blob(['\ufeff'+ah],{type:'application/msword'});
-    const au=URL.createObjectURL(ab), aa=document.createElement('a');
-    aa.href=au; aa.download='合作協議.doc'; document.body.appendChild(aa); aa.click(); aa.remove(); URL.revokeObjectURL(au);
+    try{
+      const buf=await wb.xlsx.writeBuffer();
+      const blob=new Blob([buf],{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'});
+      const url=URL.createObjectURL(blob), a=document.createElement('a');
+      a.href=url; a.download='送驗清單.xlsx'; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+      const ah=agreementHTML(list);
+      const ab=new Blob(['\ufeff'+ah],{type:'application/msword'});
+      const au=URL.createObjectURL(ab), aa=document.createElement('a');
+      aa.href=au; aa.download='合作協議.doc'; document.body.appendChild(aa); aa.click(); aa.remove(); URL.revokeObjectURL(au);
+    }catch(e){
+      A.toast('檔案生成失敗：'+e.message+'（狀態仍會更新）'); console.warn(e);
+    }
     list.forEach(p=>{ p.status='testing'; delete p.genSel; });
     const vd=[...new Set(list.map(p=>custName(p)))].length;
-    save(); render(); A.toast('已生成合作協議＋樣品清單（'+vd+' 家廠商 · '+list.length+' 筆），轉為送驗中');
+    dataVendorFilter='';
+    save(); render(); A.toast('已生成送驗清單（'+vd+' 家廠商 · '+list.length+' 筆），轉為送驗中');
   },
   toggleShip(id){ const p=byId(id); p.shipSel=!p.shipSel; render(); },
   deleteMyProduct(id){
@@ -3581,12 +3645,18 @@ const A = {
     const sel=P('received').filter(p=>custName(p)===cn && p.invSel);
     if(!sel.length){ A.toast('請先勾選 '+cn+' 的樣品'); return; }
     const custEmail=(customers.find(c=>c.name===cn)||{}).email||'';
+    // 生成批次編號 INV-YYYYMMDD-NNN
+    const d=new Date(), pad=n=>String(n).padStart(2,'0');
+    const ds=`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
+    const existing=products.filter(p=>p.batch&&p.batch.startsWith('INV-'+ds)).length;
+    const batchName=`INV-${ds}-${String(existing+1).padStart(3,'0')}`;
     sel.forEach(p=>{
       p.status='invoiced';
+      p.batch=batchName;
       p.charge=p.feeSel||p.feeSelPlans&&PIF_PLANS.filter(pl=>p.feeSelPlans.includes(pl.id)).reduce((s,pl)=>s+pl.amt,0)||0;
       if(!p.customerEmail && custEmail) p.customerEmail=custEmail;
     });
-    save(); render(); A.toast('已開收款單給 '+cn+'（'+sel.length+' 項）');
+    save(); render(); A.toast('已開收款單 '+batchName+' 給 '+cn+'（'+sel.length+' 項）');
   },
   toggleContract(i){ const c=customers[i]; if(!c) return; c.contract=!c.contract; if(c.contract && c.balance===undefined) c.balance=0; save(); render(); A.toast(c.contract?(c.name+' 已設為合約制'):(c.name+' 已取消合約制')); },
   setBalance(i){ const c=customers[i]; if(!c) return; const v=Number((dval('bal_'+i,'')||'').replace(/[^0-9.-]/g,'')); if(isNaN(v)){ A.toast('請輸入金額'); return; } c.balance=v; c.contract=true; save(); render(); A.toast(c.name+' 合約餘額設為 '+money(v)); },
@@ -3609,7 +3679,7 @@ const A = {
   reportPay(batch){
     const note=((document.getElementById('pn_'+batch)||{}).value||'').trim();
     if(!note){ A.toast('請填匯款末五碼或匯款人姓名'); return; }
-    products.filter(p=>ownedByMe(p) && p.status==='invoiced' && p.batch===batch).forEach(p=>{ p.status='reported'; p.payNote=note; });
+    products.filter(p=>ownedByMe(p) && p.status==='invoiced' && (p.batch==batch || (batch==='default' && !p.batch))).forEach(p=>{ p.status='reported'; p.payNote=note; });
     save(); render(); A.toast('已回報匯款（'+note+'），依洛嘉查帳中');
   },
   confirmPayBatch(cn){
@@ -3630,13 +3700,13 @@ const A = {
       p.paidAmt=(p.paidAmt||0)+amt;
       p.payMethod=method;
       p.status='paid';
+      p.genSel=true; // 確保進送驗清單時預設勾選
     });
-    save(); 
-    // 如果沒有其他待查帳的了，自動跳到送驗資料
+    save();
     const remaining=P('reported').length;
-    if(!remaining) elgTab='data';
-    render(); 
-    A.toast('已確認 '+cn+' 整批收款 '+money(totalAmt)+'（'+method+'），'+items.length+' 筆轉待送驗'+(remaining?'':'　→ 已跳到送驗資料'));
+    elgTab='data'; // 查帳完成一律跳到送驗資料
+    render();
+    A.toast('已確認 '+cn+' 收款 '+money(totalAmt)+'，'+items.length+' 筆 → 送驗資料'+(remaining?'（還有 '+remaining+' 筆待查帳）':''));
   },
   rejectPayBatch(cn){
     const items=P('reported').filter(p=>custName(p)===cn);
