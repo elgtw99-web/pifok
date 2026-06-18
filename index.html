@@ -563,6 +563,7 @@ function render(){
   else if(view==='add-items') html=addItemsScreen();
   else if(view==='shared-pif') html=sharedPifScreen();
   else if(view==='cust-self-register') html=custSelfRegisterScreen();
+  else if(view==='customer-confirm') html=custConfirmScreen();
   else if(view==='fb-pending') html=fbPendingScreen();
   else html = (role==='customer') ? custApp() : elgApp();
   app.innerHTML=html;
@@ -2315,7 +2316,7 @@ function customerSection(){
 /* ---------- actions ---------- */
 const A = {
   setRole(r){ role=r; render(); },
-  goLogin(side){ view = side==='eloga'?'eloga-login':'customer-login'; render(); },
+  goLogin(side){ view = side==='eloga'?'eloga-login':'customer-login'; window._loginSide=side; render(); },
   backEntry(){ view='entry'; render(); },
   loginEloga(){ role='eloga'; zone='back'; const a=ELG_TABS[elgRole]||ELG_TABS['主要管理者']; elgTab=a[0]; view='app'; render(); A.toast('以「'+elgRole+'」身分登入'); },
   setZone(z){ zone=z; if(view==='eloga-accounts') view='app'; render(); },
@@ -2490,7 +2491,21 @@ const A = {
     render();
   },
   openBoard(){ role='guest'; view='board'; render(); },
-  openCustSelfRegister(){ view='cust-self-register'; render(); },
+  quickConfirmCust(name){
+    const c=customers.find(x=>x.name===name);
+    me=Object.assign({},me,{nameCh:name, nameEn:c&&c.nameEn||'', addrCh:CINFO[name]||c&&c.addrCh||'', phone:c&&c.phone||'', contact:c&&c.contact||'', filled:true});
+    custTab='submit'; view='app'; render(); A.toast('歡迎，'+name+'！');
+  },
+  saveConfirmCust(){
+    const g=id=>((document.getElementById(id)||{}).value||'').trim();
+    const name=g('cc_name'), phone=g('cc_phone'), addr=g('cc_addr'), contact=g('cc_contact');
+    if(!name){ A.toast('請填公司名稱'); return; }
+    me=Object.assign({},me,{nameCh:name, addrCh:addr, phone, contact, filled:true});
+    // 更新 customers 陣列
+    const idx=customers.findIndex(c=>c.email&&c.email.toLowerCase()===(me.email||'').toLowerCase());
+    if(idx>=0){ customers[idx].name=name; customers[idx].phone=phone; customers[idx].addrCh=addr; customers[idx].contact=contact; }
+    save(); custTab='submit'; view='app'; render(); A.toast('資料已儲存，歡迎！');
+  },
   submitCustRegister(){
     const g=id=>((document.getElementById(id)||{}).value||'').trim();
     const name=g('sr_name'), email=g('sr_email').toLowerCase();
@@ -3352,11 +3367,14 @@ function fbStart(){
     FB.user=user;
     if(!user){ FB.role=null; FB.ready=false; fbDetach(); return; }
     try{
-      const sd=await FB.db.collection('staff').doc(user.uid).get();
-      if(sd.exists){
-        FB.role='eloga'; role='eloga'; elgRole=(sd.data()&&sd.data().role)||'主要管理者'; zone='back'; elgTab='home'; view='app';
-        attachAdmin(); render();
-      } else {
+      // 如果從客戶入口登入，不檢查 staff，直接走客戶流程
+      const fromCustomerPortal = window._loginSide==='customer';
+      if(!fromCustomerPortal){
+        const sd=await FB.db.collection('staff').doc(user.uid).get();
+        if(sd.exists){
+          FB.role='eloga'; role='eloga'; elgRole=(sd.data()&&sd.data().role)||'主要管理者'; zone='back'; elgTab='home'; view='app';
+          attachAdmin(); render(); return;
+        }
         // 方式 B：查 email 是否在邀請名單（Firestore staff）
         const sq=await FB.db.collection('staff').where('email','==',user.email.toLowerCase()).limit(1).get();
         if(!sq.empty){
@@ -3369,20 +3387,22 @@ function fbStart(){
           });
           if(invId!==user.uid) await FB.db.collection('staff').doc(invId).delete();
           FB.role='eloga'; role='eloga'; elgRole=inv.role||'管理'; zone='back'; elgTab='home'; view='app';
-          attachAdmin(); render(); A.toast('帳號已自動開通，歡迎 '+(inv.name||user.email));
-        } else {
-          // 查是否為已知客戶（先查 Firestore，查不到再查本機）
-          const q=await FB.db.collection('customers').where('email','==',user.email).limit(1).get();
-          const localCust=customers.find(c=>c.email&&c.email.toLowerCase()===user.email.toLowerCase());
-          const custData=!q.empty ? q.docs[0].data() : localCust || null;
-          if(custData){
-            FB.role='customer'; role='customer'; custTab='submit';
-            me=Object.assign({}, me, {nameCh:custData.name, nameEn:custData.nameEn||'', addrCh:CINFO[custData.name]||me.addrCh||'', email:user.email, filled:true});
-            attachCustomer(user.email); view='app'; render();
-          } else {
-            FB.role='pending'; role='guest'; view='fb-pending'; render();
-          }
+          attachAdmin(); render(); A.toast('帳號已自動開通，歡迎 '+(inv.name||user.email)); return;
         }
+      }
+      // 查是否為已知客戶（先查 Firestore，查不到再查本機）
+      const q=await FB.db.collection('customers').where('email','==',user.email).limit(1).get();
+      const localCust=customers.find(c=>c.email&&c.email.toLowerCase()===user.email.toLowerCase());
+      // 客戶登入後：先進資料確認頁，確認後才進主畫面
+      const custData=!q.empty ? q.docs[0].data() : localCust || null;
+      if(custData){
+        FB.role='customer'; role='customer';
+        // 設定 me 的基本資料
+        me=Object.assign({}, me, {nameCh:custData.name, nameEn:custData.nameEn||'', addrCh:CINFO[custData.name]||custData.addrCh||me.addrCh||'', email:user.email, phone:custData.phone||me.phone||'', filled:false});
+        attachCustomer(user.email);
+        view='customer-confirm'; render(); // 先進確認頁
+      } else {
+        FB.role='pending'; role='guest'; view='fb-pending'; render();
       }
     }catch(e){ A.toast('登入後讀取失敗：'+e.message); console.warn(e); }
   });
@@ -3410,6 +3430,41 @@ function fbSync(){
     if(FB.role==='eloga'){ batch.set(FB.db.collection('meta').doc('config'),{CINFO},{merge:true}); ops++; }
     if(ops>0 && ops<=450) batch.commit().catch(e=>console.warn('sync',e));
   }catch(e){ console.warn('fbSync',e); }
+}
+function custConfirmScreen(){
+  const custList=customers.filter(c=>c.status==='已啟用'||(c.email&&c.email.toLowerCase()===(me.email||'').toLowerCase()));
+  const matched=custList.find(c=>c.email&&c.email.toLowerCase()===(me.email||'').toLowerCase());
+  return `<div class="full">
+    <div class="logintop">
+      <div class="logo sm" style="background:var(--accent-tint);color:var(--accent)"><i class="ti ti-user-check"></i></div>
+      <h2>確認你的資料</h2>
+      <p class="muted">請確認或填寫基本資料，之後可隨時修改</p>
+    </div>
+    ${matched?`
+    <div class="card" style="border-color:var(--accent);margin-bottom:16px;cursor:pointer" onclick="A.quickConfirmCust('${matched.name}')">
+      <div class="row">
+        <span>
+          <span class="nm" style="font-size:16px">${matched.name}</span><br>
+          <span class="sub">${matched.email||''}</span>
+          ${matched.phone?`<br><span class="sub">${matched.phone}</span>`:''}
+        </span>
+        <span class="pill pill--s" style="font-size:13px">這是我 →</span>
+      </div>
+    </div>`:''}
+    <div class="card" style="margin-bottom:14px">
+      <p class="nm" style="font-size:14px;margin-bottom:12px"><i class="ti ti-edit"></i> 修改或補充資料</p>
+      <label class="lbl">公司名稱</label>
+      <input id="cc_name" class="fld" value="${(me.nameCh||'').replace(/"/g,'&quot;')}" placeholder="公司名稱" style="margin-bottom:10px">
+      <label class="lbl">聯絡人姓名</label>
+      <input id="cc_contact" class="fld" value="${(me.contact||'').replace(/"/g,'&quot;')}" placeholder="姓名" style="margin-bottom:10px">
+      <label class="lbl">聯絡電話</label>
+      <input id="cc_phone" class="fld" type="tel" value="${(me.phone||'').replace(/"/g,'&quot;')}" placeholder="0912-345-678" style="margin-bottom:10px">
+      <label class="lbl">公司地址</label>
+      <input id="cc_addr" class="fld" value="${(me.addrCh||'').replace(/"/g,'&quot;')}" placeholder="公司地址" style="margin-bottom:14px">
+      <button class="btn" onclick="A.saveConfirmCust()"><i class="ti ti-check"></i> 確認並進入系統</button>
+    </div>
+    <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.fbLogout()"><i class="ti ti-logout"></i> 登出</button>
+  </div>`;
 }
 function custSelfRegisterScreen(){
   return `<div class="full">
