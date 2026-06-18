@@ -1095,7 +1095,8 @@ function custBoard(){
 
   // 可共用 PIF
   h+=`<div style="margin-top:20px;padding-top:16px;border-top:2px solid var(--line)">
-    <div class="sect">依洛嘉可共用的 PIF 產品</div>`;
+    <div class="sect">依洛嘉可共用的 PIF 產品</div>
+    <div class="sub" style="font-size:11px;color:var(--faint);margin-bottom:8px">雲端共用清單共 ${sharedPIF.length} 筆</div>`;
   const pubS=sharedPIF.filter(it=>shareState(it)==='public');
   if(pubS.length){
     h+=`<div class="stack">`+pubS.map((it,i)=>`
@@ -5391,12 +5392,20 @@ function attachCustomer(email){
   }, e=>console.warn(e)));
   // sharedPIF：先直接抓一次確保資料立刻顯示，再設 snapshot
   FB.db.collection('sharedPIF').get().then(s=>{
-    if(s.docs.length){ snapApply('sharedPIF',sharedPIF,s.docs); render(); }
-  }).catch(e=>console.warn('sharedPIF get',e));
+    console.log('[sharedPIF] .get() 回傳', s.docs.length, '筆');
+    if(s.docs.length){
+      sharedPIF.length=0;
+      s.docs.forEach(d=>{ const o=Object.assign({},d.data()); o.id=d.id; sharedPIF.push(o); });
+      render();
+    }
+  }).catch(e=>{ console.warn('[sharedPIF] .get() 失敗', e); });
   // sharedPIF snapshot（監聽後續變更）
   FB.unsub.push(FB.db.collection('sharedPIF').onSnapshot(s=>{
-    snapApply('sharedPIF',sharedPIF,s.docs); render();
-  }, e=>console.warn('sharedPIF',e)));
+    console.log('[sharedPIF] snapshot 回傳', s.docs.length, '筆');
+    sharedPIF.length=0;
+    s.docs.forEach(d=>{ const o=Object.assign({},d.data()); o.id=d.id; sharedPIF.push(o); });
+    render();
+  }, e=>console.warn('[sharedPIF] snapshot 失敗', e)));
   FB.unsub.push(FB.db.collection('showcase').onSnapshot(s=>{
     snapApply('showcase',showcase,s.docs); render();
   }, e=>console.warn(e)));
