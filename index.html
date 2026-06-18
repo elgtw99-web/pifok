@@ -2644,8 +2644,18 @@ const A = {
     const nm=g('s_name'), ml=g('s_mail').toLowerCase(), rl=(document.getElementById('s_role')||{}).value||'管理';
     if(!ml||!ml.includes('@')){ A.toast('請填入有效的 Gmail'); return; }
     if(staff.some(s=>s.email===ml)){ A.toast('這個 Gmail 已在名單中'); return; }
-    staff.push({name:nm||ml, email:ml, role:rl, uid:null});
-    addOpen=false; save(); render(); A.toast('已加入邀請名單：'+ml+'（對方用此 Gmail 登入後自動開通）');
+    const newStaff={name:nm||ml, email:ml, role:rl, uid:null};
+    staff.push(newStaff);
+    // 直接寫入 Firestore（以 email 為暫時 key，登入時再升格為 UID doc）
+    if(typeof FB!=='undefined'&&FB.on&&FB.db){
+      const docId=ml.replace(/[@.]/g,'_');
+      FB.db.collection('staff').doc(docId).set({name:nm||ml, email:ml, role:rl})
+        .then(()=>A.toast('已加入邀請名單並同步雲端：'+ml+'（對方用此 Gmail 登入後自動開通）'))
+        .catch(e=>A.toast('已本機儲存，雲端同步失敗：'+e.message));
+    } else {
+      A.toast('已加入邀請名單：'+ml+'（對方登入後自動開通）');
+    }
+    addOpen=false; save(); render();
   },
   delStaff(i){ const s=staff[i]; if(!s||s.uid){ A.toast('已登入驗證的帳號不可刪除'); return; } staff.splice(i,1); save(); render(); A.toast('已移除邀請：'+(s.email||s.name)); },
   openApiKeySetting(){ view='eloga-accounts'; acctTab='customer'; render(); A.toast('請在帳號管理下方填入 Anthropic API Key'); },
@@ -2670,9 +2680,19 @@ const A = {
     if(!nm){ A.toast('請填廠商名稱'); return; }
     if(!ml||!ml.includes('@')){ A.toast('請填入有效的 Gmail'); return; }
     if(customers.some(c=>c.email===ml)){ A.toast('這個 Gmail 已有帳號：'+customers.find(c=>c.email===ml).name); return; }
-    customers.push({name:nm, email:ml, login:ln, status:'已啟用', drive:'', driveAuth:false});
+    const newCust={name:nm, email:ml, login:ln, status:'已啟用', drive:'', driveAuth:false};
+    customers.push(newCust);
+    // 直接寫入 Firestore
+    if(typeof FB!=='undefined'&&FB.on&&FB.db){
+      const id=FB.db.collection('customers').doc().id;
+      newCust.id=id;
+      FB.db.collection('customers').doc(id).set(Object.assign({},newCust))
+        .then(()=>A.toast('已代註冊「'+nm+'」並同步到雲端，客戶用 '+ml+' 登入即可'))
+        .catch(e=>A.toast('已本機儲存，雲端同步失敗：'+e.message));
+    } else {
+      A.toast('已代註冊「'+nm+'」，客戶用 '+ml+' 登入即可進入系統');
+    }
     custAddOpen=false; save(); render();
-    A.toast('已代註冊「'+nm+'」，客戶用 '+ml+' 登入即可進入系統');
   },
   setCustTab(t){ custTab=t; scOpen=null; scPage=0; render(); },
   setElgTab(t){ elgTab=t; scOpen=null; scPage=0; pifSel={}; batch={}; scSel={}; render(); },
