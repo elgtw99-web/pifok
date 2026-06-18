@@ -2462,17 +2462,36 @@ function customerSection(){
       <div class="sub" style="margin-top:4px">${c.email||'尚未綁定'} · 登入：${c.login}</div>${act}${contractBlock}</div>`;
   };
   const temp=customers.filter(c=>c.status==='臨時');
+  const noEmail=customers.filter(c=>!c.email && c.status!=='臨時' && c.status!=='待審核');
+  const needActivate=[...temp, ...noEmail];
+
   let h=`<div style="display:flex;gap:10px;margin:16px 0 14px;flex-wrap:wrap">
       <div class="card" style="flex:1;text-align:center;padding:12px;min-width:100px"><div style="font-size:24px;font-weight:700">${active.length}</div><div class="sub">已註冊</div></div>
-      <div class="card" style="flex:1;text-align:center;padding:12px;min-width:100px;border-color:var(--accent)"><div style="font-size:24px;font-weight:700;color:var(--accent)">${temp.length}</div><div class="sub">臨時待啟用</div></div>
+      <div class="card" style="flex:1;text-align:center;padding:12px;min-width:100px;border-color:var(--accent)"><div style="font-size:24px;font-weight:700;color:var(--accent)">${needActivate.length}</div><div class="sub">待綁定 Gmail</div></div>
       <div class="card" style="flex:1;text-align:center;padding:12px;min-width:100px;border-color:var(--w)"><div style="font-size:24px;font-weight:700;color:var(--w)">${pend.length}</div><div class="sub">客戶申請</div></div>
     </div>`;
 
-  // ===== 臨時帳號（最優先處理）=====
-  if(temp.length){
-    h+=`<div class="row sect"><span>臨時帳號 → 填 Gmail 即啟用</span><span class="pill pill--w">${temp.length}</span></div>`;
-    h+=`<div class="note" style="margin:6px 0 10px"><i class="ti ti-user-plus"></i>這些公司是從匯入清單自動建立，尚未綁定 Gmail。填入客戶的 Gmail 後按「啟用」，客戶即可用 Google 登入查看產品進度與帳務。</div>`;
-    h+=`<div class="stack">`+temp.map(card).join('')+`</div>`;
+  // ===== 未綁定 Gmail 的帳號（最優先處理）=====
+  if(needActivate.length){
+    h+=`<div class="row sect"><span>待綁定 Gmail（填入即可讓客戶登入）</span><span class="pill pill--w">${needActivate.length}</span></div>`;
+    h+=`<div class="note" style="margin:6px 0 10px"><i class="ti ti-user-plus"></i>這些客戶尚未綁定 Gmail，無法登入系統。填入客戶的 Gmail 後按「啟用」，客戶即可用 Google 登入查看產品進度與帳務。</div>`;
+    h+=`<div class="stack">${needActivate.map(c=>{
+      const i=customers.indexOf(c);
+      const prodN=products.filter(p=>custName(p)===c.name).length;
+      return `<div class="card" style="border-color:var(--accent)">
+        <div class="row">
+          <span>
+            <span class="nm" style="font-size:15px">${c.name}</span>
+            <span class="pill pill--${c.status==='臨時'?'w':'s'}" style="font-size:10px;margin-left:6px">${c.status}</span><br>
+            <span class="sub">${prodN} 筆產品 · ${c.email||'尚未綁定 Gmail'}</span>
+          </span>
+        </div>
+        <div style="margin-top:10px;display:flex;gap:8px;align-items:center">
+          <input class="fld fld--mini" id="set_email_${i}" placeholder="客戶 Gmail" type="email" style="flex:1" value="${c.email||''}">
+          <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px;flex:none" onclick="A.activateTempCust(${i})"><i class="ti ti-check"></i> 啟用</button>
+        </div>
+      </div>`;
+    }).join('')}</div>`;
   }
 
   // ===== 客戶申請（待審核）=====
