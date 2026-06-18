@@ -2020,10 +2020,21 @@ function elgInvoice(){
     }
 
     if(activeCust){
-      // 把品項分三類：未開單 / 已開單請款中 / 已收
-      const allCustItems=products.filter(p=>
+      // 自動納入的品項（已收檢驗費/送驗中等）
+      const autoItems=products.filter(p=>
         (p.status==='paid'||p.status==='completed'||p.status==='testing'||p.status==='reporting') &&
         custName(p)===activeCust
+      );
+      // 手動追加的品項（其他狀態，但被標記 retroForce）
+      const forcedItems=products.filter(p=>
+        custName(p)===activeCust && p.retroForce &&
+        !autoItems.includes(p)
+      );
+      const allCustItems=[...autoItems, ...forcedItems];
+      // 該客戶可手動追加的候選（不在自動清單、也還沒開 PIF 單、未強制加入）
+      const addCandidates=products.filter(p=>
+        custName(p)===activeCust && !p.pifFeeInvoice && !p.pifFeePaid &&
+        !autoItems.includes(p) && !p.retroForce
       );
       const notInvoiced=allCustItems.filter(p=>!p.pifFeeInvoice && !p.pifFeePaid); // 未開 PIF 單
       const invoicing=allCustItems.filter(p=>p.pifFeeInvoice && !p.pifFeePaid);     // 已開單請款中
@@ -2082,6 +2093,47 @@ function elgInvoice(){
             <button class="btn btn--ok btn--sm" style="width:auto;padding:0 16px;flex:none;align-self:flex-end" ${selItems.length?'':'disabled'} onclick="A.createInvoiceRec('${activeCust}')">
               <i class="ti ti-file-invoice"></i> 建立收款單（${selItems.length} 筆 · ${money(custTotal)}）</button>
           </div>
+          ${(()=>{
+            // 手動追加品項
+            const addOpen=!!pifGroupClosed['retroAddOpen_'+activeCust];
+            let a=`<div style="margin-top:12px;padding-top:10px;border-top:1px dashed var(--line2)">
+              <div style="display:flex;align-items:center;cursor:pointer" onclick="A.toggleRetroAdd('${activeCust}')">
+                <span style="font-size:12px;font-weight:700;color:var(--accent);flex:1"><i class="ti ti-plus"></i> 手動追加品項${addCandidates.length?'（'+addCandidates.length+' 項可加）':''}</span>
+                <i class="ti ti-chevron-${addOpen?'up':'down'}" style="color:var(--accent)"></i>
+              </div>`;
+            if(addOpen){
+              if(addCandidates.length){
+                a+=`<div class="note" style="margin:8px 0;font-size:11px"><i class="ti ti-info-circle"></i>下列品項不在自動清單中（狀態較早或其他），點「加入」即可納入本次開單。</div>`;
+                a+=`<div class="stack" style="margin-top:6px">`+addCandidates.map(p=>`
+                  <div class="card compact row" style="gap:8px;padding:8px 10px">
+                    <span style="flex:1;min-width:0"><span class="nm" style="font-size:12.5px">${p.name||'—'}</span>
+                      <span class="pill pill--n" style="font-size:9.5px;margin-left:4px">${SM[p.status]?SM[p.status][0]:p.status}</span></span>
+                    <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;font-size:11px;color:var(--accent);border-color:var(--accent)" onclick="A.retroAddItem('${p.id}')"><i class="ti ti-plus"></i> 加入</button>
+                  </div>`).join('')+`</div>`;
+              } else {
+                a+=`<div class="card faint" style="text-align:center;padding:12px;font-size:12px;margin-top:8px">沒有其他可追加的品項</div>`;
+              }
+            }
+            a+=`</div>`;
+            return a;
+          })()}
+        </div>`;
+      } else {
+        // 即使沒有自動品項，也提供手動追加入口
+        const addOpen=!!pifGroupClosed['retroAddOpen_'+activeCust];
+        h+=`<div class="card" style="border-color:var(--accent);margin-bottom:14px">
+          <div style="display:flex;align-items:center;cursor:pointer" onclick="A.toggleRetroAdd('${activeCust}')">
+            <span style="font-size:13px;font-weight:700;color:var(--accent);flex:1"><i class="ti ti-plus"></i> 手動追加品項開 PIF 收款單${addCandidates.length?'（'+addCandidates.length+' 項可加）':''}</span>
+            <i class="ti ti-chevron-${addOpen?'up':'down'}" style="color:var(--accent)"></i>
+          </div>
+          ${addOpen?(addCandidates.length
+            ? `<div class="stack" style="margin-top:10px">`+addCandidates.map(p=>`
+                <div class="card compact row" style="gap:8px;padding:8px 10px">
+                  <span style="flex:1;min-width:0"><span class="nm" style="font-size:12.5px">${p.name||'—'}</span>
+                    <span class="pill pill--n" style="font-size:9.5px;margin-left:4px">${SM[p.status]?SM[p.status][0]:p.status}</span></span>
+                  <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;font-size:11px;color:var(--accent);border-color:var(--accent)" onclick="A.retroAddItem('${p.id}')"><i class="ti ti-plus"></i> 加入</button>
+                </div>`).join('')+`</div>`
+            : `<div class="card faint" style="text-align:center;padding:12px;font-size:12px;margin-top:10px">此客戶沒有可追加的品項</div>`):''}
         </div>`;
       }
 
@@ -4306,8 +4358,9 @@ const A = {
   toggleInvDetail(id){ invDetailOpen=(invDetailOpen===id?null:id); render(); },
   createInvoiceRec(cn){
     const items=products.filter(p=>
-      (p.status==='completed'||p.status==='testing'||p.status==='reporting') &&
-      custName(p)===cn && !p.pifFeeInvoice && !p.pifFeePaid && p.retroSel!==false
+      custName(p)===cn && !p.pifFeeInvoice && !p.pifFeePaid && p.retroSel!==false &&
+      // 自動納入狀態 或 手動追加(retroForce)
+      (['paid','completed','testing','reporting'].includes(p.status) || p.retroForce)
     );
     if(!items.length){ A.toast('請先勾選要開單的品項'); return; }
     const dateEl=document.getElementById('retro_date_all');
@@ -4333,6 +4386,7 @@ const A = {
       p.pifPlanLabel=it.plan;
       p.pifCharge=it.amt;
       delete p.retroPlans;
+      delete p.retroForce;
     });
     invDetailOpen=rec.id;
     save(); render();
@@ -4544,6 +4598,15 @@ const A = {
   },
   setInvTab(t){ invTab=t; render(); },
   setRetroCust(cn){ retroCust=cn; render(); },
+  toggleRetroAdd(cn){ pifGroupClosed['retroAddOpen_'+cn]=!pifGroupClosed['retroAddOpen_'+cn]; render(); },
+  retroAddItem(id){
+    const p=byId(id); if(!p) return;
+    p.retroForce=true;        // 標記為手動追加
+    p.retroSel=true;          // 預設勾選
+    if(!p.retroPlans) p.retroPlans=['shared'];
+    save(); render();
+    A.toast('已追加「'+p.name+'」到待開 PIF 收款單');
+  },
   retroToggleSel(id){ const p=byId(id); if(p){ p.retroSel=(p.retroSel===false); render(); } },
   retroSelAll(cn){
     const items=products.filter(p=>(p.status==='completed'||p.status==='testing'||p.status==='reporting')&&custName(p)===cn&&!p.pifFeeInvoice&&!p.pifFeePaid);
