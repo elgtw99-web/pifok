@@ -485,8 +485,8 @@ let customers=[
 const DEMO_INTRO='';
 let showcase=[];
 let invoiceRecs=[]; // 收款單：每張獨立單號、明細、狀態
-const ELG_TABS={ '主要管理者':['home','customers','library','receive','apply','data','invoice','pif','showcase','summary'], '管理':['home','customers','library','receive','apply','data','invoice','pif','showcase','summary'] };
-const TAB_LABEL={ home:'總覽', customers:'客戶', library:'樣品庫', receive:'收件', apply:'申請', data:'送驗資料', invoice:'帳款明細', pif:'完成 PIF', showcase:'新品介紹', summary:'收款匯總' };
+const ELG_TABS={ '主要管理者':['home','customers','library','receive','invoice','apply','data','pif','showcase','summary'], '管理':['home','customers','library','receive','invoice','apply','data','pif','showcase','summary'] };
+const TAB_LABEL={ home:'總覽', customers:'客戶', library:'樣品庫', receive:'收件', apply:'申請', data:'送驗資料', invoice:'帳款明細', pif:'PIF 處理狀態', showcase:'新品介紹', summary:'收款匯總' };
 
 let products=[];
 
@@ -669,7 +669,10 @@ const tab = (cur,id,ic,label,fn) =>
 
 /* ===================== CUSTOMER ===================== */
 function custApp(){
-  const right=`<div style="display:flex;align-items:center;gap:12px"><button class="iconbtn" onclick="A.logout()" title="登出"><i class="ti ti-logout"></i></button><div class="av">${(me.nameCh||'客')[0]}</div></div>`;
+  const right=`<div style="display:flex;align-items:center;gap:10px">
+    <div class="av">${(me.nameCh||'客')[0]}</div>
+    <button class="hbtn" onclick="A.logout()" style="color:#C0392B;border-color:#E7C3BD;font-size:12px;padding:4px 12px"><i class="ti ti-logout"></i> 登出</button>
+  </div>`;
   return header('依洛嘉送驗', me.nameCh||'客戶', right) +
     `<div class="screen">${custScreen()}</div>` +
     `<div class="tabbar">
@@ -866,7 +869,7 @@ function elgHeader(){
   </div>`;
 }
 function elgApp(){
-  const TI={ home:['layout-dashboard','總覽'], customers:['users','客戶'], library:['database','樣品庫'], receive:['package-import','收件'], apply:['list-check','申請'], data:['file-spreadsheet','送驗資料'], invoice:['receipt-2','帳款明細'], pif:['clipboard-check','完成 PIF'], showcase:['sparkles','新品介紹'], summary:['chart-bar','收款匯總'] };
+  const TI={ home:['layout-dashboard','總覽'], customers:['users','客戶'], library:['database','樣品庫'], receive:['package-import','收件'], apply:['list-check','申請'], data:['file-spreadsheet','送驗資料'], invoice:['receipt-2','帳款明細'], pif:['clipboard-check','PIF 處理狀態'], showcase:['sparkles','新品介紹'], summary:['chart-bar','收款匯總'] };
   const allowed = ELG_TABS[elgRole]||ELG_TABS['主要管理者'];
   if(!allowed.includes(elgTab)) elgTab=allowed[0];
   const tabs=allowed.map(id=>tab(elgTab,id,TI[id][0],TI[id][1],'A.setElgTab')).join('');
