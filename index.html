@@ -1208,39 +1208,48 @@ function elgSummary(){
           <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;font-size:11.5px;color:#C0392B;border-color:#E7C3BD" onclick="A.revertCustPay('${cn}')">
             <i class="ti ti-arrow-back-up"></i> ${confirmDel==='revc'+cn?'確認全部退回？':'全部退回請款中'}</button>
         </div>`:''}
-        ${custProd.map(p=>{
-          const paid=paidOf(p);
-          const itemCharge=chargeOf(p);
-          const pdiff=itemCharge-paid;
-          const method=p.payMethod||(p.payRecords&&p.payRecords[0]&&p.payRecords[0].method)||'';
-          // 檢驗費收款狀態
-          const isInvoicing=['invoiced','reported'].includes(p.status) && paid===0;
-          // PIF 費狀態
-          const pifInvoiced=!!p.pifFeeInvoice;
-          const pifPaid=!!p.pifFeePaid;
-          let pifBadge='';
-          if(pifPaid) pifBadge=`<span class="pill pill--s" style="font-size:9.5px">PIF費已收 ${money(p.pifCharge||0)}</span>`;
-          else if(pifInvoiced) pifBadge=`<span class="pill pill--w" style="font-size:9.5px">PIF費請款中 ${money(p.pifCharge||0)}</span>`;
-          else pifBadge=`<span class="pill pill--n" style="font-size:9.5px">PIF費未開單</span>`;
-          // 金額顯示文字
-          let amtText, amtColor;
-          if(isInvoicing){ amtText='請款中'; amtColor='var(--w)'; }
-          else if(paid>0){ amtText=money(paid); amtColor='var(--s)'; }
-          else { amtText='未收款'; amtColor='var(--faint)'; }
-          return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px">
-            <span style="flex:1;min-width:0">
-              <span style="font-weight:600">${p.name||'—'}</span>
-              <span class="sub" style="font-size:11px;margin-left:6px">${SM[p.status]?SM[p.status][0]:p.status}${method?' · '+method:''}</span>
-              <br>${pifBadge}
-              ${paid>0?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 8px;margin-top:4px;font-size:10.5px;color:#C0392B;border-color:#E7C3BD" onclick="A.revertItemPay('${p.id}')"><i class="ti ti-arrow-back-up"></i> ${confirmDel==='rev'+p.id?'確認退回？':'退回請款中'}</button>`:''}
-            </span>
-            <span style="text-align:right;white-space:nowrap">
-              <span style="color:${amtColor};font-weight:700;font-size:12.5px">${amtText}</span>
-              ${(!isInvoicing&&pdiff>0)?`<br><span class="sub" style="font-size:10.5px;color:var(--w)">欠 ${money(pdiff)}</span>`:''}
-              <span class="sub" style="font-size:10px;display:block">應收 ${money(itemCharge)}</span>
-            </span>
-          </div>`;
-        }).join('')}
+        ${(()=>{
+          // 依收款狀態分三組
+          const renderItem=p=>{
+            const paid=paidOf(p);
+            const itemCharge=chargeOf(p);
+            const pdiff=itemCharge-paid;
+            const method=p.payMethod||(p.payRecords&&p.payRecords[0]&&p.payRecords[0].method)||'';
+            const isInvoicing=['invoiced','reported'].includes(p.status) && paid===0;
+            const pifInvoiced=!!p.pifFeeInvoice;
+            const pifPaid=!!p.pifFeePaid;
+            let pifBadge='';
+            if(pifPaid) pifBadge=`<span class="pill pill--s" style="font-size:9.5px">PIF費已收 ${money(p.pifCharge||0)}</span>`;
+            else if(pifInvoiced) pifBadge=`<span class="pill pill--w" style="font-size:9.5px">PIF費請款中 ${money(p.pifCharge||0)}</span>`;
+            else pifBadge=`<span class="pill pill--n" style="font-size:9.5px">PIF費未開單</span>`;
+            let amtText, amtColor;
+            if(isInvoicing){ amtText='請款中'; amtColor='var(--w)'; }
+            else if(paid>0){ amtText=money(paid); amtColor='var(--s)'; }
+            else { amtText='未收款'; amtColor='var(--faint)'; }
+            return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px">
+              <span style="flex:1;min-width:0">
+                <span style="font-weight:600">${p.name||'—'}</span>
+                <span class="sub" style="font-size:11px;margin-left:6px">${SM[p.status]?SM[p.status][0]:p.status}${method?' · '+method:''}</span>
+                <br>${pifBadge}
+                ${paid>0?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 8px;margin-top:4px;font-size:10.5px;color:#C0392B;border-color:#E7C3BD" onclick="A.revertItemPay('${p.id}')"><i class="ti ti-arrow-back-up"></i> ${confirmDel==='rev'+p.id?'確認退回？':'退回請款中'}</button>`:''}
+              </span>
+              <span style="text-align:right;white-space:nowrap">
+                <span style="color:${amtColor};font-weight:700;font-size:12.5px">${amtText}</span>
+                ${(!isInvoicing&&pdiff>0)?`<br><span class="sub" style="font-size:10.5px;color:var(--w)">欠 ${money(pdiff)}</span>`:''}
+                <span class="sub" style="font-size:10px;display:block">應收 ${money(itemCharge)}</span>
+              </span>
+            </div>`;
+          };
+          const gPaid=custProd.filter(p=>paidOf(p)>0);                                          // 已收款
+          const gInvoicing=custProd.filter(p=>['invoiced','reported'].includes(p.status)&&paidOf(p)===0); // 請款中
+          const gUnpaid=custProd.filter(p=>paidOf(p)===0 && !['invoiced','reported'].includes(p.status)); // 其他未收款
+          const grpHead=(label,color,n,amt)=>`<div style="display:flex;align-items:center;gap:6px;margin:10px 0 2px;padding-bottom:4px;border-bottom:2px solid ${color}"><span style="font-size:12px;font-weight:700;color:${color}">${label}</span><span class="sub" style="font-size:11px">${n} 筆${amt!=null?' · '+money(amt):''}</span></div>`;
+          let out='';
+          if(gPaid.length){ out+=grpHead('✓ 已收款','var(--s)',gPaid.length,gPaid.reduce((s,p)=>s+paidOf(p),0)); out+=gPaid.map(renderItem).join(''); }
+          if(gInvoicing.length){ out+=grpHead('請款中（待收款）','var(--w)',gInvoicing.length,gInvoicing.reduce((s,p)=>s+chargeOf(p),0)); out+=gInvoicing.map(renderItem).join(''); }
+          if(gUnpaid.length){ out+=grpHead('未收款','var(--faint)',gUnpaid.length,gUnpaid.reduce((s,p)=>s+chargeOf(p),0)); out+=gUnpaid.map(renderItem).join(''); }
+          return out;
+        })()}
       </div>`:''}
     </div>`;
   }; // end renderCust
