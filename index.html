@@ -1524,23 +1524,28 @@ function elgHome(){
   ];
   let h=`<div class="note" style="margin-bottom:14px"><i class="ti ti-layout-dashboard"></i>全流程總覽 · 點任一階段直接前往處理。</div>`;
   if(typeof FB!=='undefined' && FB.on && FB.user){
-    if(FB.cloudEmpty && products.length>0){
-      // 雲端空、本機有資料 → 提示上傳（這台是有資料的電腦）
+    const cloudN=(FB.cloudCount===undefined?null:FB.cloudCount);
+    if(products.length>0 && (cloudN===0 || FB.cloudEmpty)){
+      // 本機有資料、雲端空 → 這台是「有資料的電腦」，要上傳
       h+=`<div class="card" style="border-color:var(--w);margin-bottom:16px">
         <p class="nm" style="font-size:15px"><i class="ti ti-cloud-upload"></i> 雲端尚無資料 · 本機有 ${products.length} 筆</p>
-        <p class="sub" style="margin:6px 0 12px">這台電腦有資料但雲端是空的。請上傳到雲端，其他裝置（含手機、國外客戶）才能看到。</p>
+        <p class="sub" style="margin:6px 0 12px">這台有資料但雲端是空的。請上傳到雲端，手機與其他裝置才看得到。</p>
         <button class="btn btn--ok btn--sm" style="width:auto;padding:0 18px" onclick="A.fbPushLocal()"><i class="ti ti-cloud-upload"></i> 上傳 ${products.length} 筆到雲端</button>
+        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;margin-left:8px" onclick="A.fbDiagnose()"><i class="ti ti-stethoscope"></i> 測試雲端連線</button>
+        <div id="fb_diag" class="sub" style="margin-top:8px"></div>
       </div>`;
-    } else if(FB.cloudEmpty && products.length===0){
-      // 雲端空、本機也空 → 全新環境
-      h+=`<div class="card" style="border-color:var(--accent);margin-bottom:16px">
-        <p class="nm" style="font-size:15px"><i class="ti ti-cloud"></i> 雲端與本機都沒有資料</p>
-        <p class="sub" style="margin:6px 0 0">這是全新環境。新增產品後會自動存到雲端，其他裝置登入就能同步看到。</p>
+    } else if(products.length===0 && (cloudN===0 || cloudN===null)){
+      // 本機空、雲端也空 → 誠實告知雲端沒資料（不要假稱已同步）
+      h+=`<div class="card" style="border-color:var(--w);margin-bottom:16px">
+        <p class="nm" style="font-size:15px"><i class="ti ti-cloud-off"></i> 雲端目前沒有資料</p>
+        <p class="sub" style="margin:6px 0 12px">這台沒有資料、雲端也是空的，所以顯示 0。請到<b>有完整資料的那台電腦</b>，按「上傳本機資料到雲端」，這裡才看得到。</p>
+        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.fbDiagnose()"><i class="ti ti-stethoscope"></i> 測試雲端連線</button>
+        <div id="fb_diag" class="sub" style="margin-top:8px"></div>
       </div>`;
-    } else if(!FB.cloudEmpty){
-      // 雲端有資料 → 顯示已同步
+    } else if(cloudN>0){
+      // 雲端確實有資料
       h+=`<div class="card" style="border-color:var(--s);margin-bottom:16px;padding:10px 16px">
-        <div class="row"><span class="nm" style="font-size:13.5px"><i class="ti ti-cloud-check" style="color:var(--s)"></i> 雲端已同步 · 資料即時儲存</span><span class="pill pill--s" style="font-size:11px">${FB.user.email||''}</span></div>
+        <div class="row"><span class="nm" style="font-size:13.5px"><i class="ti ti-cloud-check" style="color:var(--s)"></i> 雲端已同步 · ${cloudN} 筆</span><span class="pill pill--s" style="font-size:11px">${FB.user.email||''}</span></div>
       </div>`;
     }
   }
@@ -5121,6 +5126,8 @@ function fbHandleRedirect(){
 function stripId(o){ const c=Object.assign({},o); delete c.id; return c; }
 function fbDetach(){ FB.unsub.forEach(u=>{try{u();}catch(e){}}); FB.unsub=[]; FB.seeded=false; FB.cloudEmpty=false; }
 function snapApply(name, arr, docs){
+  // 記錄雲端 products 實際筆數，供總覽頁誠實判斷
+  if(name==='products'){ FB.cloudCount=docs.length; }
   // products 空（Firestore 尚未上傳）→ 保留本機種子，不清空
   if(name==='products' && docs.length===0 && arr.length>0){ FB.cloudEmpty=true; return; }
   if(name==='products' && docs.length>0){ FB.cloudEmpty=false; FB.seeded=true; }
