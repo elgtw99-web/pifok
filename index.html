@@ -301,18 +301,10 @@ const FACTORY = 'E.L.G International Trading（依洛嘉）· 台南市佳里區
 let view='entry', role='customer', custTab='submit', elgTab='receive', dataPid=null, editingProfile=false, devOpen=false, custView=null, batch={}, libStatOff={}, libCustOff={}, libQ='', libImpCust='', libDrafts=[], libImpStatus='applied', confirmDel=null;
 let me={ nameCh:'', nameEn:'', addrCh:'', addrEn:'', phone:'', filled:false };
 const SAMPLE_ME={ nameCh:'晶寶企業行', nameEn:'Jingbao Co., Ltd.', addrCh:'高雄市大寮區琉球里巷尾路89之1號', addrEn:'No.89-1, Xiangwei Rd., Daliao Dist., Kaohsiung', phone:'07-1234567' };
-const SAMPLE_ME2={ nameCh:'芊奕田生技', nameEn:'Chianyitian Biotech Co., Ltd.', addrCh:'台南市安平區建平一街56號', addrEn:'No.56, Jianping 1st St., Anping Dist., Tainan', phone:'06-2991234' };
+const SAMPLE_ME2={ nameCh:'', nameEn:'', addrCh:'', addrEn:'', phone:'' };
 const custName = p => p.cust || CUST;
 const CINFO = {
   '依洛嘉國際實業有限公司':'台南市佳里區佳興里宅興二街600號',
-  '晶寶企業行':'高雄市大寮區琉球里巷尾路89之1號',
-  '芊奕田生技':'台南市安平區建平一街56號',
-  '夏芮蒂生物科技有限公司':'花蓮市中美路71-12號1樓',
-  '歐菲莉婭商行':'高雄市前鎮區新生路802號3樓',
-  '絢美學企業社':'台北市大安區忠孝東路四段208號7樓',
-  '鼎圓開發有限公司':'新北市中和區立德街9號4樓',
-  '凱德妮斯企業社':'基隆市暖暖區碇內街192巷1號2樓',
-  '姝顏生技企業社':'高雄市旗山區上洲里周厝巷1號一樓'
 };
 const custAddr = p => CINFO[custName(p)] || (p.mine ? (me.addrCh||'') : '');
 const ownedByMe = p => {
@@ -522,7 +514,7 @@ const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 /* ---------- persistence ---------- */
 const SEED_VER='2026-06-17-pif7-fixed';
 function save(){
-  if(FB_SYNC_READY && typeof FB!=='undefined' && FB.on && FB.user && FB.role && FB.role!=='pending'){ clearTimeout(FB.syncT); FB.syncT=setTimeout(fbSync,400); }
+  if(FB_SYNC_READY && typeof FB!=='undefined' && FB.on && FB.user && FB.role && FB.role!=='pending'){ clearTimeout(FB.syncT); FB.syncT=setTimeout(()=>{ fbSync(); FB.syncT=null; },800); }
   try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,showcase,invoiceRecs,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO})); }catch(e){}
 }
 function load(){
@@ -587,7 +579,7 @@ function render(){
   const dev=document.getElementById('dev');
   if(dev){
     if(!devOpen){
-      dev.innerHTML=`<button class="devbtn" onclick="A.toggleDev()"><i class="ti ti-switch-horizontal"></i> 測試切換</button>`;
+      dev.innerHTML=``;
     } else {
       const cur = view!=='app' ? (view==='board'?'客戶公共平臺':'入口／登入')
         : (role==='customer'?('客戶：'+(me.nameCh||'')):('依洛嘉後臺 · '+elgRole));
@@ -595,7 +587,6 @@ function render(){
         <div class="devhd">測試身分 · 目前：${cur} <i class="ti ti-x" onclick="A.toggleDev()"></i></div>
         ${(typeof FB!=='undefined'&&FB.on&&FB.user)?`<button onclick="A.devLogoutSwitch()" style="color:#C0392B"><i class="ti ti-logout"></i> 先登出 Firebase 再切換</button>`:''}
         <button onclick="A.devGo('customer')"><i class="ti ti-user"></i> 客戶端（${SAMPLE_ME.nameCh}）</button>
-        <button onclick="A.devGo('customer2')"><i class="ti ti-user"></i> 客戶端（${SAMPLE_ME2.nameCh}）</button>
         <button onclick="A.devGo('admin')"><i class="ti ti-shield-check"></i> 依洛嘉後臺 · 主要管理者</button>
         <button onclick="A.devGo('manage')"><i class="ti ti-briefcase"></i> 依洛嘉後臺 · 管理</button>
         <button onclick="A.devGo('board')"><i class="ti ti-clipboard-list"></i> 客戶公共平臺（免登入）</button>
@@ -2105,12 +2096,26 @@ function textMode(){
     <button class="btn btn--sm" style="margin-top:10px" onclick="A.recognizeText()"><i class="ti ti-wand"></i> 辨識並拆成多行</button>`;
 }
 function manualMode(){
-  return `<label class="lbl">正確產品品名（會輸出到送驗清單）</label><input id="mi_n" class="fld" placeholder="例：玫瑰臉部精油" style="margin-bottom:10px">
+  const isCust=addTarget!=='eloga';
+  return `${isCust?`<div class="card" style="border-color:var(--w);background:var(--w-bg);margin-bottom:14px;padding:12px 14px">
+    <p class="nm" style="font-size:13.5px;color:var(--w);margin-bottom:6px"><i class="ti ti-alert-triangle"></i> 送樣數量注意事項</p>
+    <p class="sub" style="margin:0;line-height:1.8">
+      · 每項送檢商品樣品總重量 <b>不得低於 240g</b><br>
+      · 液態／膏體：至少 <b>4 瓶（支）</b>以上<br>
+      · 面膜類（25g／片）：至少 <b>10 片</b><br>
+      · 粉狀／固體：至少 <b>4 包（盒）</b>以上<br>
+      · 數量不足可能導致無法完成全部檢測項目
+    </p>
+  </div>`:''}
+  <label class="lbl">正確產品品名（會輸出到送驗清單）</label><input id="mi_n" class="fld" placeholder="例：玫瑰臉部精油" style="margin-bottom:10px">
     <label class="lbl">別名 / 依洛嘉配方名（內部對照，不輸出）</label><input id="mi_alias" class="fld" placeholder="例：ELG-OIL-07" style="margin-bottom:10px">
     <label class="lbl">英文名</label><input id="mi_e" class="fld" placeholder="English name" style="margin-bottom:10px">
     <div style="display:flex;gap:10px">
-      <div style="flex:1"><label class="lbl">型號規格</label><input id="mi_s" class="fld" placeholder="100ml/瓶"></div>
-      <div style="flex:1"><label class="lbl">數量</label><input id="mi_q" class="fld" placeholder="4瓶"></div>
+      <div style="flex:1"><label class="lbl">型號規格</label><input id="mi_s" class="fld" placeholder="例：100ml/瓶"></div>
+      <div style="flex:1">
+        <label class="lbl">數量 <span style="color:var(--w);font-size:11px">（需≥240g）</span></label>
+        <input id="mi_q" class="fld" placeholder="${isCust?'例：4瓶 / 10片':'例：4瓶'}">
+      </div>
     </div>
     <button class="btn btn--sm" style="margin-top:12px" onclick="A.addManual()"><i class="ti ti-plus"></i> 加入這一筆</button>`;
 }
@@ -2254,9 +2259,15 @@ function customerSection(){
           </div></div>`
         :`<button class="btn btn--sm" style="margin-top:8px;width:auto;padding:0 14px" onclick="A.genVerifyLink(${i})"><i class="ti ti-link"></i> 產生驗證連結</button>`}
       <button class="btn btn--ghost btn--sm" style="margin-top:8px;width:auto;padding:0 14px;color:#C0392B;border-color:#E7C3BD" onclick="A.delCustomer(${i})"><i class="ti ti-trash"></i> ${confirmDel==='ca'+i?'確認刪除？':'刪除帳號'}</button>`;
-    else if(c.status==='已啟用') act=`<div style="display:flex;gap:8px;margin-top:10px">
+    else if(c.status==='已啟用') act=`<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
         <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.disableCust(${i})"><i class="ti ti-ban"></i> 停用</button>
         <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;color:#C0392B;border-color:#E7C3BD" onclick="A.delCustomer(${i})"><i class="ti ti-trash"></i> ${confirmDel==='ca'+i?'確認刪除？':'刪除帳號'}</button></div>
+      ${!c.email?`<div style="margin-top:10px;padding:10px 12px;border:1.5px dashed var(--accent);border-radius:10px;background:var(--accent-tint)">
+        <div class="sub" style="margin-bottom:6px;color:var(--accent);font-weight:700"><i class="ti ti-user-check"></i> 尚未綁定 Gmail，填入後轉為正式帳號</div>
+        <div style="display:flex;gap:8px">
+          <input class="fld fld--mini" id="set_email_${i}" placeholder="客戶 Gmail" type="email" style="flex:1">
+          <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px;flex:none" onclick="A.setCustEmail(${i})"><i class="ti ti-check"></i> 綁定</button>
+        </div></div>`:``}
       <div style="margin-top:10px"><label class="lbl">PIF Google 資料夾連結</label>
         <input class="fld" value="${c.drive||''}" placeholder="貼上該客戶專屬資料夾連結" onchange="A.setCustDrive(${i},this.value)"></div>`;
     else act=`<div style="display:flex;gap:8px;margin-top:10px">
@@ -2310,6 +2321,10 @@ function customerSection(){
     </div>`;
   } else {
     h += `<button class="btn btn--ghost" style="margin-top:14px" onclick="A.openCustAdd()"><i class="ti ti-plus"></i> 代註冊新客戶（填 Gmail 直接開通）</button>`;
+    if(typeof FB!=='undefined'&&FB.on&&FB.db){
+      h += `<button class="btn btn--ghost" style="margin-top:8px;color:#C0392B;border-color:#E7C3BD" onclick="A.clearFirestoreCustomers()">
+        <i class="ti ti-trash"></i> ${confirmDel==='clear_custs'?'確認清除雲端所有客戶？':'清除雲端舊客戶資料（重新建立）'}</button>`;
+    }
   }
   return h;
 }
@@ -2535,14 +2550,52 @@ const A = {
   delCustomer(i){
     const c=customers[i]; if(!c) return;
     if(confirmDel!=='ca'+i){ confirmDel='ca'+i; render(); A.toast('再按一次「刪除帳號」以確認刪除'); return; }
-    const nm=c.name; customers.splice(i,1); confirmDel=null; save(); render();
-    A.toast('已刪除客戶帳號：'+nm+'（其樣品仍保留，可在樣品庫處理）');
+    const nm=c.name; const cid=c.id;
+    customers.splice(i,1); confirmDel=null; save(); render();
+    // 同步刪除 Firestore
+    if(cid&&typeof FB!=='undefined'&&FB.on&&FB.db){
+      FB.db.collection('customers').doc(cid).delete()
+        .then(()=>A.toast('已刪除客戶帳號：'+nm))
+        .catch(e=>A.toast('本機已刪，雲端刪除失敗：'+e.message));
+    } else {
+      A.toast('已刪除客戶帳號：'+nm);
+    }
+  },
+  setCustEmail(i){
+    const c=customers[i]; if(!c) return;
+    const el=document.getElementById('set_email_'+i);
+    const email=(el?el.value:'').trim().toLowerCase();
+    if(!email||!email.includes('@')){ A.toast('請填入有效的 Gmail'); return; }
+    if(customers.some((x,j)=>j!==i&&x.email&&x.email.toLowerCase()===email)){ A.toast('這個 Gmail 已被其他帳號使用'); return; }
+    c.email=email; c.login='Google';
+    // 直接寫入 Firestore
+    if(typeof FB!=='undefined'&&FB.on&&FB.db){
+      const docId=c.id||FB.db.collection('customers').doc().id;
+      c.id=docId;
+      FB.db.collection('customers').doc(docId).set(Object.assign({},c))
+        .then(()=>A.toast('已綁定 Gmail：'+email+'，客戶現在可以登入'))
+        .catch(e=>A.toast('本機已更新，雲端同步失敗：'+e.message));
+    } else {
+      A.toast('已綁定 Gmail：'+email);
+    }
+    save(); render();
   },
   genVerifyLink(i){ const c=customers[i]; if(!c) return; c.verifyToken=Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4); save(); render(); A.toast('已產生驗證連結，可複製傳給客戶'); },
   copyVerify(i){ const c=customers[i]; if(!c) return; const url=verifyURL(c);
     try{ navigator.clipboard.writeText(url); A.toast('已複製驗證連結'); }catch(e){ A.toast('請手動複製連結'); } },
   simVerify(i){ const c=customers[i]; if(!c) return; c.status='已啟用'; c.temp=false; c.login='Google'; delete c.verifyToken; save(); render(); A.toast(c.name+'：已完成 Google 驗證，轉為正式帳號'); },
-  openCustAdd(){ custAddOpen=true; render(); },
+  async clearFirestoreCustomers(){
+    if(!FB.on||!FB.db){ A.toast('未連線 Firestore'); return; }
+    if(confirmDel!=='clear_custs'){ confirmDel='clear_custs'; render(); A.toast('再按一次確認清除所有雲端客戶資料（本機資料保留）'); return; }
+    try{
+      const snap=await FB.db.collection('customers').get();
+      const batch=FB.db.batch();
+      snap.docs.forEach(d=>batch.delete(d.ref));
+      await batch.commit();
+      confirmDel=null; render();
+      A.toast('已清除 Firestore 所有客戶資料，重新整理後會以本機資料為準');
+    }catch(e){ A.toast('清除失敗：'+e.message); }
+  },
   closeCustAdd(){ custAddOpen=false; render(); },
   addCustomer(){
     const nm=(dval('c_name','')||'').trim(); if(!nm){ A.toast('請輸入公司名'); return; }
@@ -3064,7 +3117,7 @@ const A = {
   allowShip(id){ const p=byId(id); if(p){ p.status='approved'; p.shipSel=true; } render(); A.toast('已確認允許寄送，回送客戶端'); },
   openMyFolder(){ const c=customers.find(x=>x.name===me.nameCh); if(c&&c.drive&&c.driveAuth) window.open(c.drive,'_blank'); else A.toast(c&&c.drive&&!c.driveAuth?'依洛嘉尚未授權存取你的 PIF 雲端資料夾':'依洛嘉尚未提供你的 PIF 雲端資料夾連結'); },
   setCustDrive(i,v){ if(customers[i]){ customers[i].drive=(v||'').trim(); save(); A.toast('已更新客戶 PIF 資料夾連結'); } },
-  receive(id){ const p=byId(id); if(p){ p.status='received'; if(p.invSel===undefined)p.invSel=true; if(!p.feeSel)p.feeSel=5000; } render(); A.toast('已收樣，可到「請款」開收款單'); },
+  receive(id){ const p=byId(id); if(p){ p.status='received'; if(p.invSel===undefined)p.invSel=true; if(!p.feeSel)p.feeSel=10000; save(); } render(); A.toast('已收樣，可到「帳款明細」開收款單'); },
   toggleInvDetail(id){ invDetailOpen=(invDetailOpen===id?null:id); render(); },
   createInvoiceRec(cn){
     const items=products.filter(p=>
@@ -3180,8 +3233,13 @@ const A = {
   issueInvoiceFor(cn){
     const sel=P('received').filter(p=>custName(p)===cn && p.invSel);
     if(!sel.length){ A.toast('請先勾選 '+cn+' 的樣品'); return; }
-    sel.forEach(p=>{ p.status='invoiced'; p.charge=p.feeSel; });
-    render(); A.toast('已開收款單給 '+cn+'（'+sel.length+' 項），回送該客戶');
+    const custEmail=(customers.find(c=>c.name===cn)||{}).email||'';
+    sel.forEach(p=>{
+      p.status='invoiced';
+      p.charge=p.feeSel||p.feeSelPlans&&PIF_PLANS.filter(pl=>p.feeSelPlans.includes(pl.id)).reduce((s,pl)=>s+pl.amt,0)||0;
+      if(!p.customerEmail && custEmail) p.customerEmail=custEmail;
+    });
+    save(); render(); A.toast('已開收款單給 '+cn+'（'+sel.length+' 項）');
   },
   toggleContract(i){ const c=customers[i]; if(!c) return; c.contract=!c.contract; if(c.contract && c.balance===undefined) c.balance=0; save(); render(); A.toast(c.contract?(c.name+' 已設為合約制'):(c.name+' 已取消合約制')); },
   setBalance(i){ const c=customers[i]; if(!c) return; const v=Number((dval('bal_'+i,'')||'').replace(/[^0-9.-]/g,'')); if(isNaN(v)){ A.toast('請輸入金額'); return; } c.balance=v; c.contract=true; save(); render(); A.toast(c.name+' 合約餘額設為 '+money(v)); },
@@ -3349,6 +3407,8 @@ function snapApply(name, arr, docs){
   // products 空（Firestore 尚未上傳）→ 保留本機種子，不清空
   if(name==='products' && docs.length===0 && arr.length>0){ FB.cloudEmpty=true; return; }
   if(name==='products' && docs.length>0){ FB.cloudEmpty=false; FB.seeded=true; }
+  // 有 pending sync 還沒提交 → 跳過這次 snapshot，避免覆蓋本機最新狀態
+  if(FB.syncT) return;
   // 其他集合若 products 尚未上傳也先保留
   if(FB.cloudEmpty && docs.length===0 && arr.length>0) return;
   arr.length=0; const m={};
