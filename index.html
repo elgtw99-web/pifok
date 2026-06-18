@@ -1164,22 +1164,26 @@ function elgSummary(){
   const totalPending =allProd.reduce((s,p)=>s+itemDue(p),0);
   const totalCharge  =allProd.reduce((s,p)=>s+itemBilled(p),0);
 
-  // 收款方式統計
+  // 收款方式統計（兩桶都算：檢驗費 payRecords + 各請款單 payRecords）
   const byMethod={};
-  allProd.forEach(p=>(p.payRecords||[]).forEach(r=>{ if(r.amt>0) byMethod[r.method]=(byMethod[r.method]||0)+r.amt; }));
+  const addM=(m,amt)=>{ if(amt>0){ const k=m||'其他'; byMethod[k]=(byMethod[k]||0)+amt; } };
+  allProd.forEach(p=>{
+    (p.payRecords||[]).forEach(r=>addM(r.method,r.amt||0));
+    itemInvoices(p).forEach(iv=>(iv.payRecords||[]).forEach(r=>addM(r.method||iv.method,r.amt||0)));
+  });
 
   const sumQ=(libQ||'').trim().toLowerCase();
   let h='';
 
-  // 頂部四格
+  // 頂部四格（可點擊查看來源明細）
   h+=`<div class="dash" style="margin-bottom:16px">
-    <div class="metric"><div class="mi" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-cash"></i></div>
-      <div class="mv">${money(totalReceived)}</div><div class="ml">實收總計</div></div>
-    <div class="metric"><div class="mi" style="background:var(--w-bg);color:var(--w)"><i class="ti ti-clock"></i></div>
-      <div class="mv">${money(totalPending)}</div><div class="ml">待收款</div></div>
-    <div class="metric"><div class="mi" style="background:var(--n-bg)"><i class="ti ti-receipt"></i></div>
-      <div class="mv">${money(totalCharge)}</div><div class="ml">應收總計</div></div>
-    ${Object.keys(byMethod).map(m=>`<div class="metric"><div class="mi"><i class="ti ti-${m==='匯款'?'building-bank':m==='合約扣款'?'file-invoice':m==='信用卡'?'credit-card':'coins'}"></i></div><div class="mv" style="font-size:14px">${money(byMethod[m])}</div><div class="ml">${m}</div></div>`).join('')}
+    <div class="metric" style="cursor:pointer" onclick="A.metricBreakdown('received')"><div class="mi" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-cash"></i></div>
+      <div class="mv">${money(totalReceived)}</div><div class="ml">實收總計 <i class="ti ti-search" style="font-size:10px;opacity:.5"></i></div></div>
+    <div class="metric" style="cursor:pointer" onclick="A.metricBreakdown('pending')"><div class="mi" style="background:var(--w-bg);color:var(--w)"><i class="ti ti-clock"></i></div>
+      <div class="mv">${money(totalPending)}</div><div class="ml">待收款 <i class="ti ti-search" style="font-size:10px;opacity:.5"></i></div></div>
+    <div class="metric" style="cursor:pointer" onclick="A.metricBreakdown('billed')"><div class="mi" style="background:var(--n-bg)"><i class="ti ti-receipt"></i></div>
+      <div class="mv">${money(totalCharge)}</div><div class="ml">應收總計 <i class="ti ti-search" style="font-size:10px;opacity:.5"></i></div></div>
+    ${Object.keys(byMethod).map(m=>`<div class="metric" style="cursor:pointer" onclick="A.metricBreakdown('method:${m}')"><div class="mi"><i class="ti ti-${m==='匯款'?'building-bank':m==='合約扣款'?'file-invoice':m==='信用卡'?'credit-card':m==='手動確認'?'hand-stop':'coins'}"></i></div><div class="mv" style="font-size:14px">${money(byMethod[m])}</div><div class="ml">${m} <i class="ti ti-search" style="font-size:10px;opacity:.5"></i></div></div>`).join('')}
   </div>`;
 
   h+=srchBar('搜尋客戶或品名…');
@@ -4413,6 +4417,84 @@ const A = {
     invDetailOpen=rec.id;
     save(); render();
     A.toast('已新增獨立請款單 '+rec.id+'（'+money(total)+'）'+(note?'｜'+note:'')+'，先前明細完整保留');
+  },
+  metricBreakdown(kind){
+    const allProd=products.filter(p=>['invoiced','reported','paid','testing','reporting','completed'].includes(p.status)&&custName(p)!==ELG_SELF);
+    let title='', rows=[], total=0;
+
+    // 收集每個品項對此指標的貢獻
+    const push=(p,label,amt,extra)=>{ if(amt!==0){ rows.push({cust:custName(p),name:p.name||'—',label,amt,extra:extra||''}); total+=amt; } };
+
+    if(kind==='received'){
+      title='實收總計｜每筆已收款的來源';
+      allProd.forEach(p=>{
+        (p.payRecords||[]).forEach(r=>{ if(r.amt>0) push(p,'檢驗費',r.amt,(r.date||'')+' '+(r.method||'')+(r.note?' · '+r.note:'')); });
+        itemInvoices(p).forEach(iv=>(iv.payRecords||[]).forEach(r=>{ if(r.amt>0) push(p,iv.note||iv.label||'請款單',r.amt,(r.date||'')+' '+(r.method||iv.method||'')+' · '+(iv.id||'')); }));
+      });
+    } else if(kind==='pending'){
+      title='待收款｜每筆尚未收到的款項';
+      allProd.forEach(p=>{
+        const lb=legacyBilled(p), lp=legacyPaid(p), ld=Math.max(0,lb-lp);
+        if(ld>0) push(p,'檢驗費 待收',ld,'應收 '+money(lb)+' / 已收 '+money(lp));
+        itemInvoices(p).forEach(iv=>{ const ip=invPaidSum(iv); const id=Math.max(0,(iv.amount||0)-ip); if(id>0) push(p,(iv.note||iv.label||'請款單')+' 待收',id,(iv.id||'')+' 應收 '+money(iv.amount||0)+(ip>0?' / 已收 '+money(ip):'')); });
+      });
+    } else if(kind==='billed'){
+      title='應收總計｜每筆應收金額的來源';
+      allProd.forEach(p=>{
+        const lb=legacyBilled(p);
+        if(lb>0) push(p,'檢驗費',lb,'');
+        itemInvoices(p).forEach(iv=>{ if((iv.amount||0)>0) push(p,iv.note||iv.label||'請款單',iv.amount||0,iv.id||''); });
+      });
+    } else if(kind.startsWith('method:')){
+      const m=kind.slice(7);
+      title=m+'｜以此方式收到的每一筆款';
+      allProd.forEach(p=>{
+        (p.payRecords||[]).forEach(r=>{ if(r.amt>0 && (r.method||'其他')===m) push(p,'檢驗費',r.amt,(r.date||'')+(r.note?' · '+r.note:'')); });
+        itemInvoices(p).forEach(iv=>(iv.payRecords||[]).forEach(r=>{ if(r.amt>0 && (r.method||iv.method||'其他')===m) push(p,iv.note||iv.label||'請款單',r.amt,(r.date||'')+' · '+(iv.id||'')); }));
+      });
+    }
+
+    // 依客戶分組顯示
+    const byCust={};
+    rows.forEach(r=>{ (byCust[r.cust]=byCust[r.cust]||[]).push(r); });
+    const custNames=Object.keys(byCust).sort();
+
+    let body='';
+    if(!rows.length){
+      body=`<div class="card faint" style="text-align:center;padding:20px">沒有可顯示的明細</div>`;
+    } else {
+      custNames.forEach(cn=>{
+        const list=byCust[cn];
+        const sub=list.reduce((s,r)=>s+r.amt,0);
+        body+=`<div style="margin-bottom:10px">
+          <div style="display:flex;align-items:center;gap:8px;padding:6px 0;border-bottom:1.5px solid var(--line2)">
+            <span style="font-weight:700;font-size:13px;flex:1">${cn}</span>
+            <span style="font-weight:700;font-size:13px;color:var(--accent)">${money(sub)}</span>
+          </div>`;
+        list.forEach(r=>{
+          body+=`<div style="display:flex;align-items:flex-start;gap:8px;padding:5px 0;border-bottom:1px solid var(--line);font-size:12px">
+            <span style="flex:1;min-width:0"><span style="font-weight:600">${r.name}</span>
+              <span class="sub" style="font-size:10.5px;margin-left:4px">${r.label}</span>
+              ${r.extra?`<br><span class="sub" style="font-size:10px">${r.extra}</span>`:''}</span>
+            <span style="font-weight:700;text-align:right">${money(r.amt)}</span>
+          </div>`;
+        });
+        body+=`</div>`;
+      });
+    }
+
+    const overlay=document.createElement('div');
+    overlay.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:300;display:flex;align-items:center;justify-content:center;padding:16px';
+    overlay.onclick=e=>{ if(e.target===overlay) overlay.remove(); };
+    overlay.innerHTML=`<div style="background:var(--surface);border-radius:14px;width:100%;max-width:560px;max-height:85vh;overflow:auto;padding:18px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+        <span style="font-size:15px;font-weight:700;flex:1">${title}</span>
+        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" onclick="this.closest('div[style*=fixed]').remove()">關閉</button>
+      </div>
+      <div style="font-size:13px;font-weight:700;color:var(--accent);margin-bottom:12px">合計：${money(total)}（${rows.length} 筆）</div>
+      ${body}
+    </div>`;
+    document.body.appendChild(overlay);
   },
   diagPayData(){
     // 診斷：列出所有進入收款流程的品項的原始欄位，找出金額異常的來源
