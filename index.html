@@ -5371,16 +5371,19 @@ async function attachAdmin(){
 function attachCustomer(email){
   fbDetach();
   const emailLow=(email||'').toLowerCase();
-  // snapshot 訂閱自己的品項（email 比對）
+  const addProduct=(d)=>{
+    const o=Object.assign({},d.data()); o.id=d.id;
+    const idx=products.findIndex(p=>p.id===o.id);
+    if(idx===-1) products.push(o); else products[idx]=o;
+  };
+  // 自己的產品（email 比對）
   FB.unsub.push(FB.db.collection('products').where('customerEmail','==',email).onSnapshot(s=>{
-    s.docs.forEach(d=>{ if(!products.some(p=>p.id===d.id)){ const o=Object.assign({},d.data()); o.id=d.id; products.push(o); } });
-    FB.cloudCount=s.size; FB.ready=true; render();
+    s.docs.forEach(addProduct); FB.cloudCount=s.size; FB.ready=true; render();
   }, e=>{ FB.ready=true; render(); console.warn(e); }));
   // 小寫版（防大小寫不一致）
   if(emailLow!==email){
     FB.unsub.push(FB.db.collection('products').where('customerEmail','==',emailLow).onSnapshot(s=>{
-      s.docs.forEach(d=>{ if(!products.some(p=>p.id===d.id)){ const o=Object.assign({},d.data()); o.id=d.id; products.push(o); } });
-      FB.ready=true; render();
+      s.docs.forEach(addProduct); FB.ready=true; render();
     }, e=>console.warn(e)));
   }
   // 公司名比對（舊資料，順便補 customerEmail）
@@ -5389,34 +5392,29 @@ function attachCustomer(email){
       s.docs.forEach(d=>{
         const data=d.data();
         if(!data.customerEmail) FB.db.collection('products').doc(d.id).update({customerEmail:email}).catch(()=>{});
-        if(!products.some(p=>p.id===d.id)){ const o=Object.assign({},data); o.id=d.id; o.customerEmail=o.customerEmail||email; products.push(o); }
+        addProduct(d);
       });
       if(s.docs.length){ FB.ready=true; render(); }
     }, e=>console.warn(e)));
   }
   // 客戶自身資料
   FB.unsub.push(FB.db.collection('customers').where('email','==',email).onSnapshot(s=>{
-    if(s.docs.length){ s.docs.forEach(d=>{ const o=Object.assign({},d.data()); o.id=d.id; if(!customers.some(c=>c.name===o.name)) customers.push(o); }); render(); }
+    s.docs.forEach(d=>{ const o=Object.assign({},d.data()); o.id=d.id; if(!customers.some(c=>c.name===o.name)) customers.push(o); });
+    if(s.docs.length) render();
   }, e=>console.warn(e)));
-  // sharedPIF：先直接抓一次確保資料立刻顯示，再設 snapshot
+  // sharedPIF（先抓一次，再 snapshot）
   FB.db.collection('sharedPIF').get().then(s=>{
-    console.log('[sharedPIF] .get() 回傳', s.docs.length, '筆');
     if(s.docs.length){
       sharedPIF.length=0;
       s.docs.forEach(d=>{ const o=Object.assign({},d.data()); o.id=d.id; sharedPIF.push(o); });
       render();
     }
-  }).catch(e=>{ console.warn('[sharedPIF] .get() 失敗', e); });
-  // sharedPIF snapshot（監聽後續變更）
+  }).catch(e=>console.warn('sharedPIF get',e));
   FB.unsub.push(FB.db.collection('sharedPIF').onSnapshot(s=>{
-    console.log('[sharedPIF] snapshot 回傳', s.docs.length, '筆');
     sharedPIF.length=0;
     s.docs.forEach(d=>{ const o=Object.assign({},d.data()); o.id=d.id; sharedPIF.push(o); });
     render();
-  }, e=>console.warn('[sharedPIF] snapshot 失敗', e)));
-  FB.unsub.push(FB.db.collection('showcase').onSnapshot(s=>{
-    snapApply('showcase',showcase,s.docs); render();
-  }, e=>console.warn(e)));
+  }, e=>console.warn('sharedPIF snapshot',e)));
   FB.ready=true;
 }
 function fbSync(){
