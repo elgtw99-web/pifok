@@ -2568,9 +2568,11 @@ function elogaAccounts(){
           <p class="sub" style="margin:4px 0 10px">${FB_SYNC_READY?((typeof FB!=='undefined'&&FB.on&&FB.user)?('已雲端登入：'+(FB.user.email||'')+'　·　資料即時同步到雲端'):'Firebase 同步已開啟，請登入'):'目前「身分驗證模式」：Google 登入只驗身分，資料存在本機。Firestore 規則設好後，把程式碼中 FB_SYNC_READY 改為 true 啟用同步。'}</p>
           ${(typeof FB!=='undefined'&&FB.on&&FB.user)?`<div style="display:flex;gap:8px;flex-wrap:wrap">
             <button class="btn btn--sm" style="width:auto;padding:0 16px" onclick="A.fbUploadSeed()"><i class="ti ti-cloud-upload"></i> 首次上傳資料到雲端</button>
+            <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" onclick="A.fbDiagnose()"><i class="ti ti-stethoscope"></i> 測試雲端連線</button>
             <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" onclick="A.fbLogout()"><i class="ti ti-logout"></i> 雲端登出</button>
           </div>
-          <p class="sub" style="margin-top:8px">「首次上傳」會把目前資料寫到雲端；若雲端已有資料會自動略過、不覆蓋。</p>`:''}
+          <div id="fb_diag" class="sub" style="margin-top:8px"></div>
+          <p class="sub" style="margin-top:8px">「首次上傳」會把目前資料寫到雲端；若雲端已有資料會自動略過、不覆蓋。「測試雲端連線」會檢查讀寫是否正常。</p>`:''}
         </div>
         <div class="card" style="border-color:var(--accent)">
         <div class="card" style="border-color:var(--accent);margin-bottom:14px">
@@ -4448,6 +4450,31 @@ A.googleSignIn=function(){
 };
 A.fbLogout=function(){ try{ if(FB.on&&FB.user) FB.auth.signOut(); }catch(e){} FB.user=null; FB.role=null; FB.ready=false; role='customer'; me={}; view='entry'; render(); };
 A.fbUploadSeed=function(){ fbUploadSeed(); };
+A.fbDiagnose=async function(){
+  const el=document.getElementById('fb_diag');
+  const set=(msg,color)=>{ if(el){ el.innerHTML=msg; el.style.color=color||'var(--muted)'; } };
+  if(!(FB.on&&FB.db&&FB.user)){ set('✗ 尚未雲端登入，無法測試','#C0392B'); return; }
+  set('測試中…請稍候');
+  const lines=[];
+  // 1. 寫入測試
+  try{
+    await FB.db.collection('meta').doc('_diag').set({ts:new Date().toISOString(), by:FB.user.email||''});
+    lines.push('✓ 雲端寫入正常');
+  }catch(e){ lines.push('✗ 雲端寫入失敗：'+(e.code||e.message)); }
+  // 2. 讀取測試（各 collection 筆數）
+  try{
+    const cols=['products','customers','sharedPIF','publicShowcase'];
+    for(const c of cols){
+      try{ const s=await FB.db.collection(c).limit(500).get(); lines.push('✓ '+c+'：雲端 '+s.size+' 筆'); }
+      catch(e){ lines.push('✗ '+c+' 讀取失敗：'+(e.code||e.message)); }
+    }
+  }catch(e){ lines.push('✗ 讀取測試失敗：'+(e.code||e.message)); }
+  // 3. 本機 vs 雲端產品筆數
+  lines.push('· 本機目前產品 '+products.length+' 筆');
+  const ok=lines.every(l=>l.startsWith('✓')||l.startsWith('·'));
+  set(lines.join('<br>'), ok?'var(--s)':'#C0392B');
+  A.toast(ok?'雲端連線正常，電腦↔手機同步暢通':'雲端連線有問題，請看診斷訊息', 4000);
+};
 A.reloadPage=function(){
   if(typeof FB!=='undefined'&&FB.on&&FB.auth){
     const user=FB.user;
