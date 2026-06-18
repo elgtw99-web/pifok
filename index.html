@@ -516,6 +516,27 @@ const SM={ applied:['等待依洛嘉確認','w'], approved:['可寄送','i'], pe
 const pill = s => `<span class="pill pill--${SM[s][1]}">${SM[s][0]}</span>`;
 const byId = id => products.find(p=>p.id===id);
 const paidSum = p => (p&&p.payRecords||[]).reduce((s,r)=>s+(r.amt||0),0);
+
+/* ===== 分期收款帳本 helpers =====
+   每個品項可有多張獨立請款單 p.invoices=[{id,label,amount,date,method,note,status,payRecords:[]}]
+   未使用分期者，沿用舊的 p.charge / p.payRecords（相容層）            */
+function itemInvoices(p){ return Array.isArray(p.invoices)?p.invoices:[]; }
+function hasInstall(p){ return itemInvoices(p).length>0; }
+// 應收總額：用分期就加總各單金額，否則用舊 charge
+function itemBilled(p){ return hasInstall(p) ? itemInvoices(p).reduce((s,iv)=>s+(iv.amount||0),0) : (p.charge||0); }
+// 已收總額
+function itemPaid(p){
+  if(hasInstall(p)) return itemInvoices(p).reduce((s,iv)=>s+(iv.payRecords||[]).reduce((a,r)=>a+(r.amt||0),0),0);
+  return (p.payRecords||[]).reduce((s,r)=>s+(r.amt||0),0);
+}
+// 待收總額
+function itemDue(p){ return Math.max(0, itemBilled(p)-itemPaid(p)); }
+// 產生分期請款單編號
+function genSubInvNo(p){
+  const n=itemInvoices(p).length+1;
+  return (p.id||'X').slice(-4)+'-'+String(n).padStart(2,'0');
+}
+
 function genInvNo(){
   const d=new Date(), p2=n=>String(n).padStart(2,'0');
   const prefix=`INV-${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}`;
@@ -1137,10 +1158,10 @@ function elgSummary(){
     && custName(p)!==ELG_SELF
   );
 
-  // 頂部加總
-  const totalReceived=allProd.reduce((s,p)=>s+paidOf(p),0);
-  const totalPending =allProd.filter(p=>['invoiced','reported'].includes(p.status)&&paidOf(p)===0).reduce((s,p)=>s+(p.charge||0),0);
-  const totalCharge  =allProd.reduce((s,p)=>s+(paidOf(p)>0?paidOf(p):(p.charge||0)),0);
+  // 頂部加總（分期感知）
+  const totalReceived=allProd.reduce((s,p)=>s+itemPaid(p),0);
+  const totalPending =allProd.reduce((s,p)=>s+itemDue(p),0);
+  const totalCharge  =allProd.reduce((s,p)=>s+itemBilled(p),0);
 
   // 收款方式統計
   const byMethod={};
@@ -1177,11 +1198,10 @@ function elgSummary(){
     if(!prods.length) return '';
     let o='';
 
-    const received=prods.reduce((s,p)=>s+paidOf(p),0);
+    const received=prods.reduce((s,p)=>s+itemPaid(p),0);
 
-    const inProgress=prods.filter(p=>['invoiced','reported'].includes(p.status)&&paidOf(p)===0);
-    const pending=inProgress.reduce((s,p)=>s+(p.charge||0),0);
-    const isAllDone = inProgress.length===0 && received>0;
+    const pending=prods.reduce((s,p)=>s+itemDue(p),0);
+    const isAllDone = pending<=0 && received>0;
 
     // 合約客戶資訊
     const cobj=customers.find(c=>c.name===cn);
@@ -1218,7 +1238,8 @@ function elgSummary(){
     if(open){
       o+=`<div style="padding:10px 14px 14px">`;
 
-      // ── 待收款請款單 ──
+      // ── 待收款請款單（舊式批次，僅非分期品項）──
+      const inProgress=prods.filter(p=>['invoiced','reported'].includes(p.status)&&!hasInstall(p)&&paidOf(p)===0);
       const batchMap={};
       inProgress.forEach(p=>{ if(p.batch&&p.batch.startsWith('INV-')){ (batchMap[p.batch]=batchMap[p.batch]||[]).push(p); } });
       const pendingBatches=Object.keys(batchMap);
@@ -1266,38 +1287,84 @@ function elgSummary(){
         <span></span><span>品名</span><span style="text-align:right">金額</span><span style="text-align:right">收款</span>
       </div>`;
       prods.forEach(p=>{
-        const pd=paidOf(p);
-        const charge=p.charge||0;
-        const isPending=['invoiced','reported'].includes(p.status)&&pd===0;
+        const billed=itemBilled(p);
+        const paid=itemPaid(p);
+        const due=itemDue(p);
         const isSel=!!pifGroupClosed[selKey(p)];
-        const recs=p.payRecords||[];
+        const invs=itemInvoices(p);
+        const useInstall=invs.length>0;
+        const detailOpen=!!pifGroupClosed['itemOpen_'+p.id];
+
+        // 收款狀態標籤
         let payTag;
-        if(pd>0) payTag=`<span style="color:var(--s);font-weight:700">✓ 已收</span>`;
-        else if(isPending) payTag=`<span style="color:var(--w)">待收</span>`;
+        if(billed>0 && due<=0) payTag=`<span style="color:var(--s);font-weight:700">✓ 已收齊</span>`;
+        else if(paid>0) payTag=`<span style="color:var(--w)">部分 欠${money(due)}</span>`;
+        else if(['invoiced','reported'].includes(p.status)) payTag=`<span style="color:var(--w)">待收</span>`;
         else payTag=`<span style="color:var(--faint)">—</span>`;
-        const multiPay=recs.length>1;
-        o+=`<div style="display:grid;grid-template-columns:20px 1fr auto auto;gap:8px;align-items:center;padding:7px 0;border-bottom:${multiPay?'0':'1px solid var(--line)'};font-size:12.5px">
-          <span class="ck ${isSel?'on':''}" style="cursor:pointer;width:18px;height:18px;border-radius:5px;flex:none" onclick="A.toggleSumSel('${p.id}')" title="勾選後可補開請款">
+
+        o+=`<div style="display:grid;grid-template-columns:20px 1fr auto auto;gap:8px;align-items:center;padding:7px 0;border-bottom:1px solid var(--line);font-size:12.5px;cursor:pointer" onclick="A.toggleItemDetail('${p.id}')">
+          <span class="ck ${isSel?'on':''}" style="cursor:pointer;width:18px;height:18px;border-radius:5px;flex:none" onclick="event.stopPropagation();A.toggleSumSel('${p.id}')" title="勾選後可補開請款">
             <i class="ti ti-check" style="font-size:12px;opacity:${isSel?1:0}"></i></span>
           <span style="min-width:0">
             <span style="font-weight:600">${p.name||'—'}</span>
             <span class="sub" style="font-size:10.5px;margin-left:4px">${SM[p.status]?SM[p.status][0]:p.status}</span>
-            ${multiPay?`<span class="pill" style="font-size:9.5px;margin-left:4px;background:#FDECEA;color:#C0392B;border:1px solid #E7C3BD">⚠ ${recs.length} 筆收款</span>`:''}
+            ${useInstall?`<span class="pill pill--i" style="font-size:9.5px;margin-left:4px">分期 ${invs.length} 單</span>`:''}
+            <br><span class="sub" style="font-size:10px">應收 ${money(billed)} · 已收 <b style="color:var(--s)">${money(paid)}</b>${due>0?' · 欠 <b style="color:var(--w)">'+money(due)+'</b>':''}</span>
           </span>
-          <span style="text-align:right;font-weight:700">${money(pd>0?pd:charge)}</span>
-          <span style="text-align:right;font-size:11px">${payTag}</span>
+          <span style="text-align:right;font-weight:700">${money(billed)}</span>
+          <span style="text-align:right;font-size:11px">${payTag} <i class="ti ti-chevron-${detailOpen?'up':'down'}" style="font-size:13px;color:var(--faint)"></i></span>
         </div>`;
-        // 多筆收款記錄 → 列出每筆，附刪除鈕
-        if(multiPay){
-          o+=`<div style="padding:2px 0 8px 28px;border-bottom:1px solid var(--line)">`;
-          recs.forEach((r,ri)=>{
-            o+=`<div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:3px 0;color:var(--muted)">
-              <span style="flex:1">${r.date||''} · ${r.method||''}${r.note?' · '+r.note:''}</span>
-              <span style="font-weight:700;color:var(--ink)">${money(r.amt||0)}</span>
-              <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 7px;font-size:10px;color:#C0392B;border-color:#E7C3BD" onclick="A.delPayRecord('${p.id}',${ri})">
-                <i class="ti ti-trash" style="font-size:11px"></i> ${confirmDel==='dpr'+p.id+'_'+ri?'確認刪除':'刪'}</button>
-            </div>`;
-          });
+
+        // 展開：分期請款單列表 + 操作
+        if(detailOpen){
+          o+=`<div style="padding:6px 0 10px 28px;border-bottom:1px solid var(--line);background:var(--n-bg)40">`;
+
+          if(useInstall){
+            // 分期模式：列出每張請款單
+            invs.forEach((iv,ix)=>{
+              const ivPaid=(iv.payRecords||[]).reduce((s,r)=>s+(r.amt||0),0);
+              const ivDue=Math.max(0,(iv.amount||0)-ivPaid);
+              const ivColor=iv.status==='paid'||ivDue<=0?'var(--s)':'var(--w)';
+              o+=`<div class="card compact" style="margin:6px 8px 6px 0;border-color:${ivColor}40">
+                <div class="row" style="margin-bottom:4px">
+                  <span style="font-size:12px;font-weight:600">${iv.label||('請款單 '+(ix+1))}
+                    <span class="pill" style="font-size:9px;margin-left:4px;background:${ivColor}15;color:${ivColor};border:1px solid ${ivColor}40">${ivDue<=0?'已收':'待收 '+money(ivDue)}</span>
+                  </span>
+                  <span style="font-size:12px;font-weight:700">${money(iv.amount||0)}</span>
+                </div>
+                <div class="sub" style="font-size:10px;margin-bottom:6px">${iv.date||''}${iv.method?' · '+iv.method:''}${iv.note?' · '+iv.note:''}${ivPaid>0?' · 已收 '+money(ivPaid):''}</div>
+                <div style="display:flex;gap:6px;flex-wrap:wrap">
+                  ${ivDue>0?`<button class="btn btn--ok btn--sm" style="width:auto;padding:0 10px;font-size:11px" onclick="A.collectInstall('${p.id}',${ix})"><i class="ti ti-check"></i> ${confirmDel==='ci'+p.id+'_'+ix?'再按確認收款':'確認收款 '+money(ivDue)}</button>`:''}
+                  <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 10px;font-size:11px;color:#C0392B;border-color:#E7C3BD" onclick="A.delInstall('${p.id}',${ix})"><i class="ti ti-trash"></i> ${confirmDel==='di'+p.id+'_'+ix?'確認刪除':'刪除此單'}</button>
+                </div>
+              </div>`;
+            });
+          } else {
+            // 舊模式：顯示既有收款記錄
+            const recs=p.payRecords||[];
+            if(recs.length){
+              recs.forEach((r,ri)=>{
+                o+=`<div style="display:flex;align-items:center;gap:8px;font-size:11px;padding:3px 8px 3px 0;color:var(--muted)">
+                  <span style="flex:1">${r.date||''} · ${r.method||''}${r.note?' · '+r.note:''}</span>
+                  <span style="font-weight:700;color:var(--ink)">${money(r.amt||0)}</span>
+                  <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 7px;font-size:10px;color:#C0392B;border-color:#E7C3BD" onclick="A.delPayRecord('${p.id}',${ri})"><i class="ti ti-trash" style="font-size:11px"></i> ${confirmDel==='dpr'+p.id+'_'+ri?'確認':'刪'}</button>
+                </div>`;
+              });
+            } else {
+              o+=`<div class="sub" style="font-size:11px;padding:4px 0">尚無收款記錄${due>0?'（應收 '+money(billed)+'）':''}</div>`;
+            }
+          }
+
+          // 新增分期請款單表單
+          o+=`<div style="margin:8px 8px 0 0;padding-top:8px;border-top:1px dashed var(--line2)">
+            <div style="font-size:11px;font-weight:700;color:var(--accent);margin-bottom:6px"><i class="ti ti-plus"></i> 新增一張分期請款單</div>
+            <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
+              <div><label class="lbl" style="font-size:10px">金額</label><input class="fld fld--mini" id="inst_amt_${p.id}" placeholder="如 6000" style="width:90px"></div>
+              <div><label class="lbl" style="font-size:10px">說明</label><input class="fld fld--mini" id="inst_note_${p.id}" placeholder="如 尾款" style="width:110px"></div>
+              <button class="btn btn--ok btn--sm" style="width:auto;padding:0 12px;font-size:11px" onclick="A.addInstall('${p.id}')"><i class="ti ti-file-plus"></i> 開單</button>
+            </div>
+          </div>`;
+
           o+=`</div>`;
         }
       });
@@ -1316,9 +1383,9 @@ function elgSummary(){
     const cobj=customers.find(c=>c.name===cn);
     if(cobj&&cobj.contract) return false;  // 合約客戶不收進已結清
     const prods=allProd.filter(p=>custName(p)===cn);
-    const received=prods.reduce((s,p)=>s+paidOf(p),0);
-    const inProgress=prods.filter(p=>['invoiced','reported'].includes(p.status)&&paidOf(p)===0);
-    return inProgress.length===0 && received>0;
+    const received=prods.reduce((s,p)=>s+itemPaid(p),0);
+    const due=prods.reduce((s,p)=>s+itemDue(p),0);
+    return due<=0 && received>0;
   };
   const activeCusts =filtCusts.filter(cn=>!isClearedCust(cn));
   const clearedCusts=filtCusts.filter(cn=> isClearedCust(cn));
@@ -3731,6 +3798,59 @@ const A = {
     save();
     A.go('invoice'); A.setInvTab('retro');
     A.toast('已將 '+reset+' 筆退回補錄分頁，請選方案後重新開 PIF 費收款單');
+  },
+  toggleItemDetail(id){ pifGroupClosed['itemOpen_'+id]=!pifGroupClosed['itemOpen_'+id]; render(); },
+  addInstall(pid){
+    const p=byId(pid); if(!p) return;
+    const amtEl=document.getElementById('inst_amt_'+pid);
+    const noteEl=document.getElementById('inst_note_'+pid);
+    const amt=Number((amtEl&&amtEl.value||'').replace(/[^0-9.-]/g,''));
+    if(!amt||amt<=0){ A.toast('請輸入正確金額'); return; }
+    const note=(noteEl&&noteEl.value||'').trim();
+    // 首次轉為分期：把舊的 charge/payRecords 併入第一張單，避免資料遺失
+    if(!Array.isArray(p.invoices)){
+      p.invoices=[];
+      if((p.charge||0)>0 || (p.payRecords||[]).length){
+        p.invoices.push({
+          id:genSubInvNo(p), label:'原請款單', amount:p.charge||0,
+          date:new Date().toLocaleDateString('zh-TW'), method:p.payMethod||'匯款', note:'轉入既有資料',
+          status:(p.payRecords||[]).length?'paid':'pending',
+          payRecords:(p.payRecords||[]).slice()
+        });
+      }
+    }
+    p.invoices.push({
+      id:genSubInvNo(p), label:note||('分期單 '+(p.invoices.length+1)), amount:amt,
+      date:new Date().toLocaleDateString('zh-TW'), method:'匯款', note:note,
+      status:'pending', payRecords:[]
+    });
+    // 確保品項在收款流程狀態
+    if(!['invoiced','reported','paid','testing','reporting','completed'].includes(p.status)) p.status='invoiced';
+    save(); render();
+    A.toast('已新增分期請款單 '+money(amt)+(note?'（'+note+'）':''));
+  },
+  collectInstall(pid,ix){
+    const p=byId(pid); if(!p||!p.invoices||!p.invoices[ix]) return;
+    if(confirmDel!=='ci'+pid+'_'+ix){ confirmDel='ci'+pid+'_'+ix; render(); A.toast('再按一次確認：標記此張請款單已收款'); return; }
+    const iv=p.invoices[ix];
+    const ivPaid=(iv.payRecords||[]).reduce((s,r)=>s+(r.amt||0),0);
+    const due=Math.max(0,(iv.amount||0)-ivPaid);
+    iv.payRecords=iv.payRecords||[];
+    iv.payRecords.push({date:new Date().toLocaleDateString('zh-TW'), amt:due, method:iv.method||'匯款', note:'確認收款'});
+    iv.status='paid';
+    // 若全部分期單都收齊，品項推進到 paid 以上
+    const allPaid=p.invoices.every(x=>{ const xp=(x.payRecords||[]).reduce((s,r)=>s+(r.amt||0),0); return xp>=(x.amount||0); });
+    if(allPaid && ['invoiced','reported'].includes(p.status)) p.status='paid';
+    confirmDel=null; save(); render();
+    A.toast('已確認收款 '+money(due));
+  },
+  delInstall(pid,ix){
+    const p=byId(pid); if(!p||!p.invoices||!p.invoices[ix]) return;
+    if(confirmDel!=='di'+pid+'_'+ix){ confirmDel='di'+pid+'_'+ix; render(); A.toast('再按一次確認：刪除此張請款單'); return; }
+    const iv=p.invoices.splice(ix,1)[0];
+    if(p.invoices.length===0) delete p.invoices;
+    confirmDel=null; save(); render();
+    A.toast('已刪除請款單（'+money(iv.amount||0)+'）');
   },
   toggleSumSel(pid){ pifGroupClosed['sumSel_'+pid]=!pifGroupClosed['sumSel_'+pid]; render(); },
   togglePifGroup(cn){ pifGroupClosed[cn]=!pifGroupClosed[cn]; render(); },
