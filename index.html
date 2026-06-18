@@ -5236,9 +5236,14 @@ function fbInit(){
 }
 function fbHandleRedirect(){
   if(!FB.on) return;
-  FB.auth.getRedirectResult().catch(e=>{
-    if(e.code!=='auth/no-auth-event'&&e.code!=='auth/operation-not-supported-in-this-environment')
-      console.warn('redirect result',e);
+  FB.auth.getRedirectResult().then(result=>{
+    // redirect 登入成功，onAuthStateChanged 會自動處理，這裡不需要額外操作
+    if(result&&result.user) console.log('redirect login ok:',result.user.email);
+  }).catch(e=>{
+    if(e.code==='auth/no-auth-event') return; // 正常：不是從 redirect 回來的
+    if(e.code==='auth/operation-not-supported-in-this-environment') return;
+    console.warn('redirect result error',e);
+    A.toast('Google 登入失敗：'+e.message);
   });
 }
 function stripId(o){ const c=Object.assign({},o); delete c.id; return c; }
@@ -5252,8 +5257,10 @@ function snapApply(name, arr, docs){
   FB.last[name]=m;
 }
 function emailMap(){ const m={}; customers.forEach(c=>{ if(c.name) m[c.name]=c.email||''; }); m[ELG_SELF]=''; return m; }
-function attachAdmin(){
+async function attachAdmin(){
   fbDetach();
+  // 強制更新 auth token，確保 Firestore 能認到登入狀態（避免 permission error）
+  try{ if(FB.user) await FB.user.getIdToken(true); }catch(e){ console.warn('token refresh fail',e); }
   const cols=[['products',products],['customers',customers],['staff',staff],['sharedPIF',sharedPIF],['showcase',showcase],['publicShowcase',publicShowcase]];
   cols.forEach(([name,arr])=>{
     FB.unsub.push(FB.db.collection(name).onSnapshot(s=>{
@@ -5491,14 +5498,8 @@ A.googleSignIn=function(){
   if(!FB.on){ A.toast('Firebase 尚未載入，請檢查網路'); return; }
   const p=new firebase.auth.GoogleAuthProvider();
   p.setCustomParameters({prompt:'select_account'});
-  FB.auth.signInWithPopup(p).catch(e=>{
-    if(e.code==='auth/popup-blocked'||e.code==='auth/operation-not-supported-in-this-environment'){
-      // popup 被擋，改用 redirect
-      FB.auth.signInWithRedirect(p).catch(e2=>A.toast('登入失敗：'+e2.message));
-    } else {
-      A.toast('登入失敗：'+e.message);
-    }
-  });
+  // 直接用 redirect（不用 popup），避免 Cloudflare Pages 的 COOP 政策擋住彈出視窗
+  FB.auth.signInWithRedirect(p).catch(e=>A.toast('登入失敗：'+e.message));
 };
 A.fbLogout=function(){ try{ if(FB.on&&FB.user) FB.auth.signOut(); }catch(e){} FB.user=null; FB.role=null; FB.ready=false; role='customer'; me={}; view='entry'; render(); };
 A.fbUploadSeed=function(){ fbUploadSeed(); };
@@ -5626,6 +5627,56 @@ fbHandleRedirect();
 SEED_SNAPSHOT = JSON.parse(JSON.stringify({products,customers,staff,sharedPIF,showcase,CINFO}));
 load();
 render();
+function fbStart(){
+  if(!FB.on) return;
+  FB.auth.onAuthStateChanged(async user=>{
+    FB.user=user;
+    if(!user){ FB.role=null; FB.ready=false; fbDetach(); render(); return; }
+    try{
+      // 強制刷新 token，避免 Firestore 403
+      await user.getIdToken(true);
+      // 從後台入口進來的才檢查 staff
+      const fromCustomerPortal = window._loginSide==='customer';
+      if(!fromCustomerPortal){
+        // 方式 A：UID 直查
+        const sd=await FB.db.collection('staff').doc(user.uid).get();
+        if(sd.exists){
+          FB.role='eloga'; role='eloga'; elgRole=(sd.data()&&sd.data().role)||'主要管理者';
+          zone='back'; elgTab='home'; view='app';
+          await attachAdmin(); render(); return;
+        }
+        // 方式 B：email 邀請名單
+        const sq=await FB.db.collection('staff').where('email','==',user.email.toLowerCase()).get();
+        if(!sq.empty){
+          const inv=sq.docs[0].data();
+          await FB.db.collection('staff').doc(user.uid).set({
+            name: inv.name||user.displayName||user.email,
+            email: user.email.toLowerCase(),
+            role: inv.role||'管理', uid: user.uid
+          });
+          for(const d of sq.docs){ if(d.id!==user.uid) await FB.db.collection('staff').doc(d.id).delete().catch(()=>{}); }
+          FB.role='eloga'; role='eloga'; elgRole=inv.role||'管理';
+          zone='back'; elgTab='home'; view='app';
+          await attachAdmin(); render(); A.toast('帳號已自動開通，歡迎 '+(inv.name||user.email)); return;
+        }
+      }
+      // 客戶身分判定
+      const emailLower=user.email.toLowerCase();
+      let q=await FB.db.collection('customers').where('email','==',emailLower).limit(1).get();
+      if(q.empty) q=await FB.db.collection('customers').where('email','==',user.email).limit(1).get();
+      const localCust=customers.find(c=>c.email&&c.email.toLowerCase()===emailLower);
+      const custData=!q.empty ? q.docs[0].data() : localCust||null;
+      if(custData){
+        FB.role='customer'; role='customer';
+        me=Object.assign({},me,{nameCh:custData.name,nameEn:custData.nameEn||'',email:user.email,phone:custData.phone||me.phone||'',filled:false});
+        attachCustomer(user.email);
+        view='customer-confirm'; render();
+      } else {
+        FB.role='pending'; role='guest'; view='fb-pending'; render();
+      }
+    }catch(e){ A.toast('登入後讀取失敗：'+e.message); console.warn(e); }
+  });
+}
 fbStart();
 </script>
 </body>
