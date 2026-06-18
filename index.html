@@ -1330,16 +1330,23 @@ function elgHome(){
   ];
   let h=`<div class="note" style="margin-bottom:14px"><i class="ti ti-layout-dashboard"></i>全流程總覽 · 點任一階段直接前往處理。</div>`;
   if(typeof FB!=='undefined' && FB.on && FB.user){
-    if(!FB_SYNC_READY){
-      h+=`<div class="card" style="border-color:var(--accent);margin-bottom:16px">
-        <div class="row"><span class="nm" style="font-size:14px"><i class="ti ti-cloud-check"></i> Google 已登入 · 資料暫存本機</span><span class="pill pill--s" style="font-size:11px">身分驗證中</span></div>
-        <p class="sub" style="margin:6px 0 0">目前 Firestore 規則尚未開放，系統正常以本機資料運作。等規則設好後，到帳號管理開啟雲端同步。</p>
-      </div>`;
-    } else if(FB.cloudEmpty){
+    if(FB.cloudEmpty && products.length>0){
+      // 雲端空、本機有資料 → 提示上傳（這台是有資料的電腦）
       h+=`<div class="card" style="border-color:var(--w);margin-bottom:16px">
-        <p class="nm" style="font-size:15px"><i class="ti ti-cloud-upload"></i> 雲端尚無資料，請先上傳</p>
-        <p class="sub" style="margin:6px 0 12px">Firestore 是空的，請將本機資料首次上傳到雲端。</p>
-        <button class="btn btn--ok btn--sm" style="width:auto;padding:0 18px" onclick="A.fbUploadSeed()"><i class="ti ti-cloud-upload"></i> 首次上傳資料到雲端</button>
+        <p class="nm" style="font-size:15px"><i class="ti ti-cloud-upload"></i> 雲端尚無資料 · 本機有 ${products.length} 筆</p>
+        <p class="sub" style="margin:6px 0 12px">這台電腦有資料但雲端是空的。請上傳到雲端，其他裝置（含手機、國外客戶）才能看到。</p>
+        <button class="btn btn--ok btn--sm" style="width:auto;padding:0 18px" onclick="A.fbPushLocal()"><i class="ti ti-cloud-upload"></i> 上傳 ${products.length} 筆到雲端</button>
+      </div>`;
+    } else if(FB.cloudEmpty && products.length===0){
+      // 雲端空、本機也空 → 全新環境
+      h+=`<div class="card" style="border-color:var(--accent);margin-bottom:16px">
+        <p class="nm" style="font-size:15px"><i class="ti ti-cloud"></i> 雲端與本機都沒有資料</p>
+        <p class="sub" style="margin:6px 0 0">這是全新環境。新增產品後會自動存到雲端，其他裝置登入就能同步看到。</p>
+      </div>`;
+    } else if(!FB.cloudEmpty){
+      // 雲端有資料 → 顯示已同步
+      h+=`<div class="card" style="border-color:var(--s);margin-bottom:16px;padding:10px 16px">
+        <div class="row"><span class="nm" style="font-size:13.5px"><i class="ti ti-cloud-check" style="color:var(--s)"></i> 雲端已同步 · 資料即時儲存</span><span class="pill pill--s" style="font-size:11px">${FB.user.email||''}</span></div>
       </div>`;
     }
   }
@@ -2567,12 +2574,19 @@ function elogaAccounts(){
           <p class="nm" style="font-size:15px"><i class="ti ti-cloud"></i> 雲端同步（Firebase）</p>
           <p class="sub" style="margin:4px 0 10px">${FB_SYNC_READY?((typeof FB!=='undefined'&&FB.on&&FB.user)?('已雲端登入：'+(FB.user.email||'')+'　·　資料即時同步到雲端'):'Firebase 同步已開啟，請登入'):'目前「身分驗證模式」：Google 登入只驗身分，資料存在本機。Firestore 規則設好後，把程式碼中 FB_SYNC_READY 改為 true 啟用同步。'}</p>
           ${(typeof FB!=='undefined'&&FB.on&&FB.user)?`<div style="display:flex;gap:8px;flex-wrap:wrap">
-            <button class="btn btn--sm" style="width:auto;padding:0 16px" onclick="A.fbUploadSeed()"><i class="ti ti-cloud-upload"></i> 首次上傳資料到雲端</button>
+            <button class="btn btn--sm" style="width:auto;padding:0 16px" onclick="A.fbPushLocal()"><i class="ti ti-cloud-upload"></i> 上傳本機資料到雲端（${products.length} 筆）</button>
             <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" onclick="A.fbDiagnose()"><i class="ti ti-stethoscope"></i> 測試雲端連線</button>
             <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" onclick="A.fbLogout()"><i class="ti ti-logout"></i> 雲端登出</button>
           </div>
+          ${A._pushForce?`<div class="card" style="border-color:#C0392B;margin-top:8px;background:#FDECEA">
+            <p class="sub" style="color:#C0392B;margin-bottom:8px"><i class="ti ti-alert-triangle"></i> 雲端已有資料。「強制上傳」會用<b>這台電腦目前的 ${products.length} 筆</b>覆蓋雲端同名資料（相同 ID 會被取代，雲端多出的不刪）。確定嗎？</p>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn--sm" style="width:auto;padding:0 16px;background:#C0392B" onclick="A.fbPushLocalForce()"><i class="ti ti-cloud-upload"></i> 確定強制上傳</button>
+              <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" onclick="A.cancelPushForce()">取消</button>
+            </div>
+          </div>`:''}
           <div id="fb_diag" class="sub" style="margin-top:8px"></div>
-          <p class="sub" style="margin-top:8px">「首次上傳」會把目前資料寫到雲端；若雲端已有資料會自動略過、不覆蓋。「測試雲端連線」會檢查讀寫是否正常。</p>`:''}
+          <p class="sub" style="margin-top:8px"><b>換電腦後資料不見？</b>請在<u>有完整資料的那台電腦</u>按「上傳本機資料到雲端」，其他裝置登入就會同步。「測試雲端連線」可檢查讀寫是否正常。</p>`:''}
         </div>
         <div class="card" style="border-color:var(--accent)">
         <div class="card" style="border-color:var(--accent);margin-bottom:14px">
@@ -4121,6 +4135,7 @@ const A = {
   },
 
   _tt:null,
+  _pushForce:false,
   _libSearchT:null,
   _composing:false,
   toast(msg, dur){
@@ -4147,7 +4162,7 @@ const firebaseConfig = {
   messagingSenderId: "457227684194",
   appId: "1:457227684194:web:86fd2fb78885f350db843b"
 };
-let FB={on:false,db:null,auth:null,user:null,role:null,unsub:[],last:{},ready:false,syncT:null,seeded:false,cloudEmpty:false};
+let FB={on:false,db:null,auth:null,user:null,role:null,unsub:[],last:{},ready:false,syncT:null,seeded:false,cloudEmpty:false,_allowEmptySync:false};
 let SEED_SNAPSHOT=null;
 function fbInit(){
   try{
@@ -4282,6 +4297,12 @@ function fbStart(){
 }
 function fbSync(){
   if(!FB.on||!FB.user||!FB.ready||FB.role==='pending') return;
+  // 安全鎖：本機尚未從雲端載入資料時（cloudEmpty 為 false 代表雲端有資料，但本機 products 為空），
+  // 禁止同步，避免空資料把雲端洗掉。
+  if(FB.role==='eloga' && products.length===0 && !FB.cloudEmpty && !FB._allowEmptySync){
+    console.warn('fbSync 已跳過：本機產品為空，避免覆蓋雲端');
+    return;
+  }
   try{
     const em=emailMap();
     const cols = FB.role==='eloga' ? ['products','customers','staff','sharedPIF','showcase','publicShowcase'] : ['products'];
@@ -4297,7 +4318,10 @@ function fbSync(){
         const j=JSON.stringify(data);
         if(last[o.id]!==j){ batch.set(FB.db.collection(name).doc(o.id),data); last[o.id]=j; ops++; }
       });
-      Object.keys(last).forEach(id=>{ if(!seen[id]){ batch.delete(FB.db.collection(name).doc(id)); delete last[id]; ops++; } });
+      // 安全鎖：只在本機這個集合「非空」時，才刪除雲端多出的（避免空陣列清空雲端）
+      if(arr.length>0){
+        Object.keys(last).forEach(id=>{ if(!seen[id]){ batch.delete(FB.db.collection(name).doc(id)); delete last[id]; ops++; } });
+      }
       FB.last[name]=last;
     });
     if(FB.role==='eloga'){ batch.set(FB.db.collection('meta').doc('config'),{CINFO},{merge:true}); ops++; }
@@ -4435,6 +4459,28 @@ async function fbUploadSeed(){
     A.toast('已上傳種子資料到雲端，畫面將自動更新');
   }catch(e){ A.toast('上傳失敗：'+e.message); console.warn(e); }
 }
+// 把「目前本機實際資料」整批推送到雲端（用於這台電腦有資料、雲端沒有的情況）
+async function fbPushLocal(force){
+  if(!FB.on||!FB.user||FB.role!=='eloga'){ A.toast('需以依洛嘉管理者登入後再上傳'); return; }
+  try{
+    const ex=await FB.db.collection('products').limit(1).get();
+    if(!ex.empty && !force){
+      A.toast('⚠ 雲端已有 '+ex.size+' 筆以上資料。若要用本機覆蓋雲端，請再按一次「強制上傳」', 5000);
+      return 'exists';
+    }
+    A.toast('上傳本機 '+products.length+' 筆產品到雲端中…', 4000);
+    const em=emailMap();
+    const writeAll=async(name,arr,stamp)=>{ arr=arr||[]; for(let i=0;i<arr.length;i+=400){ const b=FB.db.batch(); arr.slice(i,i+400).forEach(o=>{ const id=o.id||FB.db.collection(name).doc().id; const data=stripId(o); if(stamp)stamp(data); b.set(FB.db.collection(name).doc(id),data); }); await b.commit(); } };
+    await writeAll('products',products,d=>{ if(!d.customerEmail) d.customerEmail=em[d.cust]||''; });
+    await writeAll('customers',customers);
+    await writeAll('staff',staff);
+    await writeAll('sharedPIF',sharedPIF);
+    await writeAll('showcase',showcase);
+    await writeAll('publicShowcase',publicShowcase);
+    await FB.db.collection('meta').doc('config').set({CINFO},{merge:true});
+    A.toast('✓ 已上傳 '+products.length+' 筆產品到雲端，其他裝置登入即可看到', 5000);
+  }catch(e){ A.toast('上傳失敗：'+(e.code||e.message)); console.warn(e); }
+}
 A.googleSignIn=function(){
   if(!FB.on){ A.toast('Firebase 尚未載入，請檢查網路'); return; }
   const p=new firebase.auth.GoogleAuthProvider();
@@ -4450,6 +4496,12 @@ A.googleSignIn=function(){
 };
 A.fbLogout=function(){ try{ if(FB.on&&FB.user) FB.auth.signOut(); }catch(e){} FB.user=null; FB.role=null; FB.ready=false; role='customer'; me={}; view='entry'; render(); };
 A.fbUploadSeed=function(){ fbUploadSeed(); };
+A.fbPushLocal=async function(){
+  const r=await fbPushLocal(false);
+  if(r==='exists'){ A._pushForce=true; render(); }
+};
+A.fbPushLocalForce=function(){ A._pushForce=false; fbPushLocal(true); };
+A.cancelPushForce=function(){ A._pushForce=false; render(); };
 A.fbDiagnose=async function(){
   const el=document.getElementById('fb_diag');
   const set=(msg,color)=>{ if(el){ el.innerHTML=msg; el.style.color=color||'var(--muted)'; } };
