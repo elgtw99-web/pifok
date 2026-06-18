@@ -1550,8 +1550,15 @@ function elgHome(){
       </div>`;
     } else if(cloudN>0){
       // 雲端確實有資料
-      h+=`<div class="card" style="border-color:var(--s);margin-bottom:16px;padding:10px 16px">
-        <div class="row"><span class="nm" style="font-size:13.5px"><i class="ti ti-cloud-check" style="color:var(--s)"></i> 雲端已同步 · ${cloudN} 筆</span><span class="pill pill--s" style="font-size:11px">${FB.user.email||''}</span></div>
+      h+=`<div class="card" style="border-color:var(--s);margin-bottom:16px;padding:12px 16px">
+        <div class="row" style="margin-bottom:8px">
+          <span class="nm" style="font-size:13.5px"><i class="ti ti-cloud-check" style="color:var(--s)"></i> 雲端有 ${cloudN} 筆</span>
+          <span class="pill pill--s" style="font-size:11px">${FB.user.email||''}</span>
+        </div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:8px">本機顯示 ${products.length} 筆${products.length!==cloudN?' ⚠ 跟雲端不一致':''}。若畫面數字是 0 或不對，按下方按鈕強制同步。</div>
+        <button class="btn btn--ok btn--sm" style="width:auto;padding:0 16px" onclick="A.forceCloudReload()">
+          <i class="ti ti-refresh"></i> 強制從雲端重新載入
+        </button>
       </div>`;
     }
   }
@@ -2990,6 +2997,7 @@ function elogaAccounts(){
             else { statusLine='✓ 已雲端登入：'+(FB.user.email||'')+'　·　資料即時同步'; statusColor='var(--s)'; }
             return `<p class="sub" style="margin:4px 0 10px;color:${statusColor};font-weight:600">${statusLine}</p>
             <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <button class="btn btn--ok btn--sm" style="width:auto;padding:0 16px" ${user?'':'disabled'} onclick="A.forceCloudReload()"><i class="ti ti-refresh"></i> 強制從雲端重新載入</button>
               <button class="btn btn--sm" style="width:auto;padding:0 16px;background:var(--accent)" ${user?'':'disabled'} onclick="A.fbMakeMaster()"><i class="ti ti-cloud-cog"></i> ${confirmDel==='makemaster'?'再按一次確認':'一鍵設為主資料'}</button>
               <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" ${user?'':'disabled'} onclick="A.fbPushLocal()"><i class="ti ti-cloud-upload"></i> 一般上傳（${products.length} 筆）</button>
               <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 16px" onclick="A.fbDiagnose()"><i class="ti ti-stethoscope"></i> 測試雲端連線</button>
@@ -3095,7 +3103,7 @@ function staffSection(){
           `<br><span class="sub" style="font-size:11px;color:var(--w)">待對方用此 Gmail 登入後自動開通</span>`}
       </span>
       <span class="pill pill--${x.role==='主要管理者'?'s':'i'}" style="flex:none">${x.role}</span>
-      ${elgRole==='主要管理者'&&!x.uid?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 10px;color:#C0392B;border-color:#E7C3BD" onclick="A.delStaff(${i})"><i class="ti ti-trash"></i></button>`:''}
+      ${elgRole==='主要管理者'?`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 10px;color:#C0392B;border-color:#E7C3BD" onclick="A.delStaff(${i})"><i class="ti ti-trash"></i> ${confirmDel==='dst'+i?'確認刪除':'刪除'}</button>`:''}
     </div>`).join('')+`</div>`;
   if(elgRole==='主要管理者'){
     if(addOpen){
@@ -3845,7 +3853,19 @@ const A = {
     }
     addOpen=false; save(); render();
   },
-  delStaff(i){ const s=staff[i]; if(!s||s.uid){ A.toast('已登入驗證的帳號不可刪除'); return; } staff.splice(i,1); save(); render(); A.toast('已移除邀請：'+(s.email||s.name)); },
+  delStaff(i){
+    const s=staff[i]; if(!s) return;
+    const key='dst'+i;
+    if(confirmDel!==key){ confirmDel=key; render(); A.toast('再按一次確認：移除帳號「'+(s.name||s.email)+'」，對方將無法再登入管理端'); return; }
+    staff.splice(i,1);
+    // 從雲端也刪除
+    if(typeof FB!=='undefined'&&FB.on&&FB.db){
+      const docId=s.uid||((s.email||'').replace(/[@.]/g,'_'));
+      FB.db.collection('staff').doc(docId).delete().catch(()=>{});
+    }
+    confirmDel=null; save(); render();
+    A.toast('已移除帳號：'+(s.email||s.name));
+  },
   openApiKeySetting(){ view='eloga-accounts'; acctTab='customer'; render(); A.toast('請在帳號管理下方填入 Anthropic API Key'); },
   saveApiKey(){
     const el=document.getElementById('api_key_input'); if(!el) return;
@@ -5552,6 +5572,28 @@ A.fbDiagnose=async function(){
   const ok=writeOk && !ruleBlocked && (cloudProducts>0 || products.length===0);
   set(lines.join('<br>'), ok?'var(--s)':'#C0392B');
   A.toast(ok?'雲端同步正常':'發現問題，請看診斷訊息與下一步', 4000);
+};
+A.forceCloudReload=async function(){
+  if(!(FB.on&&FB.db&&FB.user)){ A.toast('請先登入'); return; }
+  A.toast('正在從雲端強制重新載入…', 3000);
+  try{
+    // 直接抓所有 products，完全繞過 snapshot 訂閱和快取
+    const snap=await FB.db.collection('products').get();
+    products.length=0;
+    snap.docs.forEach(d=>{ const o=Object.assign({},d.data()); o.id=d.id; products.push(o); });
+    // 同樣抓 customers
+    const csnap=await FB.db.collection('customers').get();
+    customers.length=0;
+    csnap.docs.forEach(d=>{ const o=Object.assign({},d.data()); o.id=d.id; customers.push(o); });
+    FB.cloudCount=products.length;
+    FB.ready=true;
+    render();
+    A.toast('✓ 已從雲端重新載入：產品 '+products.length+' 筆、客戶 '+customers.length+' 家', 4000);
+    // 重設 snapshot 訂閱讓之後自動同步也正常
+    if(FB.role==='eloga') attachAdmin();
+  }catch(e){
+    A.toast('從雲端載入失敗：'+(e.code||e.message), 5000);
+  }
 };
 A.reloadPage=function(){
   if(typeof FB!=='undefined'&&FB.on&&FB.auth){
