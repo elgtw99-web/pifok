@@ -2100,32 +2100,17 @@ function elgInvoice(){
       </div>
       ${isC?`<div class="sub" style="margin-bottom:4px">合約餘額：<b style="color:${bal>=tot?'var(--s)':'var(--w)'}">${money(bal)}</b>${bal<tot?'（不足，差額將改開收款單）':''}</div>`:''}
       ${items.map(p=>{
-        if(!p.feeSelPlans) p.feeSelPlans=['shared'];
-        const selPlans=p.feeSelPlans;
+        const selPlans=p.feeSelPlans||['shared'];
         const itemTotal=PIF_PLANS.filter(pl=>selPlans.includes(pl.id)).reduce((s,pl)=>s+pl.amt,0);
         p.feeSel=itemTotal;
         return `
-        <div style="border-top:1px solid var(--line);padding:10px 0 4px">
-          <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-            <span class="ck ${p.invSel?'on':''}" data-inv="${p.id}" onclick="A.toggleInv('${p.id}')" style="cursor:pointer;flex:none"><i class="ti ti-check"></i></span>
-            <span style="flex:1;cursor:pointer;min-width:0" onclick="A.toggleInv('${p.id}')">
-              <span class="nm">${p.name}</span>
-              <span class="sub" style="margin-left:6px">${p.batch||''}</span>
-            </span>
-            <span class="amt" style="font-size:15px;font-weight:700;color:${p.invSel?'var(--s)':'var(--faint)'};flex:none">${money(itemTotal)}</span>
-          </div>
-          <div style="display:flex;flex-wrap:wrap;gap:4px;padding-left:34px">
-            ${PIF_PLANS.map(pl=>{
-              const on=selPlans.includes(pl.id);
-              return `<button onclick="A.toggleInvPlan('${p.id}','${pl.id}')"
-                style="border:1.5px solid ${on?'var(--accent)':'var(--line2)'};
-                       background:${on?'var(--accent-tint)':'var(--surface)'};
-                       color:${on?'var(--accent)':'var(--muted)'};
-                       border-radius:6px;padding:3px 10px;cursor:pointer;
-                       font-size:11.5px;font-family:inherit;font-weight:${on?'700':'400'}">
-                ${pl.label}&nbsp;<b>${money(pl.amt)}</b></button>`;
-            }).join('')}
-          </div>
+        <div style="border-top:1px solid var(--line);padding:8px 0;display:flex;align-items:center;gap:10px">
+          <span class="ck ${p.invSel?'on':''}" data-inv="${p.id}" onclick="A.toggleInv('${p.id}')" style="cursor:pointer;flex:none"><i class="ti ti-check"></i></span>
+          <span style="flex:1;cursor:pointer;min-width:0" onclick="A.toggleInv('${p.id}')">
+            <span class="nm">${p.name}</span>
+            <span class="sub" style="margin-left:6px;font-size:12px">${PIF_PLANS.filter(pl=>selPlans.includes(pl.id)).map(pl=>pl.label).join('＋')}</span>
+          </span>
+          <span class="amt" style="font-size:15px;font-weight:700;color:${p.invSel?'var(--s)':'var(--faint)'};flex:none">${money(itemTotal)}</span>
         </div>`;
       }).join('')}
       <div class="total" style="margin-top:12px">
