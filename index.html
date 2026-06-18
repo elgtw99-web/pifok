@@ -3912,15 +3912,33 @@ function attachCustomer(email){
   if(!FB_SYNC_READY){
     FB.ready=true; render(); return;
   }
-  // 訂閱 Firestore，若回傳空則保留本機資料（Firestore 尚未同步）
+  const myName=me.nameCh||'';
+  // 訂閱 Firestore：抓 customerEmail 匹配的產品
   FB.unsub.push(FB.db.collection('products').where('customerEmail','==',email).onSnapshot(s=>{
     if(s.docs.length>0){
       snapApply('products',products,s.docs); FB.ready=true; render();
     } else {
-      // Firestore 空的 → 用本機資料，只顯示屬於這個客戶的品項
       FB.ready=true; FB.cloudEmpty=true; render();
     }
   }, e=>{ FB.ready=true; render(); console.warn(e); }));
+  // 額外訂閱：抓公司名匹配但沒 customerEmail 的舊產品，並補上 customerEmail
+  if(myName){
+    FB.unsub.push(FB.db.collection('products').where('cust','==',myName).onSnapshot(s=>{
+      s.docs.forEach(d=>{
+        const data=d.data();
+        if(!data.customerEmail){
+          // 補寫 customerEmail，讓之後的 ownedByMe 與訂閱都能對應
+          FB.db.collection('products').doc(d.id).update({customerEmail:email}).catch(()=>{});
+        }
+        // 合併進本機 products（若不存在）
+        if(!products.some(p=>p.id===d.id)){
+          const o=Object.assign({},data); o.id=d.id; o.customerEmail=o.customerEmail||email;
+          products.push(o);
+        }
+      });
+      if(s.docs.length>0){ FB.ready=true; render(); }
+    }, e=>console.warn(e)));
+  }
   FB.unsub.push(FB.db.collection('customers').where('email','==',email).onSnapshot(s=>{
     if(s.docs.length>0) snapApply('customers',customers,s.docs);
     render();
