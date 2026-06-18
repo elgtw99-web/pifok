@@ -379,9 +379,9 @@
     <div id="notepad"></div>
   </div>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.3.0/firebase-app-compat.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.3.0/firebase-auth-compat.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.3.0/firebase-firestore-compat.min.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <script>
 const CUST = '晶寶企業行';
 const ELG_SELF = '依洛嘉國際實業有限公司';
@@ -5584,9 +5584,23 @@ A.googleSignIn=function(){
   if(!FB.on){ A.toast('Firebase 尚未載入，請檢查網路'); return; }
   const p=new firebase.auth.GoogleAuthProvider();
   p.setCustomParameters({prompt:'select_account'});
-  // 把登入來源存到 sessionStorage，redirect 回來後頁面重載時能恢復
   try{ sessionStorage.setItem('_loginSide', window._loginSide||'eloga'); }catch(e){}
-  FB.auth.signInWithRedirect(p).catch(e=>A.toast('登入失敗：'+e.message));
+  // 先試 popup，若被擋再改 redirect
+  FB.auth.signInWithPopup(p).then(()=>{
+    // popup 成功，清掉 sessionStorage（不需要 redirect 流程）
+    try{ sessionStorage.removeItem('_loginSide'); }catch(e){}
+  }).catch(e=>{
+    if(e.code==='auth/popup-blocked'||
+       e.code==='auth/popup-closed-by-user'||
+       e.code==='auth/cancelled-popup-request'||
+       e.code==='auth/operation-not-supported-in-this-environment'||
+       (e.message&&e.message.includes('Cross-Origin'))){
+      // popup 被擋，改用 redirect
+      FB.auth.signInWithRedirect(p).catch(e2=>A.toast('登入失敗：'+e2.message));
+    } else if(e.code!=='auth/popup-closed-by-user'){
+      A.toast('登入失敗：'+e.message);
+    }
+  });
 };
 A.fbLogout=function(){ try{ if(FB.on&&FB.user) FB.auth.signOut(); }catch(e){} FB.user=null; FB.role=null; FB.ready=false; role='customer'; me={}; view='entry'; render(); };
 A.fbUploadSeed=function(){ fbUploadSeed(); };
@@ -5725,13 +5739,8 @@ function fbStart(){
     FB.user=user;
     if(!user){ FB.role=null; FB.ready=false; fbDetach(); render(); return; }
     try{
-      // 強制刷新 token 並等待足夠時間讓 Firestore SDK 接收
       await user.getIdToken(true);
-      await new Promise(r=>setTimeout(r,1500));
-      // 再次確認 token 有效
-      const tokenResult=await user.getIdTokenResult();
-      if(!tokenResult.token){ throw new Error('token not ready'); }
-      // 從後台入口進來的才檢查 staff
+      await new Promise(r=>setTimeout(r,1000));
       const fromCustomerPortal = window._loginSide==='customer';
       if(!fromCustomerPortal){
         // 方式 A：UID 直查
@@ -5770,7 +5779,22 @@ function fbStart(){
       } else {
         FB.role='pending'; role='guest'; view='fb-pending'; render();
       }
-    }catch(e){ A.toast('登入後讀取失敗：'+e.message); console.warn(e); }
+    }catch(e){
+      console.warn('fbStart error',e);
+      if((e.code||'').includes('permission')||(e.code||'').includes('403')){
+        // Firestore 403：token 還沒到位，等 2 秒重試一次
+        A.toast('正在重新連接雲端…', 2000);
+        await new Promise(r=>setTimeout(r,2000));
+        try{ await user.getIdToken(true); }catch(e2){}
+        fbDetach();
+        fbStart._retry=true;
+        // 觸發 onAuthStateChanged 重新執行
+        const u=FB.auth.currentUser;
+        if(u){ FB.user=u; }
+      } else {
+        A.toast('登入後讀取失敗：'+e.message);
+      }
+    }
   });
 }
 fbStart();
