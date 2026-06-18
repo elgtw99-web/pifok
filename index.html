@@ -277,20 +277,94 @@
     .devbtn,.devmenu{ bottom:24px; right:24px; }
     #fab{ left:auto; right:24px; bottom:88px; }
   }
-  /* ===== MOBILE: 表格自動拆成乾淨卡片（電腦端維持表格匯總） ===== */
+  /* ===== 全面手機自適應 ===== */
   @media (max-width:820px){
-    .tablewrap{ border:0; overflow:visible; }
+    /* 表格 → 卡片 */
+    .tablewrap{ border:0; overflow:visible; background:transparent; }
     table.dtable{ min-width:0; width:100%; display:block; }
     table.dtable thead{ display:none; }
     table.dtable tbody{ display:block; }
-    table.dtable tr{ display:block; border:1px solid var(--line2); border-radius:13px; padding:12px 14px; margin-bottom:10px; }
+    table.dtable tr{ display:block; border:1px solid var(--line2); border-radius:13px;
+      padding:12px 14px; margin-bottom:10px; background:var(--surface); }
     table.dtable tr.sel{ border-color:var(--accent); background:var(--accent-tint); }
-    table.dtable td{ display:flex; align-items:center; justify-content:space-between; gap:12px; border:0; padding:5px 0; white-space:normal; }
-    table.dtable td::before{ content:attr(data-label); font-size:12px; font-weight:700; color:var(--muted); flex:none; }
+    table.dtable td{ display:flex; align-items:center; justify-content:space-between;
+      gap:8px; border:0; padding:5px 0; white-space:normal; font-size:13px; }
+    table.dtable td::before{ content:attr(data-label); font-size:11.5px; font-weight:700;
+      color:var(--muted); flex:none; min-width:60px; }
     table.dtable td[data-label=""]::before{ content:none; }
     table.dtable td[data-label=""]{ justify-content:flex-start; }
-    table.dtable td .fld--mini{ width:auto; min-width:120px; flex:1; max-width:62%; }
+    table.dtable td .fld--mini{ width:auto; flex:1; max-width:60%; }
     table.dtable td .nm{ text-align:right; }
+
+    /* 按鈕群組 wrap */
+    .btn-group, .libbar{ flex-wrap:wrap; }
+    .btn{ width:100%; }
+    .btn.btn--sm, .btn.btn--ghost{ width:auto; }
+
+    /* dash 格子手機兩欄 */
+    .dash{ grid-template-columns:repeat(2,1fr) !important; gap:10px; }
+
+    /* 表單欄位全寬 */
+    .fld{ width:100%; }
+    input.fld--mini, select.fld--mini{ font-size:16px; } /* 防止 iOS 自動放大 */
+
+    /* flex row 在小螢幕 wrap */
+    .row{ flex-wrap:wrap; gap:8px; }
+
+    /* header 縮小 */
+    .hd{ padding:14px 16px 12px; }
+    .hd h1{ font-size:17px; }
+    .hd p{ font-size:12px; }
+    .hbtn{ font-size:12px; padding:5px 10px; }
+
+    /* screen padding 縮小 */
+    .screen{ padding:14px 14px 24px; }
+
+    /* card padding 縮小 */
+    .card{ padding:12px 13px; }
+    .card.compact{ padding:10px 12px; }
+
+    /* pane 全寬 */
+    .pane{ max-width:100%; padding:0; }
+
+    /* 大按鈕群 wrap */
+    div[style*="display:flex"][style*="gap"]{ flex-wrap:wrap; }
+
+    /* 圖片 grid 單欄 */
+    .pifgrid{ grid-template-columns:1fr 1fr; gap:8px; }
+
+    /* 水平捲動區塊 */
+    .overflow-x-scroll{ overflow-x:auto; -webkit-overflow-scrolling:touch; }
+
+    /* 詳情彈窗全螢幕 */
+    div[style*="max-width:560px"], div[style*="max-width:460px"],
+    div[style*="max-width:640px"], div[style*="max-width:760px"],
+    div[style*="max-width:400px"], div[style*="max-width:360px"]{
+      max-width:calc(100vw - 32px) !important;
+    }
+
+    /* 表格欄位輸入全寬 */
+    td input, td select{ max-width:100%; }
+
+    /* 文字截斷防止跑版 */
+    .nm{ word-break:break-word; }
+
+    /* 統計數字格 */
+    .metric{ padding:12px 10px; }
+    .metric .mv{ font-size:20px; }
+    .metric .ml{ font-size:11px; }
+
+    /* 搜尋欄 */
+    .srch{ height:40px; }
+
+    /* 固定底部按鈕安全區 */
+    .screen{ padding-bottom:calc(24px + env(safe-area-inset-bottom)); }
+  }
+
+  /* iOS safe area */
+  @supports(padding:max(0px)){
+    .tabbar{ padding-bottom:max(0px, env(safe-area-inset-bottom)); }
+    .screen{ padding-bottom:max(24px, calc(env(safe-area-inset-bottom) + 16px)); }
   }
 </style>
 </head>
@@ -3851,23 +3925,27 @@ const A = {
     const g=id=>((document.getElementById(id)||{}).value||'').trim();
     const nm=g('s_name'), ml=g('s_mail').toLowerCase(), rl=(document.getElementById('s_role')||{}).value||'管理';
     if(!ml||!ml.includes('@')){ A.toast('請填入有效的 Gmail'); return; }
-    if(staff.some(s=>s.email===ml)){ A.toast('這個 Gmail 已在名單中'); return; }
-    // 先查雲端是否已存在（含已驗證的 UID 帳號），避免重複
+    // 先查本機
+    if(staff.some(s=>(s.email||'').toLowerCase()===ml)){
+      A.toast('這個 Gmail 已在名單中'); addOpen=false; render(); return;
+    }
+    // 一定要查雲端（不能只靠本機，本機可能還沒載入）
     if(typeof FB!=='undefined'&&FB.on&&FB.db){
       try{
         const ex=await FB.db.collection('staff').where('email','==',ml).get();
         if(!ex.empty){ A.toast('這個 Gmail 雲端已有員工帳號，無需重複邀請'); addOpen=false; render(); return; }
-      }catch(e){}
+      }catch(e){ console.warn('check staff error',e); }
     }
     const newStaff={name:nm||ml, email:ml, role:rl, uid:null};
     staff.push(newStaff);
+    // 以 email 為唯一 docId（同一 email 永遠只有一筆），用 set 不用 add
     if(typeof FB!=='undefined'&&FB.on&&FB.db){
       const docId=ml.replace(/[@.]/g,'_');
-      FB.db.collection('staff').doc(docId).set({name:nm||ml, email:ml, role:rl})
-        .then(()=>A.toast('已加入邀請名單並同步雲端：'+ml+'（對方用此 Gmail 登入後自動開通）'))
-        .catch(e=>A.toast('已本機儲存，雲端同步失敗：'+e.message));
+      FB.db.collection('staff').doc(docId).set({name:nm||ml, email:ml, role:rl, uid:null})
+        .then(()=>A.toast('✓ 已邀請 '+ml+'，對方用此 Gmail 登入後自動開通'))
+        .catch(e=>A.toast('雲端同步失敗：'+e.message));
     } else {
-      A.toast('已加入邀請名單：'+ml+'（對方登入後自動開通）');
+      A.toast('已加入邀請名單（離線模式）：'+ml);
     }
     addOpen=false; save(); render();
   },
@@ -5259,8 +5337,18 @@ function snapApply(name, arr, docs){
 function emailMap(){ const m={}; customers.forEach(c=>{ if(c.name) m[c.name]=c.email||''; }); m[ELG_SELF]=''; return m; }
 async function attachAdmin(){
   fbDetach();
-  // 強制更新 auth token，確保 Firestore 能認到登入狀態（避免 permission error）
   try{ if(FB.user) await FB.user.getIdToken(true); }catch(e){ console.warn('token refresh fail',e); }
+  // 先直接抓一次，確保資料立刻顯示（不等 snapshot）
+  try{
+    const [ps,cs]=await Promise.all([
+      FB.db.collection('products').get(),
+      FB.db.collection('customers').get()
+    ]);
+    snapApply('products',products,ps.docs);
+    snapApply('customers',customers,cs.docs);
+    FB.ready=true; render();
+  }catch(e){ console.warn('initial fetch error',e); }
+  // 再設 snapshot 訂閱，讓之後的變更自動同步
   const cols=[['products',products],['customers',customers],['staff',staff],['sharedPIF',sharedPIF],['showcase',showcase],['publicShowcase',publicShowcase]];
   cols.forEach(([name,arr])=>{
     FB.unsub.push(FB.db.collection(name).onSnapshot(s=>{
@@ -5275,7 +5363,12 @@ async function attachAdmin(){
 function attachCustomer(email){
   fbDetach();
   const emailLow=(email||'').toLowerCase();
-  // 訂閱自己的品項（email 完全比對）
+  // 先直接查一次，確保資料立刻顯示
+  FB.db.collection('products').where('customerEmail','==',email).get().then(s=>{
+    s.docs.forEach(d=>{ if(!products.some(p=>p.id===d.id)){ const o=Object.assign({},d.data()); o.id=d.id; products.push(o); } });
+    FB.ready=true; render();
+  }).catch(e=>console.warn('customer initial fetch',e));
+  // 再設 snapshot 訂閱
   FB.unsub.push(FB.db.collection('products').where('customerEmail','==',email).onSnapshot(s=>{
     s.docs.forEach(d=>{ if(!products.some(p=>p.id===d.id)){ const o=Object.assign({},d.data()); o.id=d.id; products.push(o); } });
     FB.cloudCount=s.size; FB.ready=true; render();
