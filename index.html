@@ -1177,7 +1177,12 @@ function elgSummary(){
   const renderCust=cn=>{
     const custProd=billedProd.filter(p=>custName(p)===cn&&(!sumQ||(p.name||'').toLowerCase().includes(sumQ)||cn.toLowerCase().includes(sumQ)));
     if(!custProd.length) return '';
-    const custCharge=custProd.reduce((s,p)=>s+chargeOf(p),0);
+    const custCharge=custProd.reduce((s,p)=>{
+      // 若此品項只有PIF費收款記錄、沒有獨立的檢驗費收款，且 charge 從未被收過，不計入應收
+      const hasLabPay=paidOf(p)>0;
+      const labOnly=!hasLabPay && p.pifFeePaid && (p.charge||0)>0;
+      return s+(labOnly?0:chargeOf(p));
+    },0);
     const custPifCharge=invoiceRecs.filter(r=>r.cust===cn&&r.kind==='pif').reduce((s,r)=>s+(r.total||0),0);
     const custPaid=custProd.reduce((s,p)=>s+paidOf(p),0);
     const custPifPaid=custProd.reduce((s,p)=>s+pifPaidOf(p),0);
@@ -1269,8 +1274,11 @@ function elgSummary(){
           // 依收款狀態分三組
           const renderItem=p=>{
             const paid=paidOf(p);
-            const itemCharge=chargeOf(p);
-            const pdiff=itemCharge-paid;
+            const pifPaidAmt=pifPaidOf(p);
+            const itemCharge=chargeOf(p);         // 純檢驗費
+            const itemPifCharge=p.pifFeePaid?(p.pifCharge||0):0; // 已收的PIF費
+            // 真正欠款 = 檢驗費應收 - 已收（排除PIF），但若charge=0視為不欠
+            const pdiff=itemCharge>0 ? itemCharge-paid : 0;
             const method=p.payMethod||(p.payRecords&&p.payRecords[0]&&p.payRecords[0].method)||'';
             const isInvoicing=['invoiced','reported'].includes(p.status) && paid===0;
             const pifInvoiced=!!p.pifFeeInvoice;
@@ -1282,6 +1290,7 @@ function elgSummary(){
             let amtText, amtColor;
             if(isInvoicing){ amtText='請款中'; amtColor='var(--w)'; }
             else if(paid>0){ amtText=money(paid); amtColor='var(--s)'; }
+            else if(itemCharge===0 && pifPaid){ amtText='✓ PIF費已收'; amtColor='var(--s)'; }
             else { amtText='未收款'; amtColor='var(--faint)'; }
             return `<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px solid var(--line);font-size:13px">
               <span style="flex:1;min-width:0">
@@ -1299,13 +1308,13 @@ function elgSummary(){
               <span style="text-align:right;white-space:nowrap">
                 <span style="color:${amtColor};font-weight:700;font-size:12.5px">${amtText}</span>
                 ${(!isInvoicing&&pdiff>0)?`<br><span class="sub" style="font-size:10.5px;color:var(--w)">欠 ${money(pdiff)}</span>`:''}
-                <span class="sub" style="font-size:10px;display:block">應收 ${money(itemCharge)}</span>
+                ${itemCharge>0?`<span class="sub" style="font-size:10px;display:block">檢驗費應收 ${money(itemCharge)}</span>`:''}
               </span>
             </div>`;
           };
-          const gPaid=custProd.filter(p=>paidOf(p)>0);                                          // 已收款
+          const gPaid=custProd.filter(p=>paidOf(p)>0 || (p.pifFeePaid && (p.charge||0)===0));     // 已收款（含純PIF費已收）
           const gInvoicing=custProd.filter(p=>['invoiced','reported'].includes(p.status)&&paidOf(p)===0); // 請款中
-          const gUnpaid=custProd.filter(p=>paidOf(p)===0 && !['invoiced','reported'].includes(p.status)); // 其他未收款
+          const gUnpaid=custProd.filter(p=>paidOf(p)===0 && !(p.pifFeePaid&&(p.charge||0)===0) && !['invoiced','reported'].includes(p.status)); // 其他未收款
           const grpHead=(label,color,n,amt)=>`<div style="display:flex;align-items:center;gap:6px;margin:10px 0 2px;padding-bottom:4px;border-bottom:2px solid ${color}"><span style="font-size:12px;font-weight:700;color:${color}">${label}</span><span class="sub" style="font-size:11px">${n} 筆${amt!=null?' · '+money(amt):''}</span></div>`;
           let out='';
           if(gPaid.length){ out+=grpHead('✓ 已收款','var(--s)',gPaid.length,gPaid.reduce((s,p)=>s+paidOf(p),0)); out+=gPaid.map(renderItem).join(''); }
@@ -2321,9 +2330,19 @@ function elgInvoice(){
           </div>
           ${payNote?`<div class="sub" style="font-size:11px;margin-bottom:6px"><i class="ti ti-cash"></i> 匯款資訊：${payNote}</div>`:''}
           <div style="border-top:1px solid var(--line);padding-top:6px">
-            ${items.map(p=>`<div style="display:flex;justify-content:space-between;font-size:12.5px;padding:3px 0">
-              <span>${p.name||'—'} <span class="sub" style="font-size:10.5px">${SM[p.status]?SM[p.status][0]:p.status}</span></span>
-              <span style="font-weight:600">${money(p.charge||0)}</span></div>`).join('')}
+            ${items.map(p=>{
+              const hasPif=p.pifFeeInvoice||p.pifFeePaid;
+              return `<div style="display:flex;align-items:center;gap:6px;font-size:12.5px;padding:4px 0;border-bottom:1px solid var(--line)">
+                <span style="flex:1">${p.name||'—'} <span class="sub" style="font-size:10.5px">${SM[p.status]?SM[p.status][0]:p.status}</span></span>
+                ${hasPif
+                  ? `<span class="pill pill--s" style="font-size:10px">${p.pifFeePaid?'PIF費已收':'PIF費請款中'}</span>`
+                  : `<button onclick="A.setRetroCust('${custName(p)}');A.go('invoice');A.setInvTab('retro')"
+                      style="border:1px solid var(--accent);background:var(--accent-tint);color:var(--accent);
+                      border-radius:6px;padding:2px 8px;font-size:11px;font-family:inherit;cursor:pointer;white-space:nowrap">
+                      <i class="ti ti-plus" style="font-size:11px"></i> 補請PIF費</button>`}
+                <span style="font-weight:600;min-width:52px;text-align:right">${money(p.charge||0)}</span>
+              </div>`;
+            }).join('')}
           </div>
         </div>`;
       }).join('');
@@ -4194,21 +4213,36 @@ const A = {
   },
   manualMarkInvPaid(id){
     if(!id){ A.toast('找不到收款單'); return; }
-    const rec=invoiceRecs.find(r=>r.id===id);
-    if(!rec){ A.toast('找不到收款單 '+id); return; }
-    if(rec.status==='paid'){ A.toast('⚠ 收款單 '+id+' 已是已收款狀態'); return; }
     if(confirmDel!=='mmip'+id){ confirmDel='mmip'+id; render(); A.toast('再按一次確認：手動標記 '+id+' 已收款（免匯款）'); return; }
-    rec.status='paid'; rec.paidAt=new Date().toISOString();
     const ds=new Date().toLocaleDateString('zh-TW');
-    rec.items.forEach(it=>{
-      const p=byId(it.pid); if(!p) return;
-      p.payRecords=p.payRecords||[];
-      if(!p.payRecords.some(r=>r.note==='PIF費 '+rec.id)){
-        p.payRecords.push({date:ds, amt:it.amt, method:'手動確認', note:'PIF費 '+rec.id+'（手動確認免匯款）'});
-        p.paidAmt=(p.paidAmt||0)+it.amt;
-      }
-      if(rec.kind==='pif'){ p.pifFeePaid=true; p.pifCharge=it.amt; }
-    });
+    const rec=invoiceRecs.find(r=>r.id===id);
+    if(rec){
+      // invoiceRecs 有記錄 → 走正常流程
+      if(rec.status==='paid'){ confirmDel=null; render(); A.toast('⚠ 收款單 '+id+' 已是已收款狀態'); return; }
+      rec.status='paid'; rec.paidAt=new Date().toISOString();
+      rec.items.forEach(it=>{
+        const p=byId(it.pid); if(!p) return;
+        p.payRecords=p.payRecords||[];
+        if(!p.payRecords.some(r=>r.note==='PIF費 '+rec.id)){
+          p.payRecords.push({date:ds, amt:it.amt, method:'手動確認', note:'PIF費 '+rec.id+'（手動確認免匯款）'});
+          p.paidAmt=(p.paidAmt||0)+it.amt;
+        }
+        if(rec.kind==='pif'){ p.pifFeePaid=true; p.pifCharge=it.amt; }
+      });
+    } else {
+      // invoiceRecs 找不到（舊資料） → 直接從 product 的 pifFeeInvoice 標記
+      const affected=products.filter(p=>p.pifFeeInvoice===id && !p.pifFeePaid);
+      if(!affected.length){ confirmDel=null; render(); A.toast('找不到與收款單 '+id+' 相關的品項，可能已收款'); return; }
+      affected.forEach(p=>{
+        const amt=p.pifCharge||0;
+        p.payRecords=p.payRecords||[];
+        if(!p.payRecords.some(r=>r.note==='PIF費 '+id)){
+          p.payRecords.push({date:ds, amt, method:'手動確認', note:'PIF費 '+id+'（手動確認免匯款）'});
+          p.paidAmt=(p.paidAmt||0)+amt;
+        }
+        p.pifFeePaid=true;
+      });
+    }
     confirmDel=null; save(); render();
     A.toast('✓ 已手動確認 '+id+' 收款，客戶端已更新狀態');
   },
