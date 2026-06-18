@@ -225,6 +225,15 @@
     background:var(--ink); color:#fff; border:0; border-radius:22px; padding:9px 14px; font-size:13px; font-weight:700;
     font-family:inherit; cursor:pointer; box-shadow:0 6px 18px -6px rgba(0,0,0,.45); opacity:.92; }
   .devbtn i{ font-size:16px; }
+  .notepad-overlay{ position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:180;display:flex;justify-content:flex-end; }
+  .notepad-panel{ width:380px;max-width:100%;height:100%;background:var(--surface);box-shadow:-4px 0 24px rgba(0,0,0,.15);display:flex;flex-direction:column;animation:slideIn .2s ease; }
+  @keyframes slideIn{ from{transform:translateX(100%)} to{transform:translateX(0)} }
+  .notepad-panel .np-hd{ padding:16px 18px;border-bottom:1px solid var(--line);display:flex;align-items:center;gap:10px; }
+  .notepad-panel .np-body{ flex:1;overflow-y:auto;padding:14px 18px; }
+  .notepad-panel .np-note{ border:1px solid var(--line2);border-radius:10px;padding:12px;margin-bottom:10px;cursor:pointer;transition:border-color .15s; }
+  .notepad-panel .np-note:hover{ border-color:var(--accent); }
+  .notepad-panel .np-note.editing{ border-color:var(--accent);background:var(--accent-tint); }
+  .notepad-panel .np-note textarea{ width:100%;border:0;background:transparent;resize:vertical;font-family:inherit;font-size:13.5px;line-height:1.7;outline:none;min-height:80px; }
   .devmenu{ position:absolute; right:14px; bottom:80px; z-index:61; width:248px; background:var(--surface);
     border:1px solid var(--line2); border-radius:14px; box-shadow:0 14px 40px -12px rgba(0,0,0,.4); overflow:hidden; }
   .devmenu .devhd{ display:flex; justify-content:space-between; align-items:center; padding:11px 14px;
@@ -287,6 +296,7 @@
     <div class="toast" id="toast"></div>
     <div id="fab"></div>
     <div id="dev"></div>
+    <div id="notepad"></div>
   </div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/firebase/12.3.0/firebase-app-compat.min.js"></script>
@@ -483,7 +493,7 @@ function parseCompany(t){
   return { cname:nm.trim(), caddr:ad.trim() };
 }
 let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='', wipeOpen=false, ocrBusy=false, custAddOpen=false, pendingRestore=null, scQ='', scPage=0, scOpen=null, scDraft={name:'',en:'',tagline:'',cover:'',html:'',link:''}, pifSel={}, scSel={}, selScope=[],
-pifAddOpen=false, pifDraft={name:'',cust:'',drive:'',plan:'shared',note:'',toPublic:false}, pifDetailOpen=null, retroCust='', pifGroupClosed={}, invTab='recv', invDetailOpen=null, dataVendorFilter='';
+pifAddOpen=false, pifDraft={name:'',cust:'',drive:'',plan:'shared',note:'',toPublic:false}, pifDetailOpen=null, retroCust='', pifGroupClosed={}, invTab='recv', invDetailOpen=null, dataVendorFilter='', notepadOpen=false;
 let sharedPIF=[];
 let staff=[]; // 員工帳號只從 Firestore 認證，不在本機種子
 let customers=[
@@ -598,6 +608,45 @@ function render(){
         <button onclick="A.devGo('manage')"><i class="ti ti-briefcase"></i> 依洛嘉後臺 · 管理</button>
         <button onclick="A.devGo('board')"><i class="ti ti-clipboard-list"></i> 客戶公共平臺（免登入）</button>
         <button onclick="A.devGo('entry')"><i class="ti ti-home"></i> 入口頁</button>
+      </div>`;
+    }
+  }
+  // 記事本面板
+  const npEl=document.getElementById('notepad');
+  if(npEl){
+    if(!notepadOpen){ npEl.innerHTML=''; }
+    else {
+      const notes=JSON.parse(localStorage.getItem('elg_notes')||'[]');
+      npEl.innerHTML=`<div class="notepad-overlay" onclick="A.toggleNotepad()">
+        <div class="notepad-panel" onclick="event.stopPropagation()">
+          <div class="np-hd">
+            <i class="ti ti-notebook" style="font-size:20px;color:var(--accent)"></i>
+            <span style="flex:1;font-size:16px;font-weight:700">系統記事本</span>
+            <button onclick="A.addNote()" style="border:0;background:var(--accent);color:#fff;border-radius:8px;padding:6px 14px;cursor:pointer;font-size:13px;font-family:inherit;font-weight:600"><i class="ti ti-plus"></i> 新增</button>
+            <button onclick="A.toggleNotepad()" style="border:0;background:none;cursor:pointer;font-size:20px;color:var(--muted)"><i class="ti ti-x"></i></button>
+          </div>
+          <div class="np-body">
+            ${notes.length ? notes.map((n,i)=>`
+              <div class="np-note ${n.editing?'editing':''}">
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">
+                  <input style="flex:1;border:0;background:transparent;font-size:14px;font-weight:700;font-family:inherit;outline:none;color:var(--ink)"
+                    value="${(n.title||'').replace(/"/g,'&quot;')}" placeholder="標題"
+                    onfocus="A.noteEditing(${i},true)" onblur="A.saveNoteField(${i},'title',this.value)">
+                  <span style="font-size:11px;color:var(--faint);white-space:nowrap">${n.updatedAt||''}</span>
+                  <button onclick="A.delNote(${i})" style="border:0;background:none;cursor:pointer;color:var(--faint);font-size:15px" title="刪除"><i class="ti ti-trash"></i></button>
+                  <button onclick="A.pinNote(${i})" style="border:0;background:none;cursor:pointer;color:${n.pinned?'var(--accent)':'var(--faint)'};font-size:15px" title="${n.pinned?'取消置頂':'置頂'}"><i class="ti ti-pin${n.pinned?'-filled':''}"></i></button>
+                </div>
+                <textarea placeholder="寫點什麼…"
+                  onfocus="A.noteEditing(${i},true)"
+                  onblur="A.saveNoteField(${i},'content',this.value)">${(n.content||'').replace(/</g,'&lt;')}</textarea>
+              </div>`).join('')
+            : `<div style="text-align:center;color:var(--faint);padding:40px 0">
+                <i class="ti ti-notebook" style="font-size:40px;opacity:.3"></i>
+                <p style="margin-top:10px">還沒有筆記</p>
+                <p style="font-size:12px">按「新增」開始記錄</p>
+              </div>`}
+          </div>
+        </div>
       </div>`;
     }
   }
@@ -947,10 +996,11 @@ function custBoard(){
 /* ===================== ELOGA ===================== */
 function elgHeader(){
   const gear = (elgRole==='主要管理者') ? `<button class="hbtn" onclick="A.openAccounts()"><i class="ti ti-settings"></i> 帳號</button>` : '';
+  const noteBtn = `<button class="hbtn" onclick="A.toggleNotepad()" title="系統記事本"><i class="ti ti-notebook"></i></button>`;
   const userInfo = (typeof FB!=='undefined'&&FB.on&&FB.user) ? `<span class="muted" style="font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${FB.user.email}</span>` : '';
   return `<div class="hd">
     <div><h1 style="font-size:20px">依洛嘉後臺</h1><p style="margin:5px 0 0;font-size:12px" class="muted">${elgRole} · 可檢視與管理全部客戶</p></div>
-    <div style="display:flex;align-items:center;gap:8px">${gear}${userInfo}<button class="hbtn" onclick="A.logout()" style="color:#C0392B;border-color:#E7C3BD"><i class="ti ti-logout"></i> 登出</button></div>
+    <div style="display:flex;align-items:center;gap:8px">${gear}${noteBtn}${userInfo}<button class="hbtn" onclick="A.logout()" style="color:#C0392B;border-color:#E7C3BD"><i class="ti ti-logout"></i> 登出</button></div>
   </div>`;
 }
 function elgApp(){
@@ -2440,7 +2490,8 @@ function customerSection(){
       </div>`;
     else if(c.status==='已啟用') act=`<div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
         <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.disableCust(${i})"><i class="ti ti-ban"></i> 停用</button>
-        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;color:#C0392B;border-color:#E7C3BD" onclick="A.delCustomer(${i})"><i class="ti ti-trash"></i> ${confirmDel==='ca'+i?'確認刪除？':'刪除帳號'}</button></div>
+        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;color:#C0392B;border-color:#E7C3BD" onclick="A.delCustomer(${i})"><i class="ti ti-trash"></i> ${confirmDel==='ca'+i?'確認刪除？':'刪除帳號'}</button>
+        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;color:var(--w);border-color:var(--w)" onclick="A.clearCustProducts(${i})"><i class="ti ti-eraser"></i> ${confirmDel==='cp'+i?'確認清除產品？':'清除產品資料'}</button></div>
       ${!c.email?`<div style="margin-top:10px;padding:10px 12px;border:1.5px dashed var(--accent);border-radius:10px;background:var(--accent-tint)">
         <div class="sub" style="margin-bottom:6px;color:var(--accent);font-weight:700"><i class="ti ti-user-check"></i> 尚未綁定 Gmail，填入後轉為正式帳號</div>
         <div style="display:flex;gap:8px">
@@ -2463,7 +2514,7 @@ function customerSection(){
       </div>`;
     return `<div class="card"><div class="row"><span class="nm" style="font-size:15px">${c.name}</span>
       <span class="pill pill--${sc}">${c.status}</span></div>
-      <div class="sub" style="margin-top:4px">${c.email||'尚未綁定'} · 登入：${c.login}</div>${act}${contractBlock}</div>`;
+      <div class="sub" style="margin-top:4px">${c.email||'尚未綁定'} · 登入：${c.login||'—'} · 產品 ${products.filter(p=>custName(p)===c.name).length} 筆</div>${act}${contractBlock}</div>`;
   };
   const temp=customers.filter(c=>c.status==='臨時');
   const noEmail=customers.filter(c=>!c.email && c.status!=='臨時' && c.status!=='待審核');
@@ -2689,6 +2740,44 @@ const A = {
     });
     libDrafts=[]; save(); render(); A.toast('已確認匯入 '+rows.length+' 筆 · '+cset.size+' 個客戶（'+SM[libImpStatus][0]+'）');
   },
+  toggleNotepad(){ notepadOpen=!notepadOpen; render(); },
+  addNote(){
+    const notes=JSON.parse(localStorage.getItem('elg_notes')||'[]');
+    const d=new Date(), p2=n=>String(n).padStart(2,'0');
+    const ts=`${d.getFullYear()}/${p2(d.getMonth()+1)}/${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+    notes.unshift({title:'',content:'',updatedAt:ts,pinned:false,editing:true});
+    localStorage.setItem('elg_notes',JSON.stringify(notes)); render();
+  },
+  saveNoteField(i,field,val){
+    const notes=JSON.parse(localStorage.getItem('elg_notes')||'[]');
+    if(!notes[i]) return;
+    notes[i][field]=val; notes[i].editing=false;
+    const d=new Date(), p2=n=>String(n).padStart(2,'0');
+    notes[i].updatedAt=`${d.getFullYear()}/${p2(d.getMonth()+1)}/${p2(d.getDate())} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+    // 置頂排序
+    notes.sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0));
+    localStorage.setItem('elg_notes',JSON.stringify(notes)); render();
+  },
+  noteEditing(i,v){
+    const notes=JSON.parse(localStorage.getItem('elg_notes')||'[]');
+    if(notes[i]) notes[i].editing=v;
+    localStorage.setItem('elg_notes',JSON.stringify(notes)); render();
+  },
+  delNote(i){
+    const notes=JSON.parse(localStorage.getItem('elg_notes')||'[]');
+    if(!notes[i]) return;
+    notes.splice(i,1);
+    localStorage.setItem('elg_notes',JSON.stringify(notes)); render();
+    A.toast('已刪除筆記');
+  },
+  pinNote(i){
+    const notes=JSON.parse(localStorage.getItem('elg_notes')||'[]');
+    if(!notes[i]) return;
+    notes[i].pinned=!notes[i].pinned;
+    notes.sort((a,b)=>(b.pinned?1:0)-(a.pinned?1:0));
+    localStorage.setItem('elg_notes',JSON.stringify(notes)); render();
+    A.toast(notes.find(n=>n===notes[i])?.pinned?'已置頂':'已取消置頂');
+  },
   toggleDev(){ devOpen=!devOpen; render(); },
   devLogoutSwitch(){
     devOpen=false;
@@ -2820,6 +2909,23 @@ const A = {
       confirmDel=null; render();
       A.toast('已清除 Firestore 所有客戶資料，重新整理後會以本機資料為準');
     }catch(e){ A.toast('清除失敗：'+e.message); }
+  },
+  clearCustProducts(i){
+    const c=customers[i]; if(!c) return;
+    if(confirmDel!=='cp'+i){ confirmDel='cp'+i; render(); A.toast('再按一次確認清除「'+c.name+'」的所有產品資料'); return; }
+    const before=products.length;
+    const toRemove=products.filter(p=>custName(p)===c.name);
+    // 同步刪除 Firestore
+    if(typeof FB!=='undefined'&&FB.on&&FB.db){
+      toRemove.forEach(p=>{
+        if(p.id) FB.db.collection('products').doc(p.id).delete().catch(()=>{});
+      });
+    }
+    for(let j=products.length-1;j>=0;j--){
+      if(custName(products[j])===c.name) products.splice(j,1);
+    }
+    confirmDel=null; save(); render();
+    A.toast('已清除「'+c.name+'」的 '+(before-products.length)+' 筆產品資料（帳號保留）');
   },
   openCustAdd(){ custAddOpen=true; render(); },
   closeCustAdd(){ custAddOpen=false; render(); },
