@@ -2461,18 +2461,24 @@ function customerSection(){
       <span class="pill pill--${sc}">${c.status}</span></div>
       <div class="sub" style="margin-top:4px">${c.email||'尚未綁定'} · 登入：${c.login}</div>${act}${contractBlock}</div>`;
   };
-  let h=`<div style="display:flex;gap:10px;margin:16px 0 14px">
-      <div class="card" style="flex:1;text-align:center;padding:12px"><div style="font-size:24px;font-weight:700">${active.length}</div><div class="sub">已註冊帳號</div></div>
-      <div class="card" style="flex:1;text-align:center;padding:12px;border-color:var(--w)"><div style="font-size:24px;font-weight:700;color:var(--w)">${pend.length}</div><div class="sub">客戶申請</div></div>
-    </div>
-    <div class="note" style="margin-bottom:12px"><i class="ti ti-user-check"></i>客戶以 Google／LINE 自由註冊，管理者在此審核或停用。</div>`;
-  if(pend.length){ h+=`<div class="sect">客戶申請（待審核）</div><div class="stack">`+pend.map(card).join('')+`</div>`; }
   const temp=customers.filter(c=>c.status==='臨時');
+  let h=`<div style="display:flex;gap:10px;margin:16px 0 14px;flex-wrap:wrap">
+      <div class="card" style="flex:1;text-align:center;padding:12px;min-width:100px"><div style="font-size:24px;font-weight:700">${active.length}</div><div class="sub">已註冊</div></div>
+      <div class="card" style="flex:1;text-align:center;padding:12px;min-width:100px;border-color:var(--accent)"><div style="font-size:24px;font-weight:700;color:var(--accent)">${temp.length}</div><div class="sub">臨時待啟用</div></div>
+      <div class="card" style="flex:1;text-align:center;padding:12px;min-width:100px;border-color:var(--w)"><div style="font-size:24px;font-weight:700;color:var(--w)">${pend.length}</div><div class="sub">客戶申請</div></div>
+    </div>`;
+
+  // ===== 臨時帳號（最優先處理）=====
   if(temp.length){
-    h+=`<div class="row sect mt"><span>臨時帳號 → 填 Gmail 即啟用</span><span class="pill pill--w">${temp.length}</span></div>`;
-    h+=`<div class="note" style="margin:6px 0 10px"><i class="ti ti-user-plus"></i>這些公司是從匯入清單自動建立，尚未綁定 Gmail。填入客戶的 Gmail 後按「啟用」，客戶即可用 Google 登入查看自己的產品進度與帳務。</div>`;
+    h+=`<div class="row sect"><span>臨時帳號 → 填 Gmail 即啟用</span><span class="pill pill--w">${temp.length}</span></div>`;
+    h+=`<div class="note" style="margin:6px 0 10px"><i class="ti ti-user-plus"></i>這些公司是從匯入清單自動建立，尚未綁定 Gmail。填入客戶的 Gmail 後按「啟用」，客戶即可用 Google 登入查看產品進度與帳務。</div>`;
     h+=`<div class="stack">`+temp.map(card).join('')+`</div>`;
   }
+
+  // ===== 客戶申請（待審核）=====
+  if(pend.length){ h+=`<div class="sect mt">客戶申請（待審核）</div><div class="stack">`+pend.map(card).join('')+`</div>`; }
+
+  // ===== 已註冊帳號 =====
   const reg=active.concat(off);
   h+=`<div class="sect mt">已註冊帳號（${reg.length}）· 公司名</div>`;
   h+= reg.length ? `<div class="stack">`+reg.map(card).join('')+`</div>`
