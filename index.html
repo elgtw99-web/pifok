@@ -1305,12 +1305,16 @@ function elgSummary(){
           else labTag=`<span style="color:var(--faint);font-size:12px">未收</span>`;
 
           // 右側：整體收款概況
-          const totalItem=labP+pifP;
-          const totalExpect=(labC>0?labC:0)+(pifPaidF?pifC:pifInvoiced?pifC:0);
+          // 「齊」= 已收檢驗費 >= 應收檢驗費，且 PIF 費若有開單也已收
+          const labDone = labC===0 || labP>=labC;
+          const pifDone = !pifInvoiced || pifPaidF;
           let rightTag='';
-          if(totalItem>0 && totalItem>=totalExpect) rightTag=`<span style="color:var(--s);font-size:11px;font-weight:700">✓ 齊</span>`;
-          else if(totalItem>0) rightTag=`<span style="color:var(--w);font-size:11px">部分</span>`;
-          else rightTag=`<span style="color:var(--faint);font-size:11px">未收</span>`;
+          if(labDone && pifDone && (labP>0||pifPaidF))
+            rightTag=`<span style="color:var(--s);font-size:11px;font-weight:700">✓ 齊</span>`;
+          else if(labP>0||pifPaidF)
+            rightTag=`<span style="color:var(--w);font-size:11px">部分</span>`;
+          else
+            rightTag=`<span style="color:var(--faint);font-size:11px">未收</span>`;
 
           h+=`<div style="display:grid;grid-template-columns:20px 1fr auto auto auto;gap:6px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);font-size:12.5px">
             <span class="ck ${isSel?'on':''}" style="cursor:pointer;width:18px;height:18px;border-radius:5px;flex:none"
@@ -1890,7 +1894,7 @@ function elgInvoice(){
   const toCheck=P('reported');
   const testing=P('testing');
   const testingUnpaid=products.filter(p=>
-    (p.status==='completed'||p.status==='testing'||p.status==='reporting') &&
+    (p.status==='paid'||p.status==='completed'||p.status==='testing'||p.status==='reporting') &&
     !p.pifFeePaid &&
     custName(p)!==ELG_SELF
   );
@@ -1929,7 +1933,8 @@ function elgInvoice(){
   // ===== 補錄請款（已完成 PIF + 送驗中，尚無收款記錄）=====
   if(invTab==='retro'){
     const tCusts=[...new Set(testingUnpaid.map(p=>custName(p)))];
-    const activeCust=(retroCust && tCusts.includes(retroCust))?retroCust:(tCusts[0]||'');
+    // retroCust 可能是從收款匯總跳過來的，即使不在 tCusts 也要顯示（可能該客戶品項狀態略有不同）
+    const activeCust=retroCust||(tCusts[0]||'');
     const items=testingUnpaid.filter(p=>custName(p)===activeCust);
 
     // 已建立的收款單（所有客戶）
@@ -1951,7 +1956,7 @@ function elgInvoice(){
     if(activeCust){
       // 把品項分三類：未開單 / 已開單請款中 / 已收
       const allCustItems=products.filter(p=>
-        (p.status==='completed'||p.status==='testing'||p.status==='reporting') &&
+        (p.status==='paid'||p.status==='completed'||p.status==='testing'||p.status==='reporting') &&
         custName(p)===activeCust
       );
       const notInvoiced=allCustItems.filter(p=>!p.pifFeeInvoice && !p.pifFeePaid); // 未開 PIF 單
