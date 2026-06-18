@@ -495,7 +495,7 @@ function parseCompany(t){
   return { cname:nm.trim(), caddr:ad.trim() };
 }
 let acctTab='staff', addOpen=false, elgRole='主要管理者', zone='back', addTarget='customer', addMode='text', drafts=[], addCust='', wipeOpen=false, ocrBusy=false, custAddOpen=false, pendingRestore=null, scQ='', scPage=0, scOpen=null, scDraft={name:'',en:'',tagline:'',cover:'',html:'',link:''}, pifSel={}, scSel={}, selScope=[],
-pifAddOpen=false, pifDraft={name:'',cust:'',drive:'',plan:'shared',note:'',toPublic:false}, pifDetailOpen=null, retroCust='', pifGroupClosed={}, invTab='recv', invDetailOpen=null, dataVendorFilter='', notepadOpen=false;
+pifAddOpen=false, pifDraft={name:'',cust:'',drive:'',plan:'shared',note:'',toPublic:false}, pifDetailOpen=null, retroCust='', pifGroupClosed={sum_cleared_section:true}, invTab='recv', invDetailOpen=null, dataVendorFilter='', notepadOpen=false;
 let sharedPIF=[];
 let publicShowcase=[];
 let staff=[]; // 員工帳號只從 Firestore 認證，不在本機種子
@@ -1154,7 +1154,18 @@ function elgSummary(){
   const allCusts=[...new Set(billedProd.map(p=>custName(p)))].sort();
   const filtCusts=sumQ ? allCusts.filter(cn=>cn.toLowerCase().includes(sumQ)||billedProd.some(p=>custName(p)===cn&&(p.name||'').toLowerCase().includes(sumQ))) : allCusts;
 
-  h+=filtCusts.map(cn=>{
+  // 判斷客戶是否已結清
+  const isCleared=cn=>{
+    const cp=billedProd.filter(p=>custName(p)===cn);
+    const cc=cp.reduce((s,p)=>s+chargeOf(p),0);
+    const pd=cp.reduce((s,p)=>s+paidOf(p),0);
+    const inv=cp.filter(p=>['invoiced','reported'].includes(p.status)&&paidOf(p)===0).length;
+    const pifInv=cp.filter(p=>p.pifFeeInvoice&&!p.pifFeePaid).length;
+    return (cc-pd)<=0 && pd>0 && inv===0 && pifInv===0;
+  };
+
+  // 渲染單一客戶卡片的函數
+  const renderCust=cn=>{
     const custProd=billedProd.filter(p=>custName(p)===cn&&(!sumQ||(p.name||'').toLowerCase().includes(sumQ)||cn.toLowerCase().includes(sumQ)));
     if(!custProd.length) return '';
     const custCharge=custProd.reduce((s,p)=>s+chargeOf(p),0);
@@ -1232,7 +1243,32 @@ function elgSummary(){
         }).join('')}
       </div>`:''}
     </div>`;
-  }).join('');
+  }; // end renderCust
+
+  // 分成「進行中」與「已結清」
+  const activeCusts=filtCusts.filter(cn=>!isCleared(cn));
+  const clearedCusts=filtCusts.filter(cn=>isCleared(cn));
+
+  // 進行中（一律展開顯示）
+  if(activeCusts.length){
+    h+=activeCusts.map(renderCust).join('');
+  }
+
+  // 已結清（折疊收納）
+  if(clearedCusts.length){
+    const clearedOpen=!pifGroupClosed['sum_cleared_section'];
+    const clearedTotal=clearedCusts.reduce((s,cn)=>s+billedProd.filter(p=>custName(p)===cn).reduce((a,p)=>a+paidOf(p),0),0);
+    h+=`<div class="card" style="margin-bottom:10px;padding:0;overflow:hidden;border-color:var(--s)">
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--s-bg);cursor:pointer" onclick="A.togglePifGroup('sum_cleared_section')">
+        <span style="flex:1;min-width:0">
+          <span class="nm" style="font-size:14px;color:var(--s)"><i class="ti ti-circle-check"></i> 已結清客戶</span>
+          <span class="sub" style="font-size:12px;margin-left:8px">${clearedCusts.length} 家 · 已收 ${money(clearedTotal)}</span>
+        </span>
+        <i class="ti ti-chevron-${clearedOpen?'up':'down'}" style="color:var(--s);flex:none"></i>
+      </div>
+      ${clearedOpen?`<div style="padding:10px 12px;background:var(--surface)">${clearedCusts.map(renderCust).join('')}</div>`:''}
+    </div>`;
+  }
 
   if(!filtCusts.length||!h.includes('card')){
     h+=`<div class="card faint" style="text-align:center;padding:24px">尚無收款記錄</div>`;
