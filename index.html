@@ -5388,9 +5388,10 @@ function attachCustomer(email){
   FB.unsub.push(FB.db.collection('customers').where('email','==',email).onSnapshot(s=>{
     if(s.docs.length){ s.docs.forEach(d=>{ const o=Object.assign({},d.data()); o.id=d.id; if(!customers.some(c=>c.name===o.name)) customers.push(o); }); render(); }
   }, e=>console.warn(e)));
-  FB.unsub.push(FB.db.collection('sharedPIF').where('state','in',['public','building']).onSnapshot(s=>{
+  // sharedPIF：全部抓（不篩 state，因為舊資料可能沒有 state 欄位，在本機用 shareState 篩選）
+  FB.unsub.push(FB.db.collection('sharedPIF').onSnapshot(s=>{
     snapApply('sharedPIF',sharedPIF,s.docs); render();
-  }, e=>console.warn(e)));
+  }, e=>console.warn('sharedPIF',e)));
   FB.unsub.push(FB.db.collection('showcase').onSnapshot(s=>{
     snapApply('showcase',showcase,s.docs); render();
   }, e=>console.warn(e)));
