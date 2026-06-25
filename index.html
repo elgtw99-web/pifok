@@ -1404,10 +1404,14 @@ function elgSummary(){
       // ── 品項明細（可勾選補開請款）──
       const selKey=p=>'sumSel_'+p.id;
       const selList=prods.filter(p=>pifGroupClosed[selKey(p)]);
-      o+=`<div style="display:flex;align-items:center;gap:8px;margin-top:${pendingBatches.length?'12px':'0'}">
-        <span style="font-size:11px;font-weight:700;color:var(--muted);flex:1"><i class="ti ti-list"></i> 品項明細（${prods.length} 筆）</span>
-        ${selList.length?`<button class="btn btn--sm" style="width:auto;padding:0 12px;font-size:12px" onclick="A.retroReopen('${cn}')">
-          <i class="ti ti-file-invoice"></i> 補開請款（${selList.length} 筆）</button>`:''}
+      o+=`<div style="display:flex;align-items:center;gap:8px;margin-top:${pendingBatches.length?'12px':'0'};flex-wrap:wrap">
+        <span style="font-size:11px;font-weight:700;color:var(--muted);flex:1"><i class="ti ti-list"></i> 品項明細（${prods.length} 筆）${selList.length?'　已勾 <b>'+selList.length+'</b> 筆':''}</span>
+        ${selList.length?`
+          <button class="btn btn--ok btn--sm" style="width:auto;padding:0 12px;font-size:12px" onclick="A.summaryMarkPaid('${cn}')">
+            <i class="ti ti-check"></i> ${confirmDel==='smp'+cn?'再按確認：標記已收款':'一鍵轉入已收款（'+selList.length+'筆）'}</button>
+          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 10px;font-size:12px" onclick="A.retroReopen('${cn}')">
+            <i class="ti ti-file-invoice"></i> 補開請款</button>
+        `:''}
       </div>`;
       o+=`<div style="display:grid;grid-template-columns:20px 1fr auto auto;gap:8px;align-items:center;font-size:11px;font-weight:700;color:var(--muted);padding:6px 0;border-bottom:1px solid var(--line2)">
         <span></span><span>品名</span><span style="text-align:right">金額</span><span style="text-align:right">收款</span>
@@ -2210,68 +2214,113 @@ function elgInvoice(){
 
   // ===== 補錄收款（客戶直接匯款、跳過請款流程）=====
   if(invTab==='adhoc'){
-    const adhocCusts=[...new Set(adhocPool.map(p=>custName(p)))];
-    const activeCust=retroCust||(adhocCusts[0]||'');
-    const custItems=adhocPool.filter(p=>custName(p)===activeCust);
+    // 自動品項（未收款的非完成狀態）+ 手動標記品項
+    const autoAdhoc=products.filter(p=>!['paid','testing','reporting','completed'].includes(p.status)&&custName(p)!==ELG_SELF);
+    const forcedAdhoc=products.filter(p=>p.adhocForce&&!autoAdhoc.includes(p)&&custName(p)!==ELG_SELF);
+    const fullAdhocPool=[...autoAdhoc,...forcedAdhoc];
+    // 客戶清單：有品項的 + 所有已知客戶
+    const allKnownCusts=[...new Set([...fullAdhocPool.map(p=>custName(p)),...customers.filter(c=>c.status==='已啟用').map(c=>c.name)])].sort();
+    const activeCust=retroCust||(allKnownCusts[0]||'');
+    const custItems=fullAdhocPool.filter(p=>custName(p)===activeCust);
     const custKey=(activeCust||'').replace(/[^a-zA-Z0-9一-鿿]/g,'_');
+    // 可追加候選：此客戶全部品項中，不在 custItems 裡的
+    const addCandidates=products.filter(p=>custName(p)===activeCust&&!custItems.includes(p));
+    const addPanelOpen=!!pifGroupClosed['adhocAddOpen_'+activeCust];
+
     h+=`<div class="note" style="margin-bottom:12px"><i class="ti ti-coin"></i>
-      客戶<b>直接匯款</b>、未走正常請款流程時，在此補錄收款記錄，直接標記「已收款待送驗」。<br>
-      <span class="sub" style="font-size:11.5px">可選擇待開單（已收樣）、已開單、或已回報的品項一起補錄。</span>
+      客戶<b>直接匯款、未走請款流程</b>時，在此補錄收款，直接標記「已收款待送驗」。<br>
+      <span class="sub" style="font-size:11.5px">任何狀態的品項都可手動追加，也可直接手寫新品項。</span>
     </div>`;
-    if(!adhocCusts.length){
-      h+=`<div class="card faint" style="text-align:center;padding:20px">目前沒有可補錄的品項（所有品項已收款或尚未收樣）</div>`;
-    } else {
-      // 客戶選擇器
+
+    // 客戶選擇器
+    if(allKnownCusts.length){
       h+=`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
-        ${adhocCusts.map(cn=>`<button onclick="A.setRetroCust('${cn}')"
-          style="border:2px solid ${cn===activeCust?'var(--accent)':'var(--line2)'};
-                 background:${cn===activeCust?'var(--accent-tint)':'var(--surface)'};
-                 color:${cn===activeCust?'var(--accent)':'var(--ink)'};
-                 border-radius:20px;padding:5px 14px;cursor:pointer;font-size:13px;font-family:inherit;font-weight:${cn===activeCust?'700':'400'}">
-          ${cn} <span style="font-size:11px;opacity:.7">${adhocPool.filter(p=>custName(p)===cn).length}筆</span>
-        </button>`).join('')}
+        ${allKnownCusts.map(cn=>{
+          const n=fullAdhocPool.filter(p=>custName(p)===cn).length;
+          return `<button onclick="A.setRetroCust('${cn}')"
+            style="border:2px solid ${cn===activeCust?'var(--accent)':'var(--line2)'};
+                   background:${cn===activeCust?'var(--accent-tint)':'var(--surface)'};
+                   color:${cn===activeCust?'var(--accent)':'var(--ink)'};
+                   border-radius:20px;padding:5px 14px;cursor:pointer;font-size:13px;font-family:inherit;font-weight:${cn===activeCust?'700':'400'}">
+            ${cn}${n?` <span style="font-size:11px;opacity:.7">${n}筆</span>`:''}
+          </button>`;
+        }).join('')}
       </div>`;
-      if(activeCust && custItems.length){
-        const autoTot=custItems.reduce((s,p)=>s+(p.charge||p.feeSel||10000),0);
-        h+=`<div class="card" style="border-color:var(--accent);margin-bottom:12px">
-          <div class="nm" style="font-size:14px;margin-bottom:10px"><i class="ti ti-building-store"></i> ${activeCust} · 可補錄品項</div>
-          ${custItems.map(p=>{
-            const fee=p.charge||p.feeSel||10000;
-            const stBadge=p.status==='received'?'待開單':p.status==='invoiced'?'已開單':'已回報';
-            const stColor=p.status==='received'?'var(--accent)':'var(--w)';
-            return `<div style="display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);padding:8px 0">
-              <span class="ck ${(p.adhocSel!==false)?'on':''}" onclick="A.toggleAdhoc('${p.id}')" style="cursor:pointer;flex:none"><i class="ti ti-check"></i></span>
-              <span style="flex:1;cursor:pointer" onclick="A.toggleAdhoc('${p.id}')">
-                <span class="nm" style="font-size:13px">${p.name}</span>
-                <span class="pill" style="font-size:10px;margin-left:6px;color:${stColor};background:${stColor}15;border:1px solid ${stColor}30">${stBadge}</span>
-              </span>
-              <span style="font-weight:600;font-size:13px">${money(fee)}</span>
-            </div>`;
-          }).join('')}
-        </div>`;
-        h+=`<div class="card" style="margin-bottom:12px">
-          <div class="nm" style="font-size:14px;margin-bottom:12px"><i class="ti ti-coin"></i> 補錄付款資訊</div>
-          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
-            <div style="flex:1;min-width:130px">
-              <label class="lbl">實收金額（元）</label>
-              <input class="fld fld--mini" id="adhoc_amt_${custKey}" type="number" value="${autoTot}" placeholder="實際匯款金額">
-            </div>
-            <div style="flex:1;min-width:130px">
-              <label class="lbl">付款方式</label>
-              <select class="fld fld--mini" id="adhoc_method_${custKey}">
-                ${PAY_METHODS.map(m=>`<option>${m}</option>`).join('')}
-              </select>
-            </div>
+    }
+
+    if(activeCust){
+      // 已選品項清單
+      h+=`<div class="card" style="border-color:var(--accent);margin-bottom:12px">
+        <div class="nm" style="font-size:14px;margin-bottom:8px"><i class="ti ti-building-store"></i> ${activeCust} · 補錄品項清單</div>
+        ${custItems.length ? custItems.map(p=>{
+          const fee=p.charge||p.feeSel||10000;
+          const st=SM[p.status]?SM[p.status][0]:p.status;
+          return `<div style="display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);padding:8px 0">
+            <span class="ck ${p.adhocSel!==false?'on':''}" onclick="A.toggleAdhoc('${p.id}')" style="cursor:pointer;flex:none"><i class="ti ti-check"></i></span>
+            <span style="flex:1;cursor:pointer;min-width:0" onclick="A.toggleAdhoc('${p.id}')">
+              <span class="nm" style="font-size:13px">${p.name}</span>
+              <span class="pill pill--n" style="font-size:10px;margin-left:5px">${st}</span>
+              ${p.adhocForce?`<span class="pill" style="font-size:10px;margin-left:4px;background:var(--accent-tint);color:var(--accent)">手動追加</span>`:''}
+            </span>
+            <input type="number" class="fld fld--mini" style="width:90px;text-align:right" value="${fee}"
+              onchange="A.setAdhocFee('${p.id}',this.value)" title="調整此品項金額">
+            <span style="cursor:pointer;color:#C0392B;font-size:14px" onclick="A.removeAdhocForce('${p.id}')" title="移出清單"><i class="ti ti-x"></i></span>
+          </div>`;
+        }).join('') : `<div class="sub" style="padding:12px 0;text-align:center">尚無品項，請從下方追加</div>`}
+      </div>`;
+
+      // 手動追加面板
+      h+=`<div class="card" style="margin-bottom:12px;border-color:var(--line2)">
+        <div style="display:flex;align-items:center;cursor:pointer" onclick="A.toggleAdhocAdd('${activeCust}')">
+          <span style="font-size:13px;font-weight:700;color:var(--accent);flex:1"><i class="ti ti-plus"></i> 追加品項${addCandidates.length?' （樣品庫 '+addCandidates.length+' 項可加）':''}</span>
+          <i class="ti ti-chevron-${addPanelOpen?'up':'down'}" style="color:var(--accent)"></i>
+        </div>
+        ${addPanelOpen?`
+        <div class="card" style="margin-top:10px;background:var(--accent-tint);border-color:var(--accent)">
+          <div style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:8px"><i class="ti ti-pencil"></i> 手寫新品項</div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:flex-end">
+            <div style="flex:2;min-width:140px"><label class="lbl">品名</label><input class="fld fld--mini" id="adhoc_newname_${custKey}" placeholder="品名，如：玫瑰精華液" style="width:100%"></div>
+            <div style="flex:1;min-width:90px"><label class="lbl">金額</label><input class="fld fld--mini" id="adhoc_newfee_${custKey}" type="number" placeholder="10000" style="width:100%"></div>
+            <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px" onclick="A.adhocAddNew('${activeCust}')"><i class="ti ti-plus"></i> 新增</button>
           </div>
-          <div style="margin-bottom:10px">
-            <label class="lbl">備注（可填匯款末五碼等）</label>
-            <input class="fld fld--mini" id="adhoc_note_${custKey}" placeholder="例：末五碼 12345，或客戶直接匯款">
+        </div>
+        ${addCandidates.length?`<div class="note" style="margin:10px 0 6px;font-size:11.5px"><i class="ti ti-database"></i> 或從此客戶的樣品庫選擇：</div>
+        <div class="stack">${addCandidates.map(p=>`
+          <div class="card compact row" style="padding:7px 10px">
+            <span style="flex:1;min-width:0"><span class="nm" style="font-size:12.5px">${p.name||'—'}</span>
+              <span class="pill pill--n" style="font-size:9.5px;margin-left:4px">${SM[p.status]?SM[p.status][0]:p.status}</span></span>
+            <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;font-size:11px;color:var(--accent);border-color:var(--accent)" onclick="A.adhocAddItem('${p.id}')">
+              <i class="ti ti-plus"></i> 加入</button>
+          </div>`).join('')}</div>`:'<div class="sub" style="font-size:11px;margin-top:8px">此客戶樣品庫無其他品項可追加，請手寫新增。</div>'}
+        `:''}
+      </div>`;
+
+      // 付款資訊
+      const selItems=custItems.filter(p=>p.adhocSel!==false);
+      const autoTot=selItems.reduce((s,p)=>s+(p.adhocFee||p.charge||p.feeSel||10000),0);
+      h+=`<div class="card" style="margin-bottom:12px">
+        <div class="nm" style="font-size:14px;margin-bottom:12px"><i class="ti ti-coin"></i> 付款資訊（已勾選 ${selItems.length} 筆）</div>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+          <div style="flex:1;min-width:130px">
+            <label class="lbl">實收金額（元）</label>
+            <input class="fld fld--mini" id="adhoc_amt_${custKey}" type="number" value="${autoTot}" placeholder="實際匯款金額">
           </div>
-          <button class="btn btn--ok" onclick="A.adhocConfirmPay('${activeCust}')">
-            <i class="ti ti-check"></i> 確認補錄收款 → 已收款待送驗
-          </button>
-        </div>`;
-      }
+          <div style="flex:1;min-width:130px">
+            <label class="lbl">付款方式</label>
+            <select class="fld fld--mini" id="adhoc_method_${custKey}">
+              ${PAY_METHODS.map(m=>`<option>${m}</option>`).join('')}
+            </select>
+          </div>
+        </div>
+        <div style="margin-bottom:12px">
+          <label class="lbl">備注（匯款末五碼、日期等）</label>
+          <input class="fld fld--mini" id="adhoc_note_${custKey}" placeholder="例：末五碼 12345">
+        </div>
+        <button class="btn btn--ok" ${!selItems.length?'disabled':''} onclick="A.adhocConfirmPay('${activeCust}')">
+          <i class="ti ti-check"></i> 確認補錄收款（${selItems.length} 筆）→ 已收款待送驗
+        </button>
+        ${!selItems.length?`<div class="sub" style="margin-top:8px;font-size:12px">請先勾選品項或追加品項後再確認。</div>`:''}
+      </div>`;
     }
   } // end invTab==='adhoc'
 
@@ -4408,6 +4457,24 @@ const A = {
     A.toast('已刪除請款單（'+money(iv.amount||0)+'）');
   },
   toggleSumSel(pid){ pifGroupClosed['sumSel_'+pid]=!pifGroupClosed['sumSel_'+pid]; render(); },
+  summaryMarkPaid(cn){
+    const key='smp'+cn;
+    const sel=products.filter(p=>custName(p)===cn&&pifGroupClosed['sumSel_'+p.id]);
+    if(!sel.length){ A.toast('請先勾選品項'); return; }
+    if(confirmDel!==key){ confirmDel=key; render(); A.toast('再按一次確認標記已收款…'); return; }
+    confirmDel='';
+    const today=new Date().toISOString().slice(0,10);
+    sel.forEach(p=>{
+      const due=Math.max(0,(p.charge||0)-(p.payRecords||[]).reduce((s,r)=>s+(r.amt||0),0));
+      if(due>0){
+        p.payRecords=p.payRecords||[];
+        p.payRecords.push({date:today,amt:due,method:'手動確認',note:'收款匯總直接確認'});
+      }
+      if(['invoiced','reported','received'].includes(p.status)) p.status='paid';
+      delete pifGroupClosed['sumSel_'+p.id];
+    });
+    save(); render(); A.toast('已將 '+sel.length+' 筆標記為已收款');
+  },
   togglePifGroup(cn){ pifGroupClosed[cn]=!pifGroupClosed[cn]; render(); },
   toggleRetroDone(cn){ const k='retro_done_'+cn; pifGroupClosed[k]=(pifGroupClosed[k]==='open')?undefined:'open'; render(); },
   togglePifGroupSel(cn){
@@ -5361,8 +5428,43 @@ const A = {
     p.adhocSel=(p.adhocSel===false)?true:false;
     render();
   },
+  setAdhocFee(id,v){
+    const p=byId(id); if(!p) return;
+    p.adhocFee=Number(v)||0;
+  },
+  toggleAdhocAdd(cn){
+    const k='adhocAddOpen_'+cn;
+    pifGroupClosed[k]=!pifGroupClosed[k];
+    render();
+  },
+  adhocAddItem(id){
+    const p=byId(id); if(!p) return;
+    p.adhocForce=true; p.adhocSel=true;
+    render(); A.toast('已追加「'+p.name+'」到補錄清單');
+  },
+  removeAdhocForce(id){
+    const p=byId(id); if(!p) return;
+    delete p.adhocForce; delete p.adhocSel; delete p.adhocFee;
+    render();
+  },
+  adhocAddNew(cn){
+    const custKey=cn.replace(/[^a-zA-Z0-9一-鿿]/g,'_');
+    const nameEl=document.getElementById('adhoc_newname_'+custKey);
+    const feeEl=document.getElementById('adhoc_newfee_'+custKey);
+    const name=(nameEl?nameEl.value:'').trim();
+    const fee=Number(feeEl?feeEl.value:0)||10000;
+    if(!name){ A.toast('請填品名'); return; }
+    const id='adh'+Date.now();
+    const cust=customers.find(c=>c.name===cn);
+    const custEmail=cust?cust.email||'':'';
+    const p={id, name, cust:cn, customerEmail:custEmail, status:'received', charge:fee, adhocForce:true, adhocSel:true, adhocFee:fee, payRecords:[], invoices:[]};
+    products.push(p);
+    if(nameEl) nameEl.value='';
+    if(feeEl) feeEl.value='';
+    save(); render(); A.toast('已新增「'+name+'」並加入補錄清單');
+  },
   adhocConfirmPay(cn){
-    const pool=products.filter(p=>['received','invoiced','reported'].includes(p.status)&&custName(p)===cn);
+    const pool=products.filter(p=>custName(p)===cn&&(p.adhocForce||!['paid','testing','reporting','completed'].includes(p.status))&&custName(p)!==ELG_SELF);
     const sel=pool.filter(p=>p.adhocSel!==false);
     if(!sel.length){ A.toast('請先勾選要補錄的品項'); return; }
     const custKey=cn.replace(/[^a-zA-Z0-9一-鿿]/g,'_');
