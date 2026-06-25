@@ -2189,10 +2189,13 @@ function elgInvoice(){
   </div>`;
 
   // 分頁導覽
+  // 補錄收款：客戶直接匯款、沒走請款流程的品項（received / invoiced / reported 皆可）
+  const adhocPool=products.filter(p=>['received','invoiced','reported'].includes(p.status)&&custName(p)!==ELG_SELF);
   const tabs=[
     {id:'recv',  label:'開請款單', badge:recv.length, color:'var(--w)'},
     {id:'issued',label:'已開單',   badge:issued.length},
     {id:'check', label:'查帳',     badge:toCheck.length, color:'var(--w)'},
+    {id:'adhoc', label:'補錄收款', badge:adhocPool.length, color:'var(--w)'},
     {id:'retro', label:'補收PIF費', badge:testingUnpaid.length},
     {id:'query', label:'請款單查詢'},
   ];
@@ -2204,6 +2207,73 @@ function elgInvoice(){
       ${t.label}${t.badge?` <span style="background:${invTab===t.id?'rgba(255,255,255,.3)':t.color||'var(--line2)'};color:${invTab===t.id?'#fff':'var(--ink)'};border-radius:10px;padding:1px 7px;font-size:11px;font-weight:700;margin-left:4px">${t.badge}</span>`:''}
     </button>`).join('')}
   </div>`;
+
+  // ===== 補錄收款（客戶直接匯款、跳過請款流程）=====
+  if(invTab==='adhoc'){
+    const adhocCusts=[...new Set(adhocPool.map(p=>custName(p)))];
+    const activeCust=retroCust||(adhocCusts[0]||'');
+    const custItems=adhocPool.filter(p=>custName(p)===activeCust);
+    const custKey=(activeCust||'').replace(/[^a-zA-Z0-9一-鿿]/g,'_');
+    h+=`<div class="note" style="margin-bottom:12px"><i class="ti ti-coin"></i>
+      客戶<b>直接匯款</b>、未走正常請款流程時，在此補錄收款記錄，直接標記「已收款待送驗」。<br>
+      <span class="sub" style="font-size:11.5px">可選擇待開單（已收樣）、已開單、或已回報的品項一起補錄。</span>
+    </div>`;
+    if(!adhocCusts.length){
+      h+=`<div class="card faint" style="text-align:center;padding:20px">目前沒有可補錄的品項（所有品項已收款或尚未收樣）</div>`;
+    } else {
+      // 客戶選擇器
+      h+=`<div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:14px">
+        ${adhocCusts.map(cn=>`<button onclick="A.setRetroCust('${cn}')"
+          style="border:2px solid ${cn===activeCust?'var(--accent)':'var(--line2)'};
+                 background:${cn===activeCust?'var(--accent-tint)':'var(--surface)'};
+                 color:${cn===activeCust?'var(--accent)':'var(--ink)'};
+                 border-radius:20px;padding:5px 14px;cursor:pointer;font-size:13px;font-family:inherit;font-weight:${cn===activeCust?'700':'400'}">
+          ${cn} <span style="font-size:11px;opacity:.7">${adhocPool.filter(p=>custName(p)===cn).length}筆</span>
+        </button>`).join('')}
+      </div>`;
+      if(activeCust && custItems.length){
+        const autoTot=custItems.reduce((s,p)=>s+(p.charge||p.feeSel||10000),0);
+        h+=`<div class="card" style="border-color:var(--accent);margin-bottom:12px">
+          <div class="nm" style="font-size:14px;margin-bottom:10px"><i class="ti ti-building-store"></i> ${activeCust} · 可補錄品項</div>
+          ${custItems.map(p=>{
+            const fee=p.charge||p.feeSel||10000;
+            const stBadge=p.status==='received'?'待開單':p.status==='invoiced'?'已開單':'已回報';
+            const stColor=p.status==='received'?'var(--accent)':'var(--w)';
+            return `<div style="display:flex;align-items:center;gap:8px;border-top:1px solid var(--line);padding:8px 0">
+              <span class="ck ${(p.adhocSel!==false)?'on':''}" onclick="A.toggleAdhoc('${p.id}')" style="cursor:pointer;flex:none"><i class="ti ti-check"></i></span>
+              <span style="flex:1;cursor:pointer" onclick="A.toggleAdhoc('${p.id}')">
+                <span class="nm" style="font-size:13px">${p.name}</span>
+                <span class="pill" style="font-size:10px;margin-left:6px;color:${stColor};background:${stColor}15;border:1px solid ${stColor}30">${stBadge}</span>
+              </span>
+              <span style="font-weight:600;font-size:13px">${money(fee)}</span>
+            </div>`;
+          }).join('')}
+        </div>`;
+        h+=`<div class="card" style="margin-bottom:12px">
+          <div class="nm" style="font-size:14px;margin-bottom:12px"><i class="ti ti-coin"></i> 補錄付款資訊</div>
+          <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px">
+            <div style="flex:1;min-width:130px">
+              <label class="lbl">實收金額（元）</label>
+              <input class="fld fld--mini" id="adhoc_amt_${custKey}" type="number" value="${autoTot}" placeholder="實際匯款金額">
+            </div>
+            <div style="flex:1;min-width:130px">
+              <label class="lbl">付款方式</label>
+              <select class="fld fld--mini" id="adhoc_method_${custKey}">
+                ${PAY_METHODS.map(m=>`<option>${m}</option>`).join('')}
+              </select>
+            </div>
+          </div>
+          <div style="margin-bottom:10px">
+            <label class="lbl">備注（可填匯款末五碼等）</label>
+            <input class="fld fld--mini" id="adhoc_note_${custKey}" placeholder="例：末五碼 12345，或客戶直接匯款">
+          </div>
+          <button class="btn btn--ok" onclick="A.adhocConfirmPay('${activeCust}')">
+            <i class="ti ti-check"></i> 確認補錄收款 → 已收款待送驗
+          </button>
+        </div>`;
+      }
+    }
+  } // end invTab==='adhoc'
 
   // ===== 補錄請款（已完成 PIF + 送驗中，尚無收款記錄）=====
   if(invTab==='retro'){
@@ -5285,6 +5355,45 @@ const A = {
     p.genSel=true;
     confirmDel=null; save(); render();
     A.toast('✓ 已直接確認「'+p.name+'」收款 '+money(amt)+' → 已收款待送驗');
+  },
+  toggleAdhoc(id){
+    const p=byId(id); if(!p) return;
+    p.adhocSel=(p.adhocSel===false)?true:false;
+    render();
+  },
+  adhocConfirmPay(cn){
+    const pool=products.filter(p=>['received','invoiced','reported'].includes(p.status)&&custName(p)===cn);
+    const sel=pool.filter(p=>p.adhocSel!==false);
+    if(!sel.length){ A.toast('請先勾選要補錄的品項'); return; }
+    const custKey=cn.replace(/[^a-zA-Z0-9一-鿿]/g,'_');
+    const amtEl=document.getElementById('adhoc_amt_'+custKey);
+    const methodEl=document.getElementById('adhoc_method_'+custKey);
+    const noteEl=document.getElementById('adhoc_note_'+custKey);
+    const totalAmt=amtEl?Number(amtEl.value)||0:sel.reduce((s,p)=>s+(p.charge||p.feeSel||10000),0);
+    const method=methodEl?methodEl.value:'匯款';
+    const note=(noteEl?noteEl.value:'')||'客戶直接匯款補錄';
+    if(!totalAmt){ A.toast('請填入實收金額'); return; }
+    if(confirmDel!=='adhoc'+cn){ confirmDel='adhoc'+cn; render(); A.toast('再按一次確認：補錄 '+cn+' 共 '+sel.length+' 筆，實收 '+money(totalAmt)); return; }
+    const ds=new Date().toLocaleDateString('zh-TW');
+    const totalCharge=sel.reduce((s,p)=>s+(p.charge||p.feeSel||10000),0);
+    const d=new Date(), pad=n=>String(n).padStart(2,'0');
+    const batchName='ADH-'+d.getFullYear()+pad(d.getMonth()+1)+pad(d.getDate())+'-'+pad(products.filter(p=>p.batch&&p.batch.startsWith('ADH-')).length+1);
+    sel.forEach(p=>{
+      const ratio=totalCharge>0?(p.charge||p.feeSel||10000)/totalCharge:1/sel.length;
+      const amt=Math.round(totalAmt*ratio);
+      if(!p.charge) p.charge=p.feeSel||10000;
+      if(!p.batch) p.batch=batchName;
+      p.payRecords=p.payRecords||[];
+      p.payRecords.push({date:ds, amt, method, note});
+      p.paidAmt=(p.paidAmt||0)+amt;
+      p.payMethod=method;
+      p.payNote=note;
+      p.status='paid';
+      p.genSel=true;
+      delete p.adhocSel;
+    });
+    confirmDel=null; save(); render();
+    A.toast('✓ 已補錄 '+cn+' 共 '+sel.length+' 筆收款 '+money(totalAmt)+'（'+method+'）→ 已收款待送驗');
   },
   confirmBatchFromQuery(batch){
     const items=products.filter(p=>p.batch===batch && ['invoiced','reported'].includes(p.status));
