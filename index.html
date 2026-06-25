@@ -2666,15 +2666,19 @@ function elgInvoice(){
       h+=batchKeys.map(bk=>{
         const items=batchGroups[bk];
         const tot=items.reduce((s,p)=>s+(p.charge||0),0);
-        const allPaid=items.every(p=>paidSum(p)>0);
-        const someStatus=items[0].status;
-        const stLabel = allPaid?'已收款':(['invoiced','reported'].includes(someStatus)?'待收款':'處理中');
-        const stColor = allPaid?'var(--s)':'var(--w)';
+        const unpaidItems=items.filter(p=>['invoiced','reported'].includes(p.status));
+        const allPaid=items.every(p=>['paid','testing','reporting','completed'].includes(p.status));
+        const hasReported=unpaidItems.some(p=>p.status==='reported');
+        const stLabel=allPaid?'已收款':unpaidItems.length?'待收款':'處理中';
+        const stColor=allPaid?'var(--s)':'var(--w)';
         const payNote=items.map(p=>p.payNote).filter(Boolean)[0]||'';
+        const isPending=!allPaid && unpaidItems.length>0;
         return `<div class="card" style="margin-bottom:8px;border-color:${stColor}40">
           <div class="row" style="margin-bottom:6px">
             <span><span class="nm" style="font-size:13.5px;color:var(--accent)">${bk}</span>
-              <span class="pill" style="font-size:10px;margin-left:6px;background:${stColor}15;color:${stColor};border:1px solid ${stColor}40">${stLabel}</span></span>
+              <span class="pill" style="font-size:10px;margin-left:6px;background:${stColor}15;color:${stColor};border:1px solid ${stColor}40">${stLabel}</span>
+              ${hasReported?`<span class="pill pill--w" style="font-size:10px;margin-left:4px">客戶已回報</span>`:''}
+            </span>
             <span class="amt" style="font-size:14px">${money(tot)}</span>
           </div>
           ${payNote?`<div class="sub" style="font-size:11px;margin-bottom:6px"><i class="ti ti-cash"></i> 匯款資訊：${payNote}</div>`:''}
@@ -2693,6 +2697,14 @@ function elgInvoice(){
               </div>`;
             }).join('')}
           </div>
+          ${isPending?`<div style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap">
+            <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px" onclick="A.confirmBatchFromQuery('${bk}')">
+              <i class="ti ti-check"></i> 客戶已匯款（確認收款）
+            </button>
+            <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;color:#C0392B;border-color:#E7C3BD" onclick="A.voidBatch('${bk}')">
+              <i class="ti ti-arrow-back-up"></i> 撤回重開
+            </button>
+          </div>`:allPaid?`<div style="margin-top:8px;font-size:12px;color:var(--s)"><i class="ti ti-circle-check"></i> 已結清</div>`:''}
         </div>`;
       }).join('');
     }
@@ -2714,6 +2726,11 @@ function elgInvoice(){
               <span>${it.name} <span class="sub" style="font-size:10.5px">${it.plan||''}</span></span>
               <span style="font-weight:600">${money(it.amt)}</span></div>`).join('')}
           </div>
+          ${rec.status!=='paid'?`<div style="margin-top:10px">
+            <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px" onclick="A.manualMarkInvPaid('${rec.id}')">
+              <i class="ti ti-check"></i> 客戶已匯款（確認收款）
+            </button>
+          </div>`:`<div style="margin-top:8px;font-size:12px;color:var(--s)"><i class="ti ti-circle-check"></i> 已結清</div>`}
         </div>`;
       }).join('');
     }
@@ -5268,6 +5285,24 @@ const A = {
     p.genSel=true;
     confirmDel=null; save(); render();
     A.toast('✓ 已直接確認「'+p.name+'」收款 '+money(amt)+' → 已收款待送驗');
+  },
+  confirmBatchFromQuery(batch){
+    const items=products.filter(p=>p.batch===batch && ['invoiced','reported'].includes(p.status));
+    if(!items.length){ A.toast('此批次所有品項已收款'); return; }
+    const tot=items.reduce((s,p)=>s+(p.charge||0),0);
+    if(confirmDel!=='cbfq'+batch){ confirmDel='cbfq'+batch; render(); A.toast('再按一次確認：標記批次 '+batch+' 客戶已匯款，共 '+money(tot)); return; }
+    const ds=new Date().toLocaleDateString('zh-TW');
+    items.forEach(p=>{
+      const amt=p.charge||0;
+      p.payRecords=p.payRecords||[];
+      p.payRecords.push({date:ds, amt, method:'匯款', note:p.payNote||('客戶已匯款 · 請款單查詢確認 · 批次 '+batch)});
+      p.paidAmt=(p.paidAmt||0)+amt;
+      p.payMethod='匯款';
+      p.status='paid';
+      p.genSel=true;
+    });
+    confirmDel=null; save(); render();
+    A.toast('✓ 已確認批次 '+batch+' 收款（'+items.length+' 筆）→ 已收款待送驗');
   },
   quickConfirmReported(cn){
     const items=P('reported').filter(p=>custName(p)===cn);
