@@ -8,6 +8,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/tabler-icons/3.7.0/tabler-icons.min.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/exceljs/4.4.0/exceljs.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.0/tesseract.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
 <style>
   :root{
     --bg:#E8E6E0; --surface:#FFFFFF; --ink:#1A1A1C; --muted:#6E6E73; --faint:#A0A09A;
@@ -533,6 +534,38 @@ function agreementHTML(list){
   </body></html>`;
 }
 function getApiKey(){ return localStorage.getItem('elg_anthropic_key')||''; }
+/* ===== EmailJS 通知 ===== */
+function getEmailjsCfg(){ return JSON.parse(localStorage.getItem('elg_emailjs')||'{}'); }
+function saveEmailjsCfg(cfg){ localStorage.setItem('elg_emailjs', JSON.stringify(cfg)); }
+const STATUS_NOTE={
+  approved:'依洛嘉已確認您的申請，請備樣並安排寄送至指定地址。',
+  received:'依洛嘉已收到您的樣品，正在開立收款單，請留意後續通知。',
+  invoiced:'收款單已開立，請儘速完成匯款並在系統上回報末五碼。',
+  paid:'依洛嘉已確認收款，將盡快安排送驗，感謝您的配合。',
+  testing:'您的產品樣品已送往檢測中心，檢測進行中，完成後會通知您。',
+  reporting:'檢驗報告已收到，PIF 製作中，完成後將立即通知您。',
+  completed:'PIF 已完成！請至雲端資料夾下載，如有問題請聯繫客服。',
+};
+async function sendStatusEmail(p, newStatus){
+  const cfg = getEmailjsCfg();
+  if(!cfg.svcId||!cfg.tplId||!cfg.pubKey) return;
+  const cust = customers.find(c=>c.name===custName(p));
+  const toEmail = (cust&&cust.email)||p.customerEmail||'';
+  if(!toEmail) return;
+  const statusLabel = SM[newStatus]?SM[newStatus][0]:newStatus;
+  try{
+    emailjs.init(cfg.pubKey);
+    await emailjs.send(cfg.svcId, cfg.tplId, {
+      to_email: toEmail,
+      customer_name: custName(p),
+      product_name: p.name,
+      new_status: statusLabel,
+      status_note: STATUS_NOTE[newStatus]||'',
+      support_url: SUPPORT_URL,
+    });
+    console.log('[EmailJS] sent to', toEmail, newStatus);
+  }catch(e){ console.warn('[EmailJS] 發送失敗', e); }
+}
 async function aiEnName(name, type){
   const key=getApiKey();
   if(!key) throw new Error('no_key');
@@ -1126,7 +1159,7 @@ function custBoard(){
 
 /* ===================== ELOGA ===================== */
 function elgHeader(){
-  const gear = (elgRole==='主要管理者') ? `<button class="hbtn" onclick="A.openAccounts()"><i class="ti ti-settings"></i> 帳號</button>` : '';
+  const gear = `<button class="hbtn" onclick="A.openAccounts()"><i class="ti ti-settings"></i> 帳號</button>`;
   const noteBtn = `<button class="hbtn" onclick="A.toggleNotepad()" title="系統記事本"><i class="ti ti-notebook"></i></button>`;
   const userInfo = (typeof FB!=='undefined'&&FB.on&&FB.user) ? `<span class="muted" style="font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${FB.user.email}</span>` : '';
   return `<div class="hd">
@@ -2655,6 +2688,13 @@ function elgPif(){
         ${sharedPIF.some(s=>s.name===p.name)?`<span class="pill pill--s" style="font-size:10px;flex:none"><i class="ti ti-check"></i> 已在共用</span>`:`<span class="pill pill--s" style="font-size:10px;flex:none">送驗中</span>`}
       </div>
         <button class="btn btn--sm" style="margin-top:10px" onclick="A.receiveReport('${p.id}')"><i class="ti ti-file-check"></i> 收到檢驗報告（轉 PIF 製作中）</button>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+          <span class="sub" style="font-size:12px;white-space:nowrap">直接設定狀態：</span>
+          <select class="fld fld--mini" style="flex:1" onchange="A.setStatus('${p.id}',this.value)">
+            <option value="">— 選擇 —</option>
+            ${Object.keys(SM).map(s=>`<option value="${s}" ${p.status===s?'selected':''}>${SM[s][0]}</option>`).join('')}
+          </select>
+        </div>
       </div>`).join('')+`</div>`
     : `<div class="card faint" style="text-align:center;padding:16px">目前沒有送驗中項目</div>`;
 
@@ -2673,6 +2713,13 @@ function elgPif(){
         <input class="fld" id="dl_${p.id}" placeholder="貼上共享資料夾連結">
         <button class="btn btn--ok btn--sm" style="margin-top:10px" onclick="A.complete('${p.id}')">
           <i class="ti ti-circle-check"></i> 標記已完成 PIF（費用回傳客戶）</button>
+        <div style="display:flex;align-items:center;gap:8px;margin-top:8px">
+          <span class="sub" style="font-size:12px;white-space:nowrap">直接設定狀態：</span>
+          <select class="fld fld--mini" style="flex:1" onchange="A.setStatus('${p.id}',this.value)">
+            <option value="">— 選擇 —</option>
+            ${Object.keys(SM).map(s=>`<option value="${s}" ${p.status===s?'selected':''}>${SM[s][0]}</option>`).join('')}
+          </select>
+        </div>
       </div>`).join('')+`</div>`
     : `<div class="empty" style="padding:24px"><i class="ti ti-clipboard-check"></i>目前沒有製作中的 PIF</div>`;
 
@@ -3056,17 +3103,52 @@ function manualMode(){
     <button class="btn btn--sm" style="margin-top:12px" onclick="A.addManual()"><i class="ti ti-plus"></i> 加入這一筆</button>`;
 }
 
+
+function emailjsSection(){
+  const cfg=getEmailjsCfg();
+  return `<div class="pane">
+    <div class="card" style="margin-bottom:14px;border-color:var(--accent)">
+      <div class="nm" style="margin-bottom:4px"><i class="ti ti-mail-forward"></i> EmailJS 狀態通知設定</div>
+      <p class="sub" style="margin-bottom:12px">當品項狀態更新時，自動寄送 Email 通知給客戶。
+        請先到 <a href="https://www.emailjs.com" target="_blank" style="color:var(--accent)">emailjs.com</a>
+        免費註冊，建立 Email Service + Template，再填入以下資訊。</p>
+      <label class="lbl">Service ID（例：service_abc123）</label>
+      <input id="ejs_svc" class="fld" value="${(cfg.svcId||'').replace(/"/g,'&quot;')}" placeholder="service_xxxxxxx" style="margin-bottom:10px">
+      <label class="lbl">Template ID（例：template_abc123）</label>
+      <input id="ejs_tpl" class="fld" value="${(cfg.tplId||'').replace(/"/g,'&quot;')}" placeholder="template_xxxxxxx" style="margin-bottom:10px">
+      <label class="lbl">Public Key（Account → API Keys → Public Key）</label>
+      <input id="ejs_key" class="fld" value="${(cfg.pubKey||'').replace(/"/g,'&quot;')}" placeholder="xxxxxxxxxxxxxxxxxxxx" style="margin-bottom:14px">
+      <button class="btn btn--ok" onclick="A.saveEmailjsCfg()"><i class="ti ti-device-floppy"></i> 儲存設定</button>
+      ${cfg.svcId?`<button class="btn btn--ghost" style="margin-top:8px" onclick="A.testEmailjs()"><i class="ti ti-send"></i> 發送測試信</button>`:''}
+      ${cfg.svcId?`<div class="note" style="margin-top:10px"><i class="ti ti-check" style="color:var(--s)"></i>已設定完成，狀態更新時將自動通知客戶 Email。</div>`:''}
+    </div>
+    <div class="card" style="background:var(--n-bg);border:0">
+      <div class="nm" style="font-size:13.5px;margin-bottom:8px"><i class="ti ti-template"></i> EmailJS Template 建議變數</div>
+      <div class="sub" style="font-size:12.5px;line-height:1.9">
+        <code>{{to_email}}</code> · 收件人 Email<br>
+        <code>{{customer_name}}</code> · 客戶公司名稱<br>
+        <code>{{product_name}}</code> · 產品名稱<br>
+        <code>{{new_status}}</code> · 新狀態名稱<br>
+        <code>{{status_note}}</code> · 狀態說明文字<br>
+        <code>{{support_url}}</code> · 客服 LINE 連結
+      </div>
+    </div>
+  </div>`;
+}
+
 /* ---------- accounts ---------- */
 function elogaAccounts(){
   const s = acctTab==='staff';
-  let h = `<div class="hd"><div><h1>帳號管理</h1><p>主要管理者 · 建立帳號與權限</p></div>
+  const emailTab = acctTab==='email';
+  let h = `<div class="hd"><div><h1>帳號管理</h1><p>帳號與系統設定</p></div>
       <button class="backbtn" onclick="A.closeAccounts()"><i class="ti ti-arrow-left"></i> 返回後臺</button></div>
     <div class="screen">
       <div class="seg" style="margin-top:0">
         <button class="${s?'on':''}" onclick="A.acctTab('staff')">內部帳號</button>
-        <button class="${!s?'on':''}" onclick="A.acctTab('customer')">客戶帳號</button>
+        <button class="${!s&&!emailTab?'on':''}" onclick="A.acctTab('customer')">客戶帳號</button>
+        <button class="${emailTab?'on':''}" onclick="A.acctTab('email')"><i class="ti ti-mail"></i> Email 通知</button>
       </div>
-      ${s? staffSection() : customerSection()}
+      ${emailTab ? emailjsSection() : s? staffSection() : customerSection()}
       <div style="margin-top:24px;padding-top:16px;border-top:1px solid var(--line)">
         <div class="card" style="border-color:var(--accent);margin-bottom:14px">
           <p class="nm" style="font-size:15px"><i class="ti ti-cloud"></i> 雲端同步（Firebase）</p>
@@ -3409,7 +3491,13 @@ const A = {
       if(!p.charge) p.charge=10000;
     }
     save(); render();
-    if(st==='completed') A.toast('已設為完成 PIF，請到「完成 PIF」分頁補上連結與費用');
+    const cfg=getEmailjsCfg();
+    const emailEnabled=!!(cfg.svcId&&cfg.tplId&&cfg.pubKey);
+    sendStatusEmail(p,st).then(()=>{ if(emailEnabled) A.toast('狀態已更新：'+(SM[st]?SM[st][0]:st)+' · ✉ 已通知客戶'); }).catch(()=>{});
+    if(!emailEnabled){
+      if(st==='completed') A.toast('已設為完成 PIF，請到「完成 PIF」分頁補上連結與費用');
+      else A.toast('狀態已更新：'+(SM[st]?SM[st][0]:st));
+    }
   },
   setField(id,f,v){ const p=byId(id); if(p){ p[f]=v; save(); } },
   async genEnName(id){
@@ -3971,6 +4059,27 @@ const A = {
     A.toast('已移除帳號：'+(s.email||s.name));
   },
   openApiKeySetting(){ view='eloga-accounts'; acctTab='customer'; render(); A.toast('請在帳號管理下方填入 Anthropic API Key'); },
+  saveEmailjsCfg(){
+    const g=id=>((document.getElementById(id)||{}).value||'').trim();
+    saveEmailjsCfg({svcId:g('ejs_svc'),tplId:g('ejs_tpl'),pubKey:g('ejs_key')});
+    render(); A.toast('EmailJS 設定已儲存' + (g('ejs_svc')?' · 通知功能已啟用':'（已清空設定）'));
+  },
+  async testEmailjs(){
+    const cfg=getEmailjsCfg();
+    if(!cfg.svcId||!cfg.tplId||!cfg.pubKey){ A.toast('請先填寫完整設定'); return; }
+    try{
+      emailjs.init(cfg.pubKey);
+      await emailjs.send(cfg.svcId, cfg.tplId, {
+        to_email: me.email||'test@example.com',
+        customer_name: me.nameCh||'測試',
+        product_name: '測試產品',
+        new_status: '送驗中',
+        status_note: STATUS_NOTE['testing'],
+        support_url: SUPPORT_URL,
+      });
+      A.toast('✉ 測試信已發出，請檢查信箱');
+    }catch(e){ A.toast('發送失敗：'+(e.text||e.message||'請檢查設定')); }
+  },
   saveApiKey(){
     const el=document.getElementById('api_key_input'); if(!el) return;
     const key=(el.value||'').trim();
@@ -5192,7 +5301,7 @@ const A = {
     p.status='paid';
     save(); render(); A.toast('已確認收款 '+money(amt)+'（'+method+'），轉待送驗');
   },
-  receiveReport(id){ const p=byId(id); if(p) p.status='reporting'; save(); render(); A.toast('已收到檢驗報告，轉 PIF 製作中'); },
+  receiveReport(id){ const p=byId(id); if(!p) return; p.status='reporting'; save(); render(); sendStatusEmail(p,'reporting').catch(()=>{}); A.toast('已收到檢驗報告，轉 PIF 製作中' + (getEmailjsCfg().svcId?' · ✉ 已通知客戶':'')); },
   editPayRecord(id,i,field,val){
     const p=byId(id); if(!p||!p.payRecords||!p.payRecords[i]) return;
     const old=p.payRecords[i].amt||0;
@@ -5270,7 +5379,7 @@ const A = {
     const plan=PIF_PLANS.find(x=>x.id===(p.pifPlan||'shared'))||PIF_PLANS[0];
     p.charge=plan.amt; p.pifPlanLabel=plan.label;
     p.status='completed';
-    save(); render(); A.toast('已完成 PIF：'+p.name+'　費用 '+money(plan.amt)+' 回傳客戶');
+    save(); render(); sendStatusEmail(p,'completed').catch(()=>{}); A.toast('已完成 PIF：'+p.name+'　費用 '+money(plan.amt)+' 回傳客戶' + (getEmailjsCfg().svcId?' · ✉ 已通知客戶':''));
   },
   openDrive(id){
     const p=byId(id);
