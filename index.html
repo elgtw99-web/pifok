@@ -2453,6 +2453,9 @@ function elgInvoice(){
           <div class="miniline" style="align-items:center">
             <span style="flex:1">${p.name}</span>
             <span style="margin-right:10px">${money(p.charge||0)}</span>
+            <button class="btn btn--ok btn--sm" style="width:auto;padding:0 8px;font-size:12px;margin-right:4px" onclick="A.directConfirmItem('${p.id}')" title="主帳已收到此筆款項，直接標記為已收款">
+              <i class="ti ti-building-bank"></i> 直接收款
+            </button>
             <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 8px;font-size:12px;color:#C0392B;border-color:#E7C3BD" onclick="A.voidInvoiceItem('${p.id}')" title="撤回此筆收款單">
               <i class="ti ti-arrow-back-up"></i> 撤回
             </button>
@@ -2468,8 +2471,11 @@ function elgInvoice(){
           <button class="btn btn--ok btn--sm" style="width:auto;padding:0 14px" onclick="A.markAllReported('${cn}')">
             <i class="ti ti-check"></i> 客戶已匯款（整批轉查帳）
           </button>
+          <button class="btn btn--sm" style="width:auto;padding:0 14px;background:var(--s);color:#fff;border-color:var(--s)" onclick="A.directConfirmAllIssued('${cn}')">
+            <i class="ti ti-building-bank"></i> 主帳已收款（直接確認全部）
+          </button>
         </div>
-        <div class="note" style="margin-top:8px"><i class="ti ti-info-circle"></i>撤回後品項回到「待開收款單」，可修改費用或廠商後重新開單。</div>
+        <div class="note" style="margin-top:8px"><i class="ti ti-info-circle"></i>「直接收款」／「主帳已收款」：主帳確認入帳後可直接標記，跳過客戶回報步驟。撤回後品項回到「待開收款單」，可修改費用或廠商後重新開單。</div>
       </div>`;
     }).join('');
   } else {
@@ -5190,6 +5196,38 @@ const A = {
     const its=P('invoiced').filter(p=>custName(p)===cn);
     its.forEach(p=>{ p.status='reported'; });
     save(); render(); A.toast(cn+' '+its.length+' 筆已轉為待查帳');
+  },
+  directConfirmItem(id){
+    const p=byId(id); if(!p||p.status!=='invoiced') return;
+    if(confirmDel!=='dci'+id){ confirmDel='dci'+id; render(); A.toast('再按一次確認：直接標記「'+p.name+'」從主帳收款 '+money(p.charge||0)); return; }
+    const ds=new Date().toLocaleDateString('zh-TW');
+    const amt=p.charge||0;
+    p.payRecords=p.payRecords||[];
+    p.payRecords.push({date:ds, amt, method:'匯款', note:'依洛嘉主帳直接確認收款'});
+    p.paidAmt=(p.paidAmt||0)+amt;
+    p.payMethod='匯款';
+    p.status='paid';
+    p.genSel=true;
+    confirmDel=null; save(); render();
+    A.toast('✓ 已直接確認「'+p.name+'」收款 '+money(amt)+' → 已收款待送驗');
+  },
+  directConfirmAllIssued(cn){
+    const its=P('invoiced').filter(p=>custName(p)===cn);
+    if(!its.length){ A.toast('找不到待收款品項'); return; }
+    const tot=its.reduce((s,p)=>s+(p.charge||0),0);
+    if(confirmDel!=='dcai'+cn){ confirmDel='dcai'+cn; render(); A.toast('再按一次確認：直接標記 '+cn+' 全部 '+its.length+' 筆共 '+money(tot)+' 從主帳收款'); return; }
+    const ds=new Date().toLocaleDateString('zh-TW');
+    its.forEach(p=>{
+      const amt=p.charge||0;
+      p.payRecords=p.payRecords||[];
+      p.payRecords.push({date:ds, amt, method:'匯款', note:'依洛嘉主帳直接確認收款'+(p.batch?' · 批次 '+p.batch:'')});
+      p.paidAmt=(p.paidAmt||0)+amt;
+      p.payMethod='匯款';
+      p.status='paid';
+      p.genSel=true;
+    });
+    confirmDel=null; save(); render();
+    A.toast('✓ 已直接確認 '+cn+' 全部 '+its.length+' 筆共 '+money(tot)+' 收款 → 已收款待送驗');
   },
   issueInvoiceFor(cn){
     const sel=P('received').filter(p=>custName(p)===cn && p.invSel);
