@@ -1698,6 +1698,64 @@ function elgHome(){
       </div>
     </div>`;
   }
+  // ===== 待收款快速確認 =====
+  const invoicedCusts=[...new Set(P('invoiced').map(p=>custName(p)))];
+  const reportedCusts=[...new Set(P('reported').map(p=>custName(p)))];
+  const hasPayPending=invoicedCusts.length||reportedCusts.length;
+  if(hasPayPending){
+    h+=`<div class="sect mt"><i class="ti ti-building-bank"></i> 待收款快速確認</div>`;
+    // 已回報匯款（reported）→ 優先顯示，等待查帳
+    if(reportedCusts.length){
+      h+=reportedCusts.map(cn=>{
+        const its=P('reported').filter(p=>custName(p)===cn);
+        const tot=its.reduce((s,p)=>s+(p.charge||0),0);
+        const payNote=its.map(p=>p.payNote).filter(Boolean)[0]||'';
+        return `<div class="card" style="border-color:var(--w);margin-bottom:10px">
+          <div class="row" style="margin-bottom:6px">
+            <span>
+              <span class="nm" style="font-size:14px"><i class="ti ti-building-store"></i> ${cn}</span>
+              <span class="pill pill--w" style="margin-left:6px;font-size:11px">待查帳</span><br>
+              <span class="sub" style="font-size:12px">${its.length} 筆 · 應收 <b>${money(tot)}</b>${payNote?' · 末五碼：'+payNote:''}</span>
+            </span>
+            <span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              <button class="btn btn--ok btn--sm" style="width:auto;padding:0 12px;font-size:12px" onclick="A.quickConfirmReported('${cn}')">
+                <i class="ti ti-check"></i> 確認收款
+              </button>
+              <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 10px;font-size:12px" onclick="A.go('invoice');A.setInvTab('check')">
+                <i class="ti ti-search"></i> 查帳
+              </button>
+            </span>
+          </div>
+          ${its.map(p=>`<div class="miniline" style="font-size:12px"><span style="flex:1;color:var(--muted)">${p.name}</span><span>${money(p.charge||0)}</span></div>`).join('')}
+        </div>`;
+      }).join('');
+    }
+    // 已開單待匯款（invoiced）→ 主帳直接確認
+    if(invoicedCusts.length){
+      h+=invoicedCusts.map(cn=>{
+        const its=P('invoiced').filter(p=>custName(p)===cn);
+        const tot=its.reduce((s,p)=>s+(p.charge||0),0);
+        return `<div class="card" style="border-color:var(--line2);margin-bottom:10px">
+          <div class="row" style="margin-bottom:6px">
+            <span>
+              <span class="nm" style="font-size:14px"><i class="ti ti-building-store"></i> ${cn}</span>
+              <span class="pill" style="margin-left:6px;font-size:11px;background:var(--n-bg)">待匯款</span><br>
+              <span class="sub" style="font-size:12px">${its.length} 筆 · 應收 <b>${money(tot)}</b></span>
+            </span>
+            <span style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+              <button class="btn btn--sm" style="width:auto;padding:0 12px;font-size:12px;background:var(--s);color:#fff;border-color:var(--s)" onclick="A.directConfirmAllIssued('${cn}')">
+                <i class="ti ti-building-bank"></i> 主帳已收款
+              </button>
+              <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 10px;font-size:12px" onclick="A.go('invoice');A.setInvTab('issued')">
+                <i class="ti ti-arrow-right"></i> 前往
+              </button>
+            </span>
+          </div>
+          ${its.map(p=>`<div class="miniline" style="font-size:12px"><span style="flex:1;color:var(--muted)">${p.name}</span><span>${money(p.charge||0)}</span></div>`).join('')}
+        </div>`;
+      }).join('');
+    }
+  }
   h+=`<div class="sect mt">客戶帳號</div>
     <div class="dash">
       <div class="metric" style="cursor:pointer" onclick="A.openAccounts('customer')"><div class="mi" style="background:var(--s-bg);color:var(--s)"><i class="ti ti-users"></i></div><div class="mv">${reg}</div><div class="ml">已註冊</div></div>
@@ -5210,6 +5268,24 @@ const A = {
     p.genSel=true;
     confirmDel=null; save(); render();
     A.toast('✓ 已直接確認「'+p.name+'」收款 '+money(amt)+' → 已收款待送驗');
+  },
+  quickConfirmReported(cn){
+    const items=P('reported').filter(p=>custName(p)===cn);
+    if(!items.length){ A.toast('找不到待查帳的品項'); return; }
+    const tot=items.reduce((s,p)=>s+(p.charge||0),0);
+    if(confirmDel!=='qcr'+cn){ confirmDel='qcr'+cn; render(); A.toast('再按一次確認：標記 '+cn+' 全部 '+items.length+' 筆共 '+money(tot)+' 已收款'); return; }
+    const ds=new Date().toLocaleDateString('zh-TW');
+    items.forEach(p=>{
+      const amt=p.charge||0;
+      p.payRecords=p.payRecords||[];
+      p.payRecords.push({date:ds, amt, method:'匯款', note:p.payNote||('查帳確認 · 儀表盤快速確認')});
+      p.paidAmt=(p.paidAmt||0)+amt;
+      p.payMethod='匯款';
+      p.status='paid';
+      p.genSel=true;
+    });
+    confirmDel=null; save(); render();
+    A.toast('✓ 已確認 '+cn+' 收款 '+money(tot)+'，'+items.length+' 筆 → 已收款待送驗');
   },
   directConfirmAllIssued(cn){
     const its=P('invoiced').filter(p=>custName(p)===cn);
