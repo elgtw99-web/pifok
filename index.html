@@ -1484,11 +1484,23 @@ function elgHome(){
   h+=`<div class="dash">`+ cards.map(([st,lbl,ic,tab])=>{
     const n=c(st);
     const isCompleted=(st==='completed');
-    return `<div class="metric" onclick="A.go('${tab}')" style="cursor:pointer${isCompleted&&n?';border:2px solid var(--s)':''}">
-      <div class="mi" style="${isCompleted?'background:var(--s-bg);color:var(--s)':''}"><i class="ti ti-${ic}"></i></div>
-      <div class="mv" style="${isCompleted&&n?'color:var(--s)':''}">${n}</div>
+    const isGot=(st==='gotreport');
+    const hl=isGot&&n;
+    return `<div class="metric" onclick="A.go('${tab}')" style="cursor:pointer${isCompleted&&n?';border:2px solid var(--s)':''}${hl?';border:2px solid var(--i)':''}">
+      <div class="mi" style="${isCompleted?'background:var(--s-bg);color:var(--s)':hl?'background:var(--i-bg);color:var(--i)':''}"><i class="ti ti-${ic}"></i></div>
+      <div class="mv" style="${isCompleted&&n?'color:var(--s)':hl?'color:var(--i)':''}">${n}</div>
       <div class="ml">${lbl}</div></div>`;
   }).join('')+`</div>`;
+  // 已收到檢驗報告（報告已回、待製作 PIF）獨立提醒卡
+  const gotN=products.filter(p=>p.status==='gotreport').length;
+  if(gotN>0){
+    h+=`<div class="card" style="border-color:var(--i);margin-top:10px;padding:12px 16px;cursor:pointer" onclick="A.go('pif')">
+      <div class="row" style="align-items:center">
+        <span><div class="nm" style="color:var(--i);font-size:28px;font-weight:800;line-height:1">${gotN}</div><div class="sub" style="margin-top:4px">筆已收到檢驗報告 · 待開始製作 PIF · 點擊處理</div></span>
+        <i class="ti ti-file-check" style="font-size:40px;color:var(--i);opacity:.25"></i>
+      </div>
+    </div>`;
+  }
   const completedN=products.filter(p=>p.status==='completed').length;
   if(completedN>0){
     h+=`<div class="card" style="border-color:var(--s);margin-top:10px;padding:12px 16px;cursor:pointer" onclick="A.go('pif')">
@@ -3331,46 +3343,39 @@ const A = {
       A.toast('已刪除客戶帳號：'+nm);
     }
   },
-  activateTempCust(i){
+  // 綁定客戶 Gmail（統一核心）：未啟用者順帶轉為正式帳號並同步產品 customerEmail
+  bindCustEmail(i){
     const c=customers[i]; if(!c) return;
     const el=document.getElementById('set_email_'+i);
     const email=(el?el.value:'').trim().toLowerCase();
     if(!email||!email.includes('@')){ A.toast('請填入有效的 Gmail'); return; }
     if(customers.some((x,j)=>j!==i&&x.email&&x.email.toLowerCase()===email)){ A.toast('這個 Gmail 已被其他帳號使用'); return; }
-    c.email=email; c.login='Google'; c.status='已啟用'; c.temp=false;
-    // 更新所有屬於這個客戶的產品的 customerEmail
-    products.filter(p=>custName(p)===c.name).forEach(p=>{ p.customerEmail=email; });
-    // 直接寫入 Firestore
-    if(typeof FB!=='undefined'&&FB.on&&FB.db){
-      const docId=c.id||FB.db.collection('customers').doc().id;
-      c.id=docId;
-      FB.db.collection('customers').doc(docId).set(Object.assign({},c))
-        .then(()=>A.toast('✓ '+c.name+' 已啟用！客戶用 '+email+' 登入即可看到自己的產品'))
-        .catch(e=>A.toast('本機已更新，雲端同步失敗：'+e.message));
-    } else {
-      A.toast('✓ '+c.name+' 已啟用！客戶用 '+email+' 登入即可');
-    }
-    save(); render();
-  },
-  setCustEmail(i){
-    const c=customers[i]; if(!c) return;
-    const el=document.getElementById('set_email_'+i);
-    const email=(el?el.value:'').trim().toLowerCase();
-    if(!email||!email.includes('@')){ A.toast('請填入有效的 Gmail'); return; }
-    if(customers.some((x,j)=>j!==i&&x.email&&x.email.toLowerCase()===email)){ A.toast('這個 Gmail 已被其他帳號使用'); return; }
+    const wasInactive = c.status!=='已啟用';
     c.email=email; c.login='Google';
+    if(wasInactive){
+      c.status='已啟用'; c.temp=false;
+      // 更新所有屬於這個客戶的產品的 customerEmail
+      products.filter(p=>custName(p)===c.name).forEach(p=>{ p.customerEmail=email; });
+    }
+    const okMsg = wasInactive ? ('✓ '+c.name+' 已啟用！客戶用 '+email+' 登入即可看到自己的產品')
+                              : ('已綁定 Gmail：'+email+'，客戶現在可以登入');
+    const localMsg = wasInactive ? ('✓ '+c.name+' 已啟用！客戶用 '+email+' 登入即可')
+                                 : ('已綁定 Gmail：'+email);
     // 直接寫入 Firestore
     if(typeof FB!=='undefined'&&FB.on&&FB.db){
       const docId=c.id||FB.db.collection('customers').doc().id;
       c.id=docId;
       FB.db.collection('customers').doc(docId).set(Object.assign({},c))
-        .then(()=>A.toast('已綁定 Gmail：'+email+'，客戶現在可以登入'))
+        .then(()=>A.toast(okMsg))
         .catch(e=>A.toast('本機已更新，雲端同步失敗：'+e.message));
     } else {
-      A.toast('已綁定 Gmail：'+email);
+      A.toast(localMsg);
     }
     save(); render();
   },
+  // 相容舊呼叫端：兩者皆委派到 bindCustEmail
+  activateTempCust(i){ A.bindCustEmail(i); },
+  setCustEmail(i){ A.bindCustEmail(i); },
   genVerifyLink(i){ const c=customers[i]; if(!c) return; c.verifyToken=Math.random().toString(36).slice(2,10)+Date.now().toString(36).slice(-4); save(); render(); A.toast('已產生驗證連結，可複製傳給客戶'); },
   copyVerify(i){ const c=customers[i]; if(!c) return; const url=verifyURL(c);
     try{ navigator.clipboard.writeText(url); A.toast('已複製驗證連結'); }catch(e){ A.toast('請手動複製連結'); } },
