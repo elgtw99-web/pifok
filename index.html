@@ -571,7 +571,7 @@ let products=[];
 
 const SM={ applied:['等待依洛嘉確認','w'], approved:['可寄送','i'], pending:['待寄送','n'],
   shipped:['已寄出樣品','i'], received:['已收樣','i'], invoiced:['待匯款','w'], reported:['待查帳','w'],
-  paid:['已收款待送驗','i'], testing:['送驗中','s'], reporting:['PIF製作中','s'], completed:['已完成 PIF','s'] };
+  paid:['已收款待送驗','i'], testing:['送驗中','s'], gotreport:['已收到檢驗報告','i'], reporting:['PIF製作中','s'], completed:['已完成 PIF','s'] };
 const pill = s => `<span class="pill pill--${SM[s][1]}">${SM[s][0]}</span>`;
 const byId = id => products.find(p=>p.id===id);
 function genInvNo(){
@@ -828,7 +828,7 @@ function custScreen(){
 function custSubmit(){
   const applied = products.filter(p=>ownedByMe(p) && p.status==='applied');
   const approved = products.filter(p=>ownedByMe(p) && (p.status==='approved'||p.status==='pending'));
-  const prog = products.filter(p=>ownedByMe(p) && ['shipped','received','invoiced','reported','paid','testing','reporting'].includes(p.status));
+  const prog = products.filter(p=>ownedByMe(p) && ['shipped','received','invoiced','reported','paid','testing','gotreport','reporting'].includes(p.status));
   const n = approved.filter(p=>p.shipSel).length;
   const myc = customers.find(c=>c.name===me.nameCh);
   let h = `<div class="lnk" onclick="A.editProfile()" style="margin-bottom:10px">
@@ -881,7 +881,7 @@ function custSubmit(){
 
   h += `<div class="sect mt">進行中</div>`;
   if(prog.length){
-    const porder=['shipped','received','invoiced','reported','paid','testing','reporting','completed'];
+    const porder=['shipped','received','invoiced','reported','paid','testing','gotreport','reporting','completed'];
     const cancelable=['shipped','received','invoiced','reported','paid'];
     const present=porder.filter(k=>prog.some(p=>p.status===k));
     h += srchBar('搜尋進行中品名…');
@@ -940,11 +940,11 @@ function custBilling(){
   } else {
     h += `<div class="card faint" style="text-align:center;padding:22px">目前沒有待匯款的批次</div>`;
   }
-  const recent = products.filter(p=>ownedByMe(p) && ['reported','paid','testing','reporting','completed'].includes(p.status));
+  const recent = products.filter(p=>ownedByMe(p) && ['reported','paid','testing','gotreport','reporting','completed'].includes(p.status));
   h += `<div class="sect mt">近期批次</div>`;
   if(recent.length){
     h += srchBar('搜尋批次品名…');
-    const rorder=['reported','paid','testing','reporting','completed'];
+    const rorder=['reported','paid','testing','gotreport','reporting','completed'];
     const present=rorder.filter(k=>recent.some(p=>p.status===k));
     h += present.map(k=>{
       const grp=recent.filter(p=>p.status===k);
@@ -981,6 +981,7 @@ function custBoard(){
     { title:'送驗與製作', icon:'flask', statuses:[
       {id:'paid',      label:'已確認收款', who:'依洛嘉安排送驗',      color:'var(--accent)', ic:'check'},
       {id:'testing',   label:'送驗中',     who:'檢測中心檢測進行中',  color:'var(--accent)', ic:'flask'},
+      {id:'gotreport', label:'已收到檢驗報告', who:'報告已回，待製作 PIF', color:'var(--accent)', ic:'file-check'},
       {id:'reporting', label:'PIF 製作中', who:'依洛嘉製作 PIF 報告', color:'var(--accent)', ic:'file-text'},
     ]},
     { title:'已完成', icon:'circle-check', statuses:[
@@ -1204,7 +1205,7 @@ function elgSummary(){
     const pif =Math.max((p.pifFeeInvoice||p.pifFeePaid)?(p.pifCharge||0):0, pifPaidOf(p));
     return insp+pif;
   };
-  const billable=p=>['invoiced','reported','paid','testing','reporting','completed'].includes(p.status) && chargeOf(p)>0;
+  const billable=p=>['invoiced','reported','paid','testing','gotreport','reporting','completed'].includes(p.status) && chargeOf(p)>0;
 
   const billedProd=products.filter(billable);
   const totalCharge=billedProd.reduce((s,p)=>s+chargeOf(p),0);        // 應收總計
@@ -1410,6 +1411,7 @@ function elgHome(){
     ['reported','待查帳','cash','invoice'],
     ['paid','待生成送驗','file-invoice','data'],
     ['testing','送驗中','flask','pif'],
+    ['gotreport','已收到檢驗報告','file-check','pif'],
     ['reporting','PIF製作中','clipboard-text','pif'],
     ['completed','已完成 PIF','circle-check','pif']
   ];
@@ -1504,7 +1506,7 @@ function elgHome(){
   return h;
 }
 function elgLibrary(){
-  const order=['applied','approved','shipped','received','invoiced','reported','paid','testing','reporting','completed'];
+  const order=['applied','approved','shipped','received','invoiced','reported','paid','testing','gotreport','reporting','completed'];
   const allCusts=[...new Set(products.map(p=>custName(p)))];
   const stPresent=order.filter(k=>products.some(p=>p.status===k));
   const rows=products.filter(p=> !libStatOff[p.status] && !libCustOff[custName(p)] && (!libQ || p.name.indexOf(libQ)>=0))
@@ -1543,7 +1545,7 @@ function elgLibrary(){
     </div>`;
   // 待確認辨識結果（核對後再歸入客戶端）
   if(libDrafts.length){
-    const order2=['applied','approved','shipped','received','invoiced','reported','paid','testing','reporting','completed'];
+    const order2=['applied','approved','shipped','received','invoiced','reported','paid','testing','gotreport','reporting','completed'];
     // 匯入前先標出重複：同名(去空白)+同客戶已存在 → 匯入時會被略過
     const draftDup=d=>{ const nm=(d.name||'').trim(); if(!nm) return false; const rc=(d.cust||'').trim()||tgt; return products.some(p=>(p.name||'').trim()===nm && (p.cust||'')===rc); };
     const dupCount=libDrafts.filter(draftDup).length;
@@ -1639,7 +1641,7 @@ function elgLibrary(){
   return h;
 }
 function elgCustomers(){
-  const order=['applied','approved','shipped','received','invoiced','reported','paid','testing','reporting','completed'];
+  const order=['applied','approved','shipped','received','invoiced','reported','paid','testing','gotreport','reporting','completed'];
   // 客戶列表（含各廠商狀態分佈）
   if(!custView){
     const names=[...new Set(products.map(p=>custName(p)))].concat(customers.map(c=>c.name)).filter((v,i,a)=>v&&a.indexOf(v)===i);
@@ -1672,7 +1674,7 @@ function elgCustomers(){
       <span class="pill pill--i">${its.length} 件</span></div>`;
   // 狀態儀表板
   const present=order.filter(k=>its.some(p=>p.status===k));
-  const statusTabMap={applied:'apply',approved:'apply',shipped:'receive',received:'invoice',invoiced:'invoice',reported:'invoice',paid:'data',testing:'pif',reporting:'pif',completed:'pif'};
+  const statusTabMap={applied:'apply',approved:'apply',shipped:'receive',received:'invoice',invoiced:'invoice',reported:'invoice',paid:'data',testing:'pif',gotreport:'pif',reporting:'pif',completed:'pif'};
   const statusInvTab={received:'recv',invoiced:'issued',reported:'check'};
   h+=`<div class="dash" style="margin-bottom:14px">`+ present.map(k=>{
     const tab=statusTabMap[k]||'library';
@@ -1922,11 +1924,11 @@ function elgInvoice(){
   const toCheck=P('reported');
   const testing=P('testing');
   const testingUnpaid=products.filter(p=>
-    (p.status==='completed'||p.status==='testing'||p.status==='reporting') &&
+    (p.status==='completed'||p.status==='testing'||p.status==='gotreport'||p.status==='reporting') &&
     !p.pifFeePaid &&
     custName(p)!==ELG_SELF
   );
-  const allPaid=products.filter(p=>['paid','testing','reporting','completed'].includes(p.status)&&p.payRecords&&p.payRecords.length);
+  const allPaid=products.filter(p=>['paid','testing','gotreport','reporting','completed'].includes(p.status)&&p.payRecords&&p.payRecords.length);
   const totalCollected=allPaid.reduce((s,p)=>(p.payRecords||[]).reduce((a,r)=>a+r.amt,s),0);
   const byMethod={}; allPaid.forEach(p=>(p.payRecords||[]).forEach(r=>{ byMethod[r.method]=(byMethod[r.method]||0)+r.amt; }));
   const custs=[...new Set(recv.map(p=>custName(p)))];
@@ -1982,7 +1984,7 @@ function elgInvoice(){
     if(activeCust){
       // 把品項分三類：未開單 / 已開單請款中 / 已收
       const allCustItems=products.filter(p=>
-        (p.status==='completed'||p.status==='testing'||p.status==='reporting') &&
+        (p.status==='completed'||p.status==='testing'||p.status==='gotreport'||p.status==='reporting') &&
         custName(p)===activeCust
       );
       const notInvoiced=allCustItems.filter(p=>!p.pifFeeInvoice && !p.pifFeePaid); // 未開 PIF 單
@@ -2012,7 +2014,7 @@ function elgInvoice(){
           ${notInvoiced.map(p=>{
             const sel=p.retroPlans||['shared'];
             const itemTotal=PIF_PLANS.filter(pl=>sel.includes(pl.id)).reduce((s,pl)=>s+pl.amt,0);
-            const statusLabel=p.status==='completed'?'已完成 PIF':p.status==='reporting'?'PIF製作中':'送驗中';
+            const statusLabel=p.status==='completed'?'已完成 PIF':p.status==='reporting'?'PIF製作中':p.status==='gotreport'?'已收到檢驗報告':'送驗中';
             const on=p.retroSel!==false;
             return `<div class="card compact" style="margin-bottom:8px;${on?'':'opacity:.5'}">
               <div class="row" style="margin-bottom:8px;gap:8px">
@@ -2291,8 +2293,9 @@ function elgInvoice(){
 }
 function elgPif(){
   const testing=P('testing');
+  const gotr=P('gotreport');
   const making=P('reporting');
-  let h=`<div class="note" style="margin-bottom:12px"><i class="ti ti-flask"></i>送驗中收到檢驗報告 → 轉 PIF 製作中；製作完成上傳雲端 → 標記已完成。</div>`;
+  let h=`<div class="note" style="margin-bottom:12px"><i class="ti ti-flask"></i>送驗中 → 收到檢驗報告 → 開始製作 PIF → 製作完成上傳雲端 → 標記已完成。</div>`;
   // 依洛嘉自有、送驗中、尚未加入共用的品項 → 一鍵加入
   const elgTesting=testing.filter(p=>custName(p)===ELG_SELF && !sharedPIF.some(s=>s.name===p.name));
   if(elgTesting.length){
@@ -2305,7 +2308,7 @@ function elgPif(){
   }
   h += `<div class="row sect"><span>送驗中（待收檢驗報告）</span><span class="pill pill--s">${testing.length}</span></div>`;
   if(testing.length) h+= selBar(testing.map(p=>p.id), [
-    {label:'批量：收到報告轉製作',ic:'file-check',fn:'A.batchReceiveReport()',cls:'btn--ok'},
+    {label:'批量：標記已收到檢驗報告',ic:'file-check',fn:'A.batchReceiveReport()',cls:'btn--ok'},
     {label:'送到可共用 PIF（公開）',ic:'world-share',fn:"A.batchAddSharedPIF('public')",cls:'btn--ghost'},
     {label:'送到可共用 PIF（建置中）',ic:'eye-off',fn:"A.batchAddSharedPIF('building')",cls:'btn--ghost'},
   ]);
@@ -2313,9 +2316,25 @@ function elgPif(){
       <div class="card"><div class="row" style="gap:10px">${selCk(p.id)}<span style="flex:1;min-width:0"><span class="nm">${p.name}</span><br><span class="sub">${custName(p)} · ${p.batch||''}</span></span>
         ${sharedPIF.some(s=>s.name===p.name)?`<span class="pill pill--s" style="font-size:10px;flex:none"><i class="ti ti-check"></i> 已在共用</span>`:`<span class="pill pill--s" style="font-size:10px;flex:none">送驗中</span>`}
       </div>
-        <button class="btn btn--sm" style="margin-top:10px" onclick="A.receiveReport('${p.id}')"><i class="ti ti-file-check"></i> 收到檢驗報告（轉 PIF 製作中）</button>
+        <button class="btn btn--sm" style="margin-top:10px" onclick="A.receiveReport('${p.id}')"><i class="ti ti-file-check"></i> 收到檢驗報告</button>
       </div>`).join('')+`</div>`
     : `<div class="card faint" style="text-align:center;padding:16px">目前沒有送驗中項目</div>`;
+
+  // ===== 已收到檢驗報告（報告已回、待製作 PIF）=====
+  h += `<div class="row sect mt"><span>已收到檢驗報告（待製作 PIF）</span><span class="pill pill--i">${gotr.length}</span></div>`;
+  if(gotr.length) h+= selBar(gotr.map(p=>p.id), [
+    {label:'批量：開始製作 PIF',ic:'clipboard-text',fn:'A.batchStartPif()',cls:'btn--ok'},
+  ]);
+  h += gotr.length ? `<div class="stack">`+ gotr.map(p=>`
+      <div class="card"><div class="row" style="gap:10px">${selCk(p.id)}<span style="flex:1;min-width:0"><span class="nm">${p.name}</span><br><span class="sub">${custName(p)} · ${p.batch||''}</span></span>
+        <span class="pill pill--i" style="font-size:10px;flex:none"><i class="ti ti-file-check"></i> 報告已回</span>
+      </div>
+        <div class="row" style="gap:8px;margin-top:10px">
+          <button class="btn btn--ok btn--sm" style="flex:1" onclick="A.startPif('${p.id}')"><i class="ti ti-clipboard-text"></i> 開始製作 PIF</button>
+          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px" onclick="A.backToTesting('${p.id}')"><i class="ti ti-arrow-back-up"></i> 退回送驗中</button>
+        </div>
+      </div>`).join('')+`</div>`
+    : `<div class="card faint" style="text-align:center;padding:16px">目前沒有已收到報告、待製作的項目</div>`;
 
   h += `<div class="row sect mt"><span>PIF 製作中</span><span class="pill pill--s">${making.length}</span></div>`;
   h += making.length ? `<div class="stack">`+ making.map(p=>`
@@ -3837,7 +3856,7 @@ const A = {
     const stLabel=state==='public'?'公開可共用':'建置中';
     A.toast(`已送到可共用 PIF（${stLabel}）：新增 ${added} 筆${skip?'、更新 '+skip+' 筆':''}，可到「可共用 PIF」區塊調整`);
   },
-  batchReceiveReport(){ const list=products.filter(p=>batch[p.id]&&p.status==='testing'); if(!list.length){ A.toast('請先勾選送驗中項目'); return; } list.forEach(p=>{ p.status='reporting'; }); batch={}; save(); render(); A.toast('已將 '+list.length+' 筆轉為 PIF 製作中'); },
+  batchReceiveReport(){ const list=products.filter(p=>batch[p.id]&&p.status==='testing'); if(!list.length){ A.toast('請先勾選送驗中項目'); return; } list.forEach(p=>{ p.status='gotreport'; }); batch={}; save(); render(); A.toast('已將 '+list.length+' 筆標記為：已收到檢驗報告'); },
   toggleInvVendor(cn){ const its=products.filter(p=>p.status==='received'&&custName(p)===cn); const allOn=its.length>0&&its.every(p=>p.invSel); its.forEach(p=>{ p.invSel=!allOn; }); render(); },
   filterDataVendor(v){ dataVendorFilter=v; render(); },
   toggleGenAll(){ const pool=products.filter(p=>p.status==='paid'&&(!dataVendorFilter||custName(p)===dataVendorFilter)); const allOn=pool.length>0&&pool.every(p=>p.genSel!==false); pool.forEach(p=>{ p.genSel = allOn?false:true; }); render(); },
@@ -3991,7 +4010,7 @@ const A = {
     const i=products.findIndex(x=>x.id===id); if(i>=0) products.splice(i,1);
     save(); render(); A.toast('已撤銷並刪除');
   },
-  requestCancel(id){ const p=byId(id); if(!p) return; if(['testing','reporting','completed'].includes(p.status)){ A.toast('已進入送驗，無法撤銷（如需暫停請洽依洛嘉）'); return; } p.cancelReq=true; save(); render(); A.toast('已送出撤銷申請，待依洛嘉同意'); },
+  requestCancel(id){ const p=byId(id); if(!p) return; if(['testing','gotreport','reporting','completed'].includes(p.status)){ A.toast('已進入送驗，無法撤銷（如需暫停請洽依洛嘉）'); return; } p.cancelReq=true; save(); render(); A.toast('已送出撤銷申請，待依洛嘉同意'); },
   togglePause(id){ const p=byId(id); if(p){ p.paused=!p.paused; if(p.paused) delete p.cancelReq; save(); render(); A.toast(p.paused?'已暫停此樣品（不退款）':'已恢復此樣品'); } },
   undoCancelReq(id){ const p=byId(id); if(p){ delete p.cancelReq; } save(); render(); A.toast('已取消撤銷申請'); },
   approveCancel(id){ const i=products.findIndex(x=>x.id===id); if(i>=0) products.splice(i,1); save(); render(); A.toast('已同意撤銷並移除'); },
@@ -4043,7 +4062,7 @@ const A = {
   toggleInvDetail(id){ invDetailOpen=(invDetailOpen===id?null:id); render(); },
   createInvoiceRec(cn){
     const items=products.filter(p=>
-      (p.status==='completed'||p.status==='testing'||p.status==='reporting') &&
+      (p.status==='completed'||p.status==='testing'||p.status==='gotreport'||p.status==='reporting') &&
       custName(p)===cn && !p.pifFeeInvoice && !p.pifFeePaid && p.retroSel!==false
     );
     if(!items.length){ A.toast('請先勾選要開單的品項'); return; }
@@ -4092,7 +4111,7 @@ const A = {
     const p=byId(id); if(!p) return;
     if(confirmDel!=='rev'+id){ confirmDel='rev'+id; render(); A.toast('再按一次確認：清除此筆收款記錄、退回請款中'); return; }
     p.payRecords=[]; p.paidAmt=0; delete p.payMethod;
-    if(['paid','testing','reporting'].includes(p.status)) p.status='invoiced';
+    if(['paid','testing','gotreport','reporting'].includes(p.status)) p.status='invoiced';
     if(p.pifFeePaid) delete p.pifFeePaid;
     confirmDel=null; save(); render();
     A.toast('已退回「'+p.name+'」到請款中，收款記錄已清除');
@@ -4102,7 +4121,7 @@ const A = {
     const items=products.filter(p=>custName(p)===cn && (p.payRecords&&p.payRecords.length));
     items.forEach(p=>{
       p.payRecords=[]; p.paidAmt=0; delete p.payMethod;
-      if(['paid','testing','reporting'].includes(p.status)) p.status='invoiced';
+      if(['paid','testing','gotreport','reporting'].includes(p.status)) p.status='invoiced';
       if(p.pifFeePaid) delete p.pifFeePaid;
     });
     confirmDel=null; save(); render();
@@ -4149,7 +4168,7 @@ const A = {
   setRetroCust(cn){ retroCust=cn; render(); },
   retroToggleSel(id){ const p=byId(id); if(p){ p.retroSel=(p.retroSel===false); render(); } },
   retroSelAll(cn){
-    const items=products.filter(p=>(p.status==='completed'||p.status==='testing'||p.status==='reporting')&&custName(p)===cn&&!p.pifFeeInvoice&&!p.pifFeePaid);
+    const items=products.filter(p=>(p.status==='completed'||p.status==='testing'||p.status==='gotreport'||p.status==='reporting')&&custName(p)===cn&&!p.pifFeeInvoice&&!p.pifFeePaid);
     const allOn=items.every(p=>p.retroSel!==false);
     items.forEach(p=>{ p.retroSel=allOn?false:true; });
     render();
@@ -4326,7 +4345,10 @@ const A = {
     p.status='paid';
     save(); render(); A.toast('已確認收款 '+money(amt)+'（'+method+'），轉待送驗');
   },
-  receiveReport(id){ const p=byId(id); if(p) p.status='reporting'; save(); render(); A.toast('已收到檢驗報告，轉 PIF 製作中'); },
+  receiveReport(id){ const p=byId(id); if(p) p.status='gotreport'; save(); render(); A.toast('已標記：已收到檢驗報告（待製作 PIF）'); },
+  startPif(id){ const p=byId(id); if(p){ p.status='reporting'; p.batch=p.batch||'PIF製作中'; } save(); render(); A.toast('已開始製作 PIF'); },
+  backToTesting(id){ const p=byId(id); if(p) p.status='testing'; save(); render(); A.toast('已退回送驗中'); },
+  batchStartPif(){ const list=products.filter(p=>batch[p.id]&&p.status==='gotreport'); if(!list.length){ A.toast('請先勾選已收到檢驗報告的項目'); return; } list.forEach(p=>{ p.status='reporting'; p.batch=p.batch||'PIF製作中'; }); batch={}; save(); render(); A.toast('已將 '+list.length+' 筆轉為 PIF 製作中'); },
   editPayRecord(id,i,field,val){
     const p=byId(id); if(!p||!p.payRecords||!p.payRecords[i]) return;
     const old=p.payRecords[i].amt||0;
