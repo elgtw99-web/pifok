@@ -2964,6 +2964,35 @@ function customerSection(){
       <div class="card" style="flex:1;text-align:center;padding:12px;min-width:100px;border-color:var(--w)"><div style="font-size:24px;font-weight:700;color:var(--w)">${pend.length}</div><div class="sub">客戶申請</div></div>
     </div>`;
 
+  // ===== 同名重複帳號（可合併或刪除）=====
+  const _grpBy={};
+  customers.forEach(c=>{ (_grpBy[c.name]=_grpBy[c.name]||[]).push(c); });
+  const dupNames=Object.keys(_grpBy).filter(n=>_grpBy[n].length>1);
+  if(dupNames.length){
+    h+=`<div class="row sect"><span>同名重複帳號</span><span class="pill pill--w">${dupNames.length} 組</span></div>`;
+    h+=`<div class="note" style="margin:6px 0 10px"><i class="ti ti-copy"></i>偵測到多筆同名客戶（多因重複匯入）。產品以「客戶名稱」歸戶，同名帳號其實共用同一批產品。可「合併為一筆」（自動保留資料最完整者、補齊缺漏欄位，其餘刪除），或逐筆刪除多餘帳號。</div>`;
+    h+=`<div class="stack">`+dupNames.map(nm=>{
+      const grp=_grpBy[nm];
+      const prodN=products.filter(p=>custName(p)===nm).length;
+      const en=nm.replace(/\\/g,'\\\\').replace(/'/g,"\\'");
+      const rows=grp.map(c=>{
+        const i=customers.indexOf(c);
+        const tags=[c.email||'無 Gmail', c.status, '登入:'+(c.login||'—')];
+        if(c.drive) tags.push('有雲端連結');
+        if(c.contract) tags.push('合約'+(c.balance>0?(' 餘額'+money(c.balance)):''));
+        return `<div class="card compact row" style="gap:8px">
+          <span style="flex:1;min-width:0"><span class="sub">${tags.join(' · ')}</span></span>
+          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;color:#C0392B;border-color:#E7C3BD;flex:none" onclick="A.delCustomer(${i})"><i class="ti ti-trash"></i> ${confirmDel==='ca'+i?'確認刪除？':'刪除'}</button>
+        </div>`;
+      }).join('');
+      return `<div class="card" style="border-color:var(--w)">
+        <div class="row"><span class="nm" style="font-size:15px">${nm}</span><span class="pill pill--w" style="flex:none">${grp.length} 筆 · 共用 ${prodN} 產品</span></div>
+        <div class="stack" style="margin-top:8px">${rows}</div>
+        <button class="btn btn--ok btn--sm" style="margin-top:10px;width:auto;padding:0 16px" onclick="A.mergeDupCustomers('${en}')"><i class="ti ti-arrows-join"></i> ${confirmDel==='mc'+nm?'確認合併？保留最完整、刪其餘':'合併為一筆'}</button>
+      </div>`;
+    }).join('')+`</div>`;
+  }
+
   // ===== 未綁定 Gmail 的帳號（最優先處理）=====
   if(needActivate.length){
     h+=`<div class="row sect"><span>待綁定 Gmail（填入即可讓客戶登入）</span><span class="pill pill--w">${needActivate.length}</span></div>`;
@@ -3342,6 +3371,33 @@ const A = {
     } else {
       A.toast('已刪除客戶帳號：'+nm);
     }
+  },
+  // 合併同名客戶帳號：保留資料最完整的一筆，補齊缺漏欄位後刪除其餘（產品以名稱歸戶，不受影響）
+  mergeDupCustomers(name){
+    const grp=customers.filter(c=>c.name===name);
+    if(grp.length<2){ A.toast('沒有同名重複帳號'); return; }
+    if(confirmDel!=='mc'+name){ confirmDel='mc'+name; render(); A.toast('再按一次「合併」確認：將保留資料最完整的一筆，其餘刪除'); return; }
+    const score=c=>(c.email?8:0)+(c.drive?4:0)+(c.contract?2:0)+((c.balance||0)>0?2:0)+(c.inspFee?1:0)+(c.id?1:0)+(c.status==='已啟用'?1:0);
+    const keep=grp.slice().sort((a,b)=>score(b)-score(a))[0];
+    // 從其餘分身補齊 keep 缺漏的欄位（不覆蓋 keep 既有的非空值）
+    grp.forEach(o=>{
+      if(o===keep) return;
+      if(!keep.email && o.email){ keep.email=o.email; if(!keep.login) keep.login=o.login; }
+      if(!keep.drive && o.drive){ keep.drive=o.drive; keep.driveAuth=o.driveAuth; }
+      if(keep.inspFee==null && o.inspFee!=null) keep.inspFee=o.inspFee;
+      if(!keep.contract && o.contract) keep.contract=true;
+      if(!(keep.balance>0) && o.balance>0) keep.balance=o.balance;
+      if(keep.status!=='已啟用' && o.status==='已啟用') keep.status='已啟用';
+    });
+    const others=grp.filter(c=>c!==keep);
+    // Firestore：刪除分身、回寫保留檔
+    if(typeof FB!=='undefined'&&FB.on&&FB.db){
+      others.forEach(o=>{ if(o.id) FB.db.collection('customers').doc(o.id).delete().catch(()=>{}); });
+      if(keep.id) FB.db.collection('customers').doc(keep.id).set(Object.assign({},keep)).catch(()=>{});
+    }
+    for(let j=customers.length-1;j>=0;j--){ if(customers[j]!==keep && customers[j].name===name) customers.splice(j,1); }
+    confirmDel=null; save(); render();
+    A.toast('已合併「'+name+'」'+grp.length+' 筆為 1 筆（保留資料最完整者）');
   },
   // 綁定客戶 Gmail（統一核心）：未啟用者順帶轉為正式帳號並同步產品 customerEmail
   bindCustEmail(i){
