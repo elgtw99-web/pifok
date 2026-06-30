@@ -290,6 +290,25 @@
     table.dtable td .fld--mini{ width:auto; min-width:120px; flex:1; max-width:62%; }
     table.dtable td .nm{ text-align:right; }
   }
+  /* ===== 手機版人性化：放大可點擊目標、加大／加深文字 ===== */
+  @media (max-width:820px){
+    :root{ --faint:#787872; }                 /* 最淡的字加深一階，提升對比 */
+    .ck{ width:28px; height:28px; border-radius:8px; }
+    .ck i{ font-size:18px; }
+    table.dtable .ck{ width:28px; height:28px; }
+    .fchip{ font-size:14px; padding:10px 14px; }
+    .btn--sm{ height:50px; font-size:16px; }
+    .backbtn{ padding:11px 16px; font-size:15px; }
+    .pill{ font-size:13px; padding:5px 12px; }
+    input.fld--mini, select.fld--mini{ height:42px; font-size:14px; }
+    /* 小字加大、整體更好讀 */
+    .sub{ font-size:14px; }
+    .nm{ font-size:16px; }
+    .note{ font-size:14px; }
+    .miniline{ font-size:15px; }
+    table.dtable{ font-size:14px; }
+    .empty{ color:#787872; }
+  }
 </style>
 </head>
 <body>
@@ -424,6 +443,22 @@ function defTests(type){
 }
 function testText(t){ t=t||{}; const a=[]; if(t.fang)a.push('防腐效能測驗'); if(t.chang)a.push('常規9項+念珠菌'); if(t.wen)a.push('穩定性測試'); return a.join('+')||'—'; }
 function feeOf(t){ t=t||{}; return (t.fang?350:0)+(t.chang?320:0)+(t.wen?350:0); }
+// 預設檢驗費（依客戶）：客戶可設 5000 / 10000 / 自訂；未設定者預設 10000
+const DEFAULT_INSP_FEE=10000;
+function inspFeeOf(cn){ const c=customers.find(x=>x.name===cn); return (c&&c.inspFee)||DEFAULT_INSP_FEE; }
+// 匯款資訊（放進請款通知文字，後台可設定一次）
+function bankInfo(){ return localStorage.getItem('elg_bank_info')||''; }
+// 複製文字到剪貼簿（含舊瀏覽器 fallback）
+function copyText(t, okMsg){
+  const done=()=>{ if(typeof A!=='undefined'&&A.toast) A.toast(okMsg||'已複製'); };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(t).then(done).catch(()=>fallbackCopy(t,done));
+  } else { fallbackCopy(t,done); }
+}
+function fallbackCopy(t, done){
+  try{ const ta=document.createElement('textarea'); ta.value=t; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.focus(); ta.select(); document.execCommand('copy'); ta.remove(); if(done)done(); }
+  catch(e){ if(typeof A!=='undefined'&&A.toast) A.toast('複製失敗，請手動選取'); }
+}
 function agreementHTML(list){
   const d=new Date(), ds=d.getFullYear()+'年'+String(d.getMonth()+1).padStart(2,'0')+'月'+String(d.getDate()).padStart(2,'0')+'日';
   const docNo='MC-'+String(d.getFullYear()).slice(2)+String(d.getMonth()+1).padStart(2,'0')+String(d.getDate()).padStart(2,'0')+'01';
@@ -477,6 +512,30 @@ async function aiEnName(name, type){
   const txt=(data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
   return txt.replace(/^["'「」\s]+|["'「」\s]+$/g,'').trim();
 }
+function fileToBase64(file){ return new Promise((resolve,reject)=>{ const r=new FileReader(); r.onload=()=>resolve(String(r.result).split(',')[1]||''); r.onerror=()=>reject(new Error('read_fail')); r.readAsDataURL(file); }); }
+// AI 視覺辨識：把照片交給 Anthropic 視覺模型，回傳一行一個品名的文字
+async function aiPhotoNames(file){
+  const key=getApiKey();
+  if(!key) throw new Error('no_key');
+  const b64=await fileToBase64(file);
+  let media=file.type||'image/jpeg';
+  if(!/^image\/(jpeg|png|gif|webp)$/.test(media)) media='image/jpeg';
+  const res=await fetch("https://api.anthropic.com/v1/messages",{
+    method:"POST",
+    headers:{ "Content-Type":"application/json","x-api-key":key,"anthropic-version":"2023-06-01","anthropic-dangerous-direct-browser-access":"true" },
+    body:JSON.stringify({
+      model:"claude-sonnet-4-5",
+      max_tokens:1500,
+      messages:[{role:"user",content:[
+        {type:"image",source:{type:"base64",media_type:media,data:b64}},
+        {type:"text",text:"這是一張化妝品的送驗清單或品名照片。請辨識出其中所有「產品品名」，一行一個。若同一品項旁邊有規格(如100ml)或數量(如5瓶)，可一併寫在同一行。只回覆品名清單本身，一行一個，不要編號、不要標題、不要任何說明文字。若完全無法辨識，回覆空白。"}
+      ]}]
+    })
+  });
+  if(!res.ok){ const e=await res.json().catch(()=>({})); throw new Error((e.error&&e.error.message)||'api_error'); }
+  const data=await res.json();
+  return (data.content||[]).filter(b=>b.type==='text').map(b=>b.text).join('').trim();
+}
 function cellText(v){
   if(v===null||v===undefined) return '';
   if(typeof v==='object'){
@@ -518,8 +577,13 @@ const byId = id => products.find(p=>p.id===id);
 function genInvNo(){
   const d=new Date(), p2=n=>String(n).padStart(2,'0');
   const prefix=`INV-${d.getFullYear()}${p2(d.getMonth()+1)}${p2(d.getDate())}`;
-  const today=invoiceRecs.filter(r=>r.id.startsWith(prefix));
-  return `${prefix}-${String(today.length+1).padStart(3,'0')}`;
+  // 統一序號：同時考量 PIF費收款單(invoiceRecs) 與 檢驗費收款單(products.batch)，取當日最大序號+1
+  // 避免兩套單號系統撞號，且以「最大號」而非「筆數」遞增，不會因單含多品項而跳號
+  let maxN=0;
+  const pick=s=>{ if(s&&s.startsWith(prefix+'-')){ const n=parseInt(s.slice(prefix.length+1),10); if(!isNaN(n)&&n>maxN) maxN=n; } };
+  invoiceRecs.forEach(r=>pick(r.id));
+  products.forEach(p=>pick(p.batch));
+  return `${prefix}-${String(maxN+1).padStart(3,'0')}`;
 }
 const money = n => '$'+n.toLocaleString();
 const PAY_METHODS=['匯款','現金','信用卡','合約扣款','其他'];
@@ -533,15 +597,28 @@ const P = (s,c) => products.filter(p=>p.status===s && (c? p.cust===c : true));
 
 /* ---------- persistence ---------- */
 const SEED_VER='2026-06-17-pif7-fixed';
+let lsWarned=false;
 function save(){
   if(FB_SYNC_READY && typeof FB!=='undefined' && FB.on && FB.user && FB.role && FB.role!=='pending'){ clearTimeout(FB.syncT); FB.syncT=setTimeout(()=>{ fbSync(); FB.syncT=null; },800); }
-  try{ localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,publicShowcase,showcase,invoiceRecs,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO})); }catch(e){}
+  try{
+    localStorage.setItem('elg_state', JSON.stringify({seedVer:SEED_VER,products,customers,staff,sharedPIF,publicShowcase,showcase,invoiceRecs,me,drafts,addTarget,addCust,libDrafts,libImpStatus,CINFO}));
+    lsWarned=false;
+  }catch(e){
+    // localStorage 寫入失敗（多為容量已滿）：不可再靜默吞掉，提示使用者（每次失敗最多提醒一次）
+    console.warn('localStorage 寫入失敗：', e);
+    if(!lsWarned && typeof A!=='undefined' && A.toast){
+      lsWarned=true;
+      A.toast('⚠ 本機儲存空間已滿，無法存本機快取。資料仍會同步到雲端，建議到「客戶」分頁下載備份或清理重複品項釋放空間。', 6000);
+    }
+  }
 }
 function load(){
   try{
     const raw=localStorage.getItem('elg_state'); if(!raw) return;
     const d=JSON.parse(raw);
-    if(d.seedVer!==SEED_VER) return;  // 資料版本更新 → 載入新的種子資料
+    // 即使 seedVer 不同也照常載入本機快取：避免版本更新後、在離線或雲端尚未就緒時，
+    // 畫面看起來像資料全部消失。雲端為唯一真相，登入同步後會自動以雲端覆蓋。
+    if(d.seedVer!==SEED_VER) console.info('本機快取版本('+d.seedVer+')與目前('+SEED_VER+')不同，仍載入快取，待雲端同步覆蓋');
     if(Array.isArray(d.products)){ products.length=0; d.products.forEach(x=>products.push(x)); }
     if(Array.isArray(d.customers)){ customers.length=0; d.customers.forEach(x=>customers.push(x)); }
     if(Array.isArray(d.staff)){ staff.length=0; d.staff.forEach(x=>staff.push(x)); }
@@ -1117,8 +1194,16 @@ function elgSummary(){
   //  應收 = 檢驗費(charge) + PIF費(pifCharge，已開單才算)
   //  已收 = payRecords 加總（含檢驗費收款 + PIF費收款）
   const paidOf=p=>(p.payRecords||[]).reduce((s,r)=>s+(r.amt||0),0);
-  // 每筆應收：檢驗費 + （已開單的）PIF 費
-  const chargeOf=p=>(p.charge||0)+((p.pifFeeInvoice||p.pifFeePaid)?(p.pifCharge||0):0);
+  // 已收依費別分流（PIF 費收款的 note 以「PIF費」開頭，其餘視為檢驗費）
+  const pifPaidOf =p=>(p.payRecords||[]).filter(r=>/^PIF費/.test(r.note||'')).reduce((s,r)=>s+(r.amt||0),0);
+  const inspPaidOf=p=>paidOf(p)-pifPaidOf(p);
+  // 每筆應收：檢驗費 + （已開單的）PIF 費；並確保「應收 ≥ 該費別實際已收」，
+  // 避免缺 pifCharge/旗標時出現「已收 > 應收」的假結清
+  const chargeOf=p=>{
+    const insp=Math.max(p.charge||0, inspPaidOf(p));
+    const pif =Math.max((p.pifFeeInvoice||p.pifFeePaid)?(p.pifCharge||0):0, pifPaidOf(p));
+    return insp+pif;
+  };
   const billable=p=>['invoiced','reported','paid','testing','reporting','completed'].includes(p.status) && chargeOf(p)>0;
 
   const billedProd=products.filter(billable);
@@ -1328,7 +1413,58 @@ function elgHome(){
     ['reporting','PIF製作中','clipboard-text','pif'],
     ['completed','已完成 PIF','circle-check','pif']
   ];
-  let h=`<div class="note" style="margin-bottom:14px"><i class="ti ti-layout-dashboard"></i>全流程總覽 · 點任一階段直接前往處理。</div>`;
+  let h='';
+  // ===== 晨間摘要（每日第一次開啟顯示一次，可關閉）=====
+  {
+    const todayStr=new Date().toLocaleDateString('zh-TW');
+    let seen=false; try{ seen=localStorage.getItem('elg_morning_date')===todayStr; }catch(e){}
+    if(!seen){
+      const ds=b=>{ const m=/INV-(\d{4})(\d{2})(\d{2})/.exec(b||''); if(!m) return 0; return Math.floor((new Date()-new Date(+m[1],+m[2]-1,+m[3]))/86400000); };
+      const overdueN=products.filter(p=>p.status==='invoiced'&&ds(p.batch)>=3).length;
+      const dupN=(typeof A!=='undefined'&&A._computeDups)?A._computeDups().removeCount:0;
+      const hour=new Date().getHours(); const greet=hour<12?'早安':hour<18?'午安':'晚安';
+      h+=`<div class="card" style="margin-bottom:14px;border-color:var(--accent);background:var(--accent-tint)">
+        <div class="row" style="align-items:flex-start;gap:10px">
+          <div style="flex:1">
+            <div class="nm" style="font-size:15px"><i class="ti ti-sun"></i> ${greet}！今日摘要 · ${todayStr}</div>
+            <div class="sub" style="margin-top:6px;line-height:1.8">
+              待查帳 <b>${c('reported')}</b>　·　待開收款單 <b>${c('received')}</b>　·　送驗申請 <b>${c('applied')}</b><br>
+              ${overdueN?`<span style="color:#C0392B">逾期未回報 <b>${overdueN}</b>　</span>`:''}${dupN?`<span style="color:#C0392B">疑似重複 <b>${dupN}</b></span>`:''}${(!overdueN&&!dupN)?'目前沒有異常，一切順暢':''}
+            </div>
+          </div>
+          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;flex:none" onclick="A.dismissMorning()">知道了</button>
+        </div>
+      </div>`;
+    }
+  }
+  h+=`<div class="note" style="margin-bottom:14px"><i class="ti ti-layout-dashboard"></i>全流程總覽 · 點任一階段直接前往處理。</div>`;
+  // ===== 今日待辦 + 異常提醒 =====
+  {
+    const today=new Date();
+    const daysSince=batchStr=>{ const m=/INV-(\d{4})(\d{2})(\d{2})/.exec(batchStr||''); if(!m) return 0; const d=new Date(+m[1],+m[2]-1,+m[3]); return Math.floor((today-d)/86400000); };
+    const OVERDUE_DAYS=3;
+    const overdue=products.filter(p=>p.status==='invoiced' && daysSince(p.batch)>=OVERDUE_DAYS);
+    const dup=(typeof A!=='undefined'&&A._computeDups)?A._computeDups():{removeCount:0};
+    const todos=[];
+    if(c('applied'))  todos.push({ic:'list-check',color:'var(--w)',txt:'有 <b>'+c('applied')+'</b> 筆送驗申請待確認',go:"A.go('apply')"});
+    if(c('reported')) todos.push({ic:'cash',color:'var(--w)',txt:'有 <b>'+c('reported')+'</b> 筆已回報匯款待查帳',go:"A.goStatusTab('invoice','check')"});
+    if(c('received')) todos.push({ic:'receipt-2',color:'var(--i)',txt:'有 <b>'+c('received')+'</b> 筆已收樣待開收款單',go:"A.goStatusTab('invoice','recv')"});
+    if(overdue.length) todos.push({ic:'clock-exclamation',color:'#C0392B',txt:'有 <b>'+overdue.length+'</b> 筆收款單開出逾 '+OVERDUE_DAYS+' 天仍未回報匯款',go:"A.goStatusTab('invoice','issued')"});
+    if(dup.removeCount) todos.push({ic:'copy',color:'#C0392B',txt:'偵測到 <b>'+dup.removeCount+'</b> 筆疑似重複品項，建議清理',go:"A.go('customers')"});
+    if(todos.length){
+      h+=`<div class="card" style="margin-bottom:16px;border-color:var(--accent)">
+        <div class="nm" style="font-size:14px;margin-bottom:8px"><i class="ti ti-checklist"></i> 今日待辦 · 異常提醒</div>
+        <div class="stack" style="gap:6px">${todos.map(t=>`
+          <div class="row" style="gap:10px;align-items:center;cursor:pointer;padding:8px 10px;background:var(--n-bg);border-radius:8px" onclick="${t.go}">
+            <i class="ti ti-${t.ic}" style="color:${t.color};font-size:18px;flex:none"></i>
+            <span style="flex:1;font-size:13.5px">${t.txt}</span>
+            <i class="ti ti-chevron-right" style="color:var(--faint);flex:none"></i>
+          </div>`).join('')}</div>
+      </div>`;
+    } else {
+      h+=`<div class="note" style="margin-bottom:16px;background:var(--s-bg);border-color:var(--s);color:var(--s)"><i class="ti ti-circle-check"></i> 目前沒有待處理事項，一切順暢！</div>`;
+    }
+  }
   if(typeof FB!=='undefined' && FB.on && FB.user){
     if(!FB_SYNC_READY){
       h+=`<div class="card" style="border-color:var(--accent);margin-bottom:16px">
@@ -1393,9 +1529,12 @@ function elgLibrary(){
       <div style="display:flex;gap:8px;margin-top:10px;align-items:flex-end;flex-wrap:wrap">
         <div style="flex:1;min-width:150px"><label class="lbl">照片辨識歸入客戶</label>
           <select class="fld fld--mini" onchange="A.setLibImpCust(this.value)">${impCusts.length?impCusts.map(nm=>`<option ${nm===tgt?'selected':''}>${nm}</option>`).join(''):'<option>（尚無客戶）</option>'}</select></div>
-        <label class="btn btn--ghost" style="flex:none;width:auto;padding:0 16px;display:flex;cursor:pointer;margin:0"><i class="ti ti-camera"></i> 上傳照片辨識
+        <label class="btn" style="flex:none;width:auto;padding:0 16px;display:flex;cursor:pointer;margin:0"><i class="ti ti-sparkles"></i> AI 照片辨識（較準）
+          <input type="file" accept="image/*" style="display:none" onchange="A.importPhotoAI(this)"></label>
+        <label class="btn btn--ghost" style="flex:none;width:auto;padding:0 16px;display:flex;cursor:pointer;margin:0"><i class="ti ti-camera"></i> 一般照片辨識
           <input type="file" accept="image/*" style="display:none" onchange="A.importPhoto(this)"></label>
       </div>
+      <div class="faint" style="font-size:12px;margin-top:6px">${getApiKey()?'「AI 照片辨識」用雲端 AI，準確度高（每張少量費用）；「一般辨識」免費但對照片中文較不穩。':'尚未設定 AI 金鑰，目前只能用「一般照片辨識」。到帳號管理設定 Anthropic API key 後即可用更準的 AI 辨識。'}</div>
       <label class="lbl" style="margin-top:10px">貼上文字辨識（LINE／Excel 複製，一行一品）</label>
       <textarea class="fld" id="libPaste" rows="3" placeholder="例：&#10;玫瑰精油  100ml  4瓶&#10;B5安瓶  30ml  5瓶"></textarea>
       <button class="btn btn--ghost btn--sm" style="margin-top:8px" onclick="A.importPaste()"><i class="ti ti-clipboard-check"></i> 辨識文字（進待確認）</button>
@@ -1405,19 +1544,25 @@ function elgLibrary(){
   // 待確認辨識結果（核對後再歸入客戶端）
   if(libDrafts.length){
     const order2=['applied','approved','shipped','received','invoiced','reported','paid','testing','reporting','completed'];
+    // 匯入前先標出重複：同名(去空白)+同客戶已存在 → 匯入時會被略過
+    const draftDup=d=>{ const nm=(d.name||'').trim(); if(!nm) return false; const rc=(d.cust||'').trim()||tgt; return products.some(p=>(p.name||'').trim()===nm && (p.cust||'')===rc); };
+    const dupCount=libDrafts.filter(draftDup).length;
     h+=`<div class="card" style="margin-bottom:14px;border-color:var(--accent)">
         <div class="row" style="margin-bottom:8px"><span class="nm" style="font-size:14px"><i class="ti ti-checkup-list"></i> 待確認辨識結果（${libDrafts.length}）</span>
           <span class="muted" style="font-size:13px;font-weight:600;cursor:pointer" onclick="A.libClearDrafts()">清空</span></div>
+        ${dupCount?`<div class="note" style="margin-bottom:10px;background:#FDECEA;border-color:#E7C3BD;color:#C0392B"><i class="ti ti-alert-triangle"></i> 其中 <b>${dupCount}</b> 筆品名＋客戶已存在，匯入時會自動略過（下方紅色標示）。如需重新匯入請先刪除舊資料。</div>`:''}
         <div class="tablewrap"><table class="dtable">
           <thead><tr><th>客戶</th><th>品名</th><th>規格</th><th>數量</th><th style="width:40px"></th></tr></thead>
-          <tbody>`+ libDrafts.map((d,i)=>`
-            <tr>
+          <tbody>`+ libDrafts.map((d,i)=>{
+            const isDup=draftDup(d);
+            return `
+            <tr style="${isDup?'background:#FDECEA':''}">
               <td data-label="客戶"><input class="fld fld--mini" value="${(d.cust||'').replace(/"/g,'&quot;')}" placeholder="${tgt||'所選客戶'}" onchange="A.libDraftSet(${i},'cust',this.value)"></td>
-              <td data-label="品名"><input class="fld fld--mini" value="${(d.name||'').replace(/"/g,'&quot;')}" onchange="A.libDraftSet(${i},'name',this.value)"></td>
+              <td data-label="品名"><input class="fld fld--mini" value="${(d.name||'').replace(/"/g,'&quot;')}" onchange="A.libDraftSet(${i},'name',this.value)">${isDup?`<div class="sub" style="color:#C0392B;font-size:11px;margin-top:2px"><i class="ti ti-alert-triangle"></i> 已存在，匯入時將略過</div>`:''}</td>
               <td data-label="規格"><input class="fld fld--mini" value="${(d.spec||'').replace(/"/g,'&quot;')}" onchange="A.libDraftSet(${i},'spec',this.value)"></td>
               <td data-label="數量"><input class="fld fld--mini" value="${(d.qty||'').replace(/"/g,'&quot;')}" onchange="A.libDraftSet(${i},'qty',this.value)"></td>
               <td data-label=""><span style="cursor:pointer;color:#C0392B" onclick="A.libDraftDel(${i})"><i class="ti ti-trash"></i></span></td>
-            </tr>`).join('')+`</tbody></table></div>
+            </tr>`;}).join('')+`</tbody></table></div>
         <div style="display:flex;gap:8px;align-items:flex-end;margin-top:12px;flex-wrap:wrap">
           <div style="flex:1;min-width:150px"><label class="lbl">匯入後狀態</label>
             <select class="fld fld--mini" onchange="A.setLibImpStatus(this.value)">${order2.map(k=>`<option value="${k}" ${libImpStatus===k?'selected':''}>${SM[k][0]}</option>`).join('')}</select></div>
@@ -1785,7 +1930,7 @@ function elgInvoice(){
   const totalCollected=allPaid.reduce((s,p)=>(p.payRecords||[]).reduce((a,r)=>a+r.amt,s),0);
   const byMethod={}; allPaid.forEach(p=>(p.payRecords||[]).forEach(r=>{ byMethod[r.method]=(byMethod[r.method]||0)+r.amt; }));
   const custs=[...new Set(recv.map(p=>custName(p)))];
-  recv.forEach(p=>{ if(p.invSel===undefined) p.invSel=true; if(!p.feeSel) p.feeSel=10000; });
+  recv.forEach(p=>{ if(p.invSel===undefined) p.invSel=true; if(!p.feeSel) p.feeSel=inspFeeOf(custName(p)); });
 
   // 頂部統計
   let h=`<div class="dash" style="margin-bottom:16px">
@@ -2036,6 +2181,12 @@ function elgInvoice(){
   // ===== 已開單 =====
   if(invTab==='issued'){
   h += `<div class="row sect"><span>已開收款單（待客戶匯款）</span><span class="pill pill--i">${issued.length}</span></div>`;
+  // 匯款資訊設定（會放進「複製請款通知」文字）
+  h += `<div class="card" style="margin-bottom:12px;border-color:var(--accent)">
+    <div class="sub" style="font-weight:600;margin-bottom:6px"><i class="ti ti-building-bank"></i> 匯款資訊（會帶進請款通知，設定一次即可）</div>
+    <textarea class="fld" id="bank_info_in" rows="2" placeholder="例：玉山銀行 佳里分行（808）帳號 1234-567-890123　戶名：依洛嘉國際實業有限公司">${(bankInfo()||'').replace(/</g,'&lt;')}</textarea>
+    <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;margin-top:8px" onclick="A.setBankInfo()"><i class="ti ti-device-floppy"></i> 儲存匯款資訊</button>
+  </div>`;
   if(issued.length){
     const icusts=[...new Set(issued.map(p=>custName(p)))];
     h += icusts.map(cn=>{
@@ -2059,6 +2210,9 @@ function elgInvoice(){
           <span class="amt">${money(tot)}</span>
         </div>
         <div style="display:flex;gap:8px;margin-top:10px;flex-wrap:wrap">
+          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.copyInvoiceNotice('${cn}')">
+            <i class="ti ti-copy"></i> 複製請款通知
+          </button>
           <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;color:#C0392B;border-color:#E7C3BD" onclick="A.voidInvoiceAll('${cn}')">
             <i class="ti ti-x"></i> 整張撤回（全部退回待請款）
           </button>
@@ -2453,6 +2607,26 @@ function parseLines(text){
       return { name:name||l, en:'', spec:spec, qty:qty };
     });
 }
+// 清洗 OCR 辨識結果：濾掉雜訊行、收合中文字間多餘空格，降低亂碼
+function cleanOcrText(text){
+  return (text||'')
+    .split(/\r?\n/)
+    .map(line=>{
+      // 只保留中文/日文假名/英數與常見單位、分隔符號，其餘雜訊字一律去掉
+      let s=line.replace(/[^一-鿿぀-ヿA-Za-z0-9＋+_.%·、，,。：: ()（）\/-]/g,' ');
+      // 收合中文字之間被 OCR 插入的空白：「玫 瑰 精 油」→「玫瑰精油」
+      s=s.replace(/([一-鿿])\s+(?=[一-鿿])/g,'$1');
+      return s.replace(/\s{2,}/g,' ').trim();
+    })
+    .filter(s=>{
+      if(!s) return false;
+      const cjk=(s.match(/[一-鿿]/g)||[]).length;
+      const an=(s.match(/[A-Za-z0-9]/g)||[]).length;
+      // 至少 2 個中文字或 3 個英數字才算有效品名行，否則視為雜訊
+      return cjk>=2 || an>=3;
+    })
+    .join('\n');
+}
 const dval=(id,def)=>{ const e=document.getElementById(id); return e? e.value : def; };
 function syncDrafts(){ drafts=drafts.map((d,i)=>({ name:dval('d_n_'+i,d.name), alias:dval('d_a_'+i,d.alias||''), en:dval('d_e_'+i,d.en||''), spec:dval('d_s_'+i,d.spec), qty:dval('d_q_'+i,d.qty) })); }
 
@@ -2509,12 +2683,18 @@ function photoMode(){
   return `<div class="uparea">
       <i class="ti ti-camera" style="font-size:34px;color:var(--faint)"></i>
       <p style="margin:8px 0 0;font-size:14px" class="muted">上傳截圖或拍照，自動辨識文字帶入品名</p>
-      <label class="btn btn--ghost btn--sm" style="margin-top:12px;width:auto;display:inline-flex">
-        <i class="ti ti-upload"></i> 選擇圖片
-        <input type="file" accept="image/*" style="display:none" onchange="A.photoRecognized(this)">
-      </label>
+      <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap;justify-content:center">
+        <label class="btn btn--sm" style="width:auto;display:inline-flex">
+          <i class="ti ti-sparkles"></i> AI 辨識（較準）
+          <input type="file" accept="image/*" style="display:none" onchange="A.photoRecognizedAI(this)">
+        </label>
+        <label class="btn btn--ghost btn--sm" style="width:auto;display:inline-flex">
+          <i class="ti ti-upload"></i> 一般辨識
+          <input type="file" accept="image/*" style="display:none" onchange="A.photoRecognized(this)">
+        </label>
+      </div>
     </div>
-    <div class="faint" style="font-size:12px;margin-top:8px;text-align:center">以 OCR 辨識圖中文字並拆成多行，請確認後加入。</div>`;
+    <div class="faint" style="font-size:12px;margin-top:8px;text-align:center">${getApiKey()?'「AI 辨識」準確度高（每張少量費用）；「一般辨識」免費但對照片中文較不穩。確認後加入。':'尚未設定 AI 金鑰時，「AI 辨識」無法使用，請先到帳號管理設定。'}</div>`;
 }
 function sharedPifScreen(){
   return `<div class="hd"><div><h1>依洛嘉 PIF 共用清單</h1><p>已有 PIF、可共用的產品</p></div>
@@ -2725,6 +2905,13 @@ function customerSection(){
         <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px;color:#C0392B;border-color:#E7C3BD" onclick="A.delCustomer(${i})"><i class="ti ti-trash"></i> ${confirmDel==='ca'+i?'確認刪除？':'刪除帳號'}</button></div>`;
     const contractBlock = (c.status==='待審核'||c.status==='臨時') ? '' : `
       <div style="margin-top:10px;padding-top:10px;border-top:1px dashed var(--line)">
+        <div class="sub" style="font-weight:600;margin-bottom:6px">預設檢驗費（收件時自動帶入）：<b style="color:var(--accent)">${money(c.inspFee||DEFAULT_INSP_FEE)}</b></div>
+        <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+          <button class="btn ${(c.inspFee||DEFAULT_INSP_FEE)===5000?'':'btn--ghost'} btn--sm" style="width:auto;padding:0 14px" onclick="A.setInspFee(${i},5000)">$5,000</button>
+          <button class="btn ${(c.inspFee||DEFAULT_INSP_FEE)===10000?'':'btn--ghost'} btn--sm" style="width:auto;padding:0 14px" onclick="A.setInspFee(${i},10000)">$10,000</button>
+          <input class="fld fld--mini" id="fee_${i}" placeholder="其他金額" style="flex:1;min-width:90px">
+          <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 14px" onclick="A.setInspFee(${i})">設定</button>
+        </div>
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13.5px;font-weight:600">
           <input type="checkbox" ${c.contract?'checked':''} onclick="A.toggleContract(${i})"> 合約制（送驗自動從預付餘額扣款）</label>
         ${c.contract?`<div style="margin-top:8px">
@@ -2938,11 +3125,23 @@ const A = {
     ocrBusy=true; render();
     try{
       const res=await Tesseract.recognize(file,'chi_tra+eng');
-      const got=parseLines((res&&res.data&&res.data.text)||'');
+      const got=parseLines(cleanOcrText((res&&res.data&&res.data.text)||''));
       if(got.length){ libDrafts=libDrafts.concat(got.map(g=>({name:g.name||'',spec:g.spec||'',qty:g.qty||'',en:g.en||'',cust:'',t:null}))); libImpStatus='applied'; A.toast('辨識 '+got.length+' 筆，請核對後確認匯入'); }
-      else A.toast('未辨識到品名，請改用貼文字或手動');
+      else A.toast('未辨識到清楚品名，建議改用「貼文字」或手動（照片請光線充足、文字清晰）');
     }catch(e){ A.toast('辨識失敗，請重試或改用手動'); }
     ocrBusy=false; render();
+  },
+  async importPhotoAI(input){
+    const file=input&&input.files&&input.files[0]; if(!file){ return; }
+    if(!getApiKey()){ A.toast('尚未設定 AI 金鑰，請到帳號管理設定 Anthropic API key'); input.value=''; return; }
+    ocrBusy=true; render();
+    try{
+      const txt=await aiPhotoNames(file);
+      const got=parseLines(txt);
+      if(got.length){ libDrafts=libDrafts.concat(got.map(g=>({name:g.name||'',spec:g.spec||'',qty:g.qty||'',en:g.en||'',cust:'',t:null}))); libImpStatus='applied'; A.toast('AI 辨識 '+got.length+' 筆，請核對後確認匯入'); }
+      else A.toast('AI 未辨識到品名，請改用貼文字或手動');
+    }catch(e){ A.toast(e.message==='no_key'?'尚未設定 AI 金鑰':'AI 辨識失敗：'+e.message); }
+    ocrBusy=false; render(); input.value='';
   },
   libDraftSet(i,f,v){ if(libDrafts[i]){ libDrafts[i][f]=v; save(); } },
   delProduct(id){
@@ -3559,7 +3758,7 @@ const A = {
     });
     batch={}; save(); render(); A.toast('已允許 '+list.length+' 筆寄送，回送客戶端');
   },
-  batchReceive(){ const list=products.filter(p=>batch[p.id]&&p.status==='shipped'); if(!list.length){ A.toast('請先勾選待收件項目'); return; } list.forEach(p=>{ p.status='received'; if(p.invSel===undefined)p.invSel=true; if(!p.feeSel)p.feeSel=5000; }); batch={}; save(); render(); A.toast('已接收 '+list.length+' 筆'); },
+  batchReceive(){ const list=products.filter(p=>batch[p.id]&&p.status==='shipped'); if(!list.length){ A.toast('請先勾選待收件項目'); return; } list.forEach(p=>{ p.status='received'; if(p.invSel===undefined)p.invSel=true; if(!p.feeSel)p.feeSel=inspFeeOf(custName(p)); }); batch={}; save(); render(); A.toast('已接收 '+list.length+' 筆'); },
   addToPublicShowcase(key){
     const src=key.slice(0,2)==='p_'?'product':'shared';
     const id=key.slice(2);
@@ -3662,12 +3861,25 @@ const A = {
     ocrBusy=true; render();
     try{
       const res=await Tesseract.recognize(file,'chi_tra+eng');
-      const got=parseLines((res&&res.data&&res.data.text)||'');
+      const got=parseLines(cleanOcrText((res&&res.data&&res.data.text)||''));
       syncDrafts();
-      if(got.length) drafts=drafts.concat(got); else drafts.push({name:'（未辨識到品名，請手動填）',en:'',spec:'',qty:''});
+      if(got.length) drafts=drafts.concat(got); else drafts.push({name:'（未辨識到清楚品名，請手動填）',en:'',spec:'',qty:''});
       A.toast('辨識完成，'+got.length+' 筆');
     }catch(e){ syncDrafts(); drafts.push({name:'（辨識失敗，請手動填）',en:'',spec:'',qty:''}); A.toast('辨識失敗，請手動填'); }
     ocrBusy=false; render();
+  },
+  async photoRecognizedAI(input){
+    const file=input&&input.files&&input.files[0]; if(!file) return;
+    if(!getApiKey()){ A.toast('尚未設定 AI 金鑰，請到帳號管理設定 Anthropic API key'); input.value=''; return; }
+    ocrBusy=true; render();
+    try{
+      const txt=await aiPhotoNames(file);
+      const got=parseLines(txt);
+      syncDrafts();
+      if(got.length) drafts=drafts.concat(got); else drafts.push({name:'（AI 未辨識到品名，請手動填）',en:'',spec:'',qty:''});
+      A.toast('AI 辨識完成，'+got.length+' 筆');
+    }catch(e){ syncDrafts(); A.toast(e.message==='no_key'?'尚未設定 AI 金鑰':'AI 辨識失敗：'+e.message); }
+    ocrBusy=false; render(); input.value='';
   },
   async importSongyan(input){
     const file=input&&input.files&&input.files[0]; if(!file) return;
@@ -3827,7 +4039,7 @@ const A = {
     else A.toast(c&&c.drive&&!c.driveAuth?'依洛嘉尚未授權存取你的 PIF 雲端資料夾':'依洛嘉尚未提供你的 PIF 雲端資料夾連結');
   },
   setCustDrive(i,v){ if(customers[i]){ customers[i].drive=(v||'').trim(); save(); A.toast('已更新客戶 PIF 資料夾連結'); } },
-  receive(id){ const p=byId(id); if(p){ p.status='received'; if(p.invSel===undefined)p.invSel=true; if(!p.feeSel)p.feeSel=10000; save(); } render(); A.toast('已收樣，可到「帳款明細」開收款單'); },
+  receive(id){ const p=byId(id); if(p){ p.status='received'; if(p.invSel===undefined)p.invSel=true; if(!p.feeSel)p.feeSel=inspFeeOf(custName(p)); save(); } render(); A.toast('已收樣，可到「帳款明細」開收款單'); },
   toggleInvDetail(id){ invDetailOpen=(invDetailOpen===id?null:id); render(); },
   createInvoiceRec(cn){
     const items=products.filter(p=>
@@ -4003,11 +4215,8 @@ const A = {
     const sel=P('received').filter(p=>custName(p)===cn && p.invSel);
     if(!sel.length){ A.toast('請先勾選 '+cn+' 的樣品'); return; }
     const custEmail=(customers.find(c=>c.name===cn)||{}).email||'';
-    // 生成批次編號 INV-YYYYMMDD-NNN
-    const d=new Date(), pad=n=>String(n).padStart(2,'0');
-    const ds=`${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}`;
-    const existing=products.filter(p=>p.batch&&p.batch.startsWith('INV-'+ds)).length;
-    const batchName=`INV-${ds}-${String(existing+1).padStart(3,'0')}`;
+    // 生成批次編號 INV-YYYYMMDD-NNN（與 PIF 費收款單共用同一序號產生器，避免撞號）
+    const batchName=genInvNo();
     sel.forEach(p=>{
       p.status='invoiced';
       p.batch=batchName;
@@ -4018,6 +4227,30 @@ const A = {
   },
   toggleContract(i){ const c=customers[i]; if(!c) return; c.contract=!c.contract; if(c.contract && c.balance===undefined) c.balance=0; save(); render(); A.toast(c.contract?(c.name+' 已設為合約制'):(c.name+' 已取消合約制')); },
   setBalance(i){ const c=customers[i]; if(!c) return; const v=Number((dval('bal_'+i,'')||'').replace(/[^0-9.-]/g,'')); if(isNaN(v)){ A.toast('請輸入金額'); return; } c.balance=v; c.contract=true; save(); render(); A.toast(c.name+' 合約餘額設為 '+money(v)); },
+  setInspFee(i,amt){ const c=customers[i]; if(!c) return; let v=amt; if(v===undefined){ v=Number((dval('fee_'+i,'')||'').replace(/[^0-9.]/g,'')); if(!v||isNaN(v)){ A.toast('請輸入金額或點 $5,000／$10,000'); return; } } c.inspFee=v; save(); render(); A.toast(c.name+' 預設檢驗費設為 '+money(v)); },
+  setBankInfo(){ const v=(dval('bank_info_in','')||'').trim(); try{ localStorage.setItem('elg_bank_info', v); }catch(e){} A.toast('已儲存匯款資訊'); },
+  dismissMorning(){ try{ localStorage.setItem('elg_morning_date', new Date().toLocaleDateString('zh-TW')); }catch(e){} render(); },
+  copyInvoiceNotice(cn){
+    const its=products.filter(p=>p.status==='invoiced' && custName(p)===cn);
+    if(!its.length){ A.toast('這個客戶沒有待匯款的收款單'); return; }
+    const tot=its.reduce((s,p)=>s+(p.charge||0),0);
+    const batchNos=[...new Set(its.map(p=>p.batch).filter(Boolean))];
+    const lines=[];
+    lines.push('【依洛嘉送驗 請款通知】');
+    lines.push(cn+' 您好，以下款項煩請協助匯款：');
+    lines.push('');
+    its.forEach(p=>lines.push('・'+p.name+'　'+money(p.charge||0)));
+    lines.push('—'.repeat(12));
+    lines.push('合計：'+money(tot));
+    if(batchNos.length) lines.push('收款單號：'+batchNos.join('、'));
+    lines.push('');
+    const bi=bankInfo();
+    lines.push('匯款資訊：');
+    lines.push(bi||'（尚未設定，請先到「已開單」上方填寫匯款資訊）');
+    lines.push('');
+    lines.push('匯款後請回覆「帳號末五碼」以利對帳，謝謝！');
+    copyText(lines.join('\n'), '已複製 '+cn+' 的請款通知，可貼到 LINE');
+  },
   settleByContract(cn){
     const c=customers.find(x=>x.name===cn); if(!c){ A.toast('找不到客戶'); return; }
     const items=P('received').filter(p=>custName(p)===cn && p.invSel);
@@ -4254,30 +4487,35 @@ function attachCustomer(email){
     FB.ready=true; render(); return;
   }
   const myName=me.nameCh||'';
-  // 訂閱 Firestore：抓 customerEmail 匹配的產品
+  // 兩條 products 訂閱（email 相符 + 公司名相符）各自存放結果，每次都「合併重建」，
+  // 避免其中一條的 snapshot 重建陣列時洗掉另一條的品項（修正客戶端產品時有時無的競態）
+  FB._custEmailDocs=[]; FB._custNameDocs=[];
+  const mergeCust=()=>{
+    // 同步進行中先不覆蓋本機最新狀態（與 snapApply 一致的安全鎖）
+    if(FB.syncT) return;
+    const map={};
+    FB._custNameDocs.forEach(o=>{ map[o.id]=o; });   // 先放公司名相符
+    FB._custEmailDocs.forEach(o=>{ map[o.id]=o; });  // email 相符較精準，覆蓋之
+    products.length=0; Object.values(map).forEach(o=>products.push(o));
+    const m={}; products.forEach(o=>{ m[o.id]=JSON.stringify(stripId(o)); });
+    FB.last['products']=m;
+    FB.cloudEmpty = (products.length===0);
+  };
+  // A：customerEmail 相符
   FB.unsub.push(FB.db.collection('products').where('customerEmail','==',email).onSnapshot(s=>{
-    if(s.docs.length>0){
-      snapApply('products',products,s.docs); FB.ready=true; render();
-    } else {
-      FB.ready=true; FB.cloudEmpty=true; render();
-    }
+    FB._custEmailDocs=s.docs.map(d=>{ const o=Object.assign({},d.data()); o.id=d.id; return o; });
+    mergeCust(); FB.ready=true; render();
   }, e=>{ FB.ready=true; render(); console.warn(e); }));
-  // 額外訂閱：抓公司名匹配但沒 customerEmail 的舊產品，並補上 customerEmail
+  // B：公司名相符（補回缺少的 customerEmail）
   if(myName){
     FB.unsub.push(FB.db.collection('products').where('cust','==',myName).onSnapshot(s=>{
       s.docs.forEach(d=>{
-        const data=d.data();
-        if(!data.customerEmail){
-          // 補寫 customerEmail，讓之後的 ownedByMe 與訂閱都能對應
+        if(!d.data().customerEmail){
           FB.db.collection('products').doc(d.id).update({customerEmail:email}).catch(()=>{});
         }
-        // 合併進本機 products（若不存在）
-        if(!products.some(p=>p.id===d.id)){
-          const o=Object.assign({},data); o.id=d.id; o.customerEmail=o.customerEmail||email;
-          products.push(o);
-        }
       });
-      if(s.docs.length>0){ FB.ready=true; render(); }
+      FB._custNameDocs=s.docs.map(d=>{ const o=Object.assign({},d.data()); o.id=d.id; o.customerEmail=o.customerEmail||email; return o; });
+      mergeCust(); FB.ready=true; render();
     }, e=>console.warn(e)));
   }
   FB.unsub.push(FB.db.collection('customers').where('email','==',email).onSnapshot(s=>{
