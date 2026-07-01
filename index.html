@@ -571,6 +571,9 @@ let bonusYM=`${_bnow.getFullYear()}-${String(_bnow.getMonth()+1).padStart(2,'0')
 let bonusQ='';
 let bonusConfirmSubmit=null;
 let bonusOpen={};
+let bonusAddOpen='';     // 目前展開的自訂項目表單 key = who+'@'+客戶名
+let bonusAddMode='count';// 自訂計獎方式：count=案件數×單價、amount=直接填金額
+let bonusAddDraft={nm:'',contract:''}; // 切換計獎方式時保留已輸入的名稱/合約金額
 const BONUS_M_RATE=200;         // Maggie 收單獎金：每筆收款(PIF案件) 200 元
 const BONUS_S_RATE=300;         // Sunny 處理獎金：每個完成品項 300 元
 const ELG_TABS={ '主要管理者':['home','customers','library','receive','invoice','apply','data','pif','showcase','summary','bonus'], '管理':['home','customers','library','receive','invoice','apply','data','pif','showcase','summary','bonus'] };
@@ -1138,11 +1141,18 @@ function bonusCustProducts(name){
   products.forEach(p=>{ if(custName(p)!==name) return; if(seen[p.id]) return; seen[p.id]=1; const nm=(p.name||'').trim(); if(!nm) return; out.push({id:p.id,nm,status:p.status}); });
   return out;
 }
+function bonusItemPay(x, rate){
+  if(x && x.mode==='amount') return Math.max(0, +x.amt||0);
+  const q=(x && x.qty!=null) ? (+x.qty||0) : 1;   // 一般勾選品項視為 1 筆
+  return Math.max(0, q) * rate;
+}
+function bonusSum(arr, rate){ return (arr||[]).reduce((a,x)=>a+bonusItemPay(x,rate),0); }
 function bonusTotals(ym){
-  const r=bonusRec(ym); let mCases=0,mCusts=0,sItems=0,sCusts=0;
-  if(r&&r.rows){ Object.keys(r.rows).forEach(k=>{ const v=r.rows[k]||{}; const m=(v.m||[]).length, s=(v.s||[]).length;
-    if(m){ mCusts++; mCases+=m; } if(s){ sCusts++; sItems+=s; } }); }
-  return { mCases, mCusts, sItems, sCusts, mPay:mCases*BONUS_M_RATE, sPay:sItems*BONUS_S_RATE };
+  const r=bonusRec(ym); let mItems=0,mCusts=0,sItems=0,sCusts=0,mPay=0,sPay=0;
+  if(r&&r.rows){ Object.keys(r.rows).forEach(k=>{ const v=r.rows[k]||{}; const m=(v.m||[]), s=(v.s||[]);
+    if(m.length){ mCusts++; mItems+=m.length; mPay+=bonusSum(m,BONUS_M_RATE); }
+    if(s.length){ sCusts++; sItems+=s.length; sPay+=bonusSum(s,BONUS_S_RATE); } }); }
+  return { mCases:mItems, mItems, mCusts, sItems, sCusts, mPay, sPay };
 }
 function bonusDetail(ym){
   const r=bonusRec(ym); const m=[], s=[];
@@ -1160,23 +1170,52 @@ function bonusPersonBlock(name, who, prods, sel, locked){
   const cvar=(who==='m')?'--w':'--s';
   const bgv=(who==='m')?'--w-bg':'--s-bg';
   const nk=name.replace(/'/g,"\\'");
-  const selIds=sel.map(x=>x.id);
-  const chip=(id,nm,on,removable)=>`<span onclick="A.bonusToggleProd('${nk}','${who}','${id}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 10px;border-radius:16px;margin:0 6px 6px 0;border:1px solid ${on?'var('+cvar+')':'var(--line)'};background:${on?'var('+cvar+')':'#fff'};color:${on?'#fff':'var(--muted)'}"><i class="ti ti-${on?(removable?'x':'check'):'plus'}"></i>${nm}</span>`;
-  const prodChips=prods.map(p=>chip(p.id, p.nm, selIds.includes(p.id), false)).join('');
-  const customSel=sel.filter(x=>!prods.some(p=>p.id===x.id));
-  const customChips=customSel.map(x=>chip(x.id, x.nm, true, true)).join('');
-  const sub=sel.length?`${money(sel.length*rate)}（${sel.length} 項）`:'—';
   const key=bonusKey(name);
+  const prodSel=sel.filter(x=>!x.custom);
+  const customSel=sel.filter(x=>x.custom);
+  const selIds=prodSel.map(x=>x.id);
+  const chip=(id,nm,on)=>`<span onclick="A.bonusToggleProd('${nk}','${who}','${id}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 10px;border-radius:16px;margin:0 6px 6px 0;border:1px solid ${on?'var('+cvar+')':'var(--line)'};background:${on?'var('+cvar+')':'#fff'};color:${on?'#fff':'var(--muted)'}"><i class="ti ti-${on?'check':'plus'}"></i>${nm}</span>`;
+  const prodChips=prods.map(p=>chip(p.id, p.nm, selIds.includes(p.id))).join('');
+  // 自訂 / 合約項目：逐筆列出，可刪除
+  const customRows=customSel.map(x=>{
+    const pay=bonusItemPay(x,rate);
+    const how=(x.mode==='amount')?'直接金額':`${(x.qty!=null?x.qty:1)} 筆 ×${money(rate)}`;
+    return `<div style="display:flex;align-items:center;gap:8px;background:#fff;border:1px solid var(--line);border-radius:8px;padding:7px 10px;margin-bottom:6px">
+      <span style="flex:1;min-width:0">
+        <span style="font-size:12.5px;font-weight:600">${x.nm}</span>
+        <span class="sub" style="font-size:11px;display:block">${how}${x.contract?` · 合約收款 ${money(+x.contract||0)}`:''}${x.note?` · ${x.note}`:''}</span>
+      </span>
+      <span style="font-weight:800;font-size:13px;color:var(${cvar});flex:none">${money(pay)}</span>
+      ${locked?'':`<i class="ti ti-trash" style="color:#C0392B;cursor:pointer;flex:none" onclick="A.bonusRemoveItem('${nk}','${who}','${x.id}')"></i>`}
+    </div>`;
+  }).join('');
+  const total=bonusSum(sel,rate);
+  const sub=sel.length?`${money(total)}（${sel.length} 項）`:'—';
+  // 自訂/合約新增表單
+  const addKey=who+'@'+name, adding=(bonusAddOpen===addKey);
+  const modeBtn=(m,txt)=>`<span onclick="A.bonusSetAddMode('${m}')" style="cursor:pointer;font-size:11.5px;padding:4px 10px;border-radius:14px;border:1px solid ${bonusAddMode===m?'var('+cvar+')':'var(--line)'};background:${bonusAddMode===m?'var('+cvar+')':'#fff'};color:${bonusAddMode===m?'#fff':'var(--muted)'}">${txt}</span>`;
+  const addForm=adding?`<div style="background:#fff;border:1px dashed var(${cvar});border-radius:10px;padding:10px;margin-top:8px">
+      <input id="bcnm_${who}_${key}" value="${(bonusAddDraft.nm||'').replace(/"/g,'&quot;')}" placeholder="項目/合約說明（例：${name} PIF處理合約）" style="width:100%;box-sizing:border-box;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12px;margin-bottom:8px">
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:8px">
+        <span class="sub" style="font-size:11px">計獎方式</span>${modeBtn('count','案件數 ×'+money(rate))}${modeBtn('amount','直接填金額')}
+      </div>
+      ${bonusAddMode==='count'
+        ? `<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px"><span class="sub" style="font-size:11px;flex:none">案件數</span><input id="bcqty_${who}_${key}" type="number" min="0" step="1" value="1" style="width:70px;border:1px solid var(--line);border-radius:8px;padding:6px;font-size:12px;text-align:center"><span class="sub" style="font-size:11px">× ${money(rate)}</span></div>`
+        : `<div style="display:flex;gap:6px;align-items:center;margin-bottom:8px"><span class="sub" style="font-size:11px;flex:none">獎金金額</span><input id="bcamt_${who}_${key}" type="number" min="0" step="1" placeholder="例：2000" style="width:110px;border:1px solid var(--line);border-radius:8px;padding:6px;font-size:12px;text-align:center"></div>`}
+      <div style="display:flex;gap:6px;align-items:center;margin-bottom:10px"><span class="sub" style="font-size:11px;flex:none">合約收款金額（選填）</span><input id="bccon_${who}_${key}" type="number" min="0" step="1" value="${bonusAddDraft.contract||''}" placeholder="例：200000" style="width:120px;border:1px solid var(--line);border-radius:8px;padding:6px;font-size:12px;text-align:center"></div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn--sm" style="width:auto;padding:0 14px;font-size:12px" onclick="A.bonusAddCustom('${nk}','${who}')"><i class="ti ti-check"></i> 加入</button>
+        <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;font-size:12px" onclick="A.bonusCloseAdd()">取消</button>
+      </div>
+    </div>`:'';
   return `<div style="background:var(${bgv});border-radius:10px;padding:10px 12px;margin-top:8px">
     <div style="display:flex;align-items:center;margin-bottom:8px">
       <span style="font-size:12.5px;font-weight:700;color:var(${cvar});flex:1">${label} · 每項${money(rate)}</span>
       <span style="font-size:13px;font-weight:800;color:var(${cvar})">${sub}</span>
     </div>
-    <div>${(prodChips||customChips)?(prodChips+customChips):'<span class="sub" style="font-size:11.5px">此客戶尚無產品，請用下方自訂新增</span>'}</div>
-    ${locked?'':`<div style="display:flex;gap:6px;margin-top:8px">
-      <input id="bc_${who}_${key}" placeholder="自訂品項名稱…" onkeydown="if(event.key==='Enter')A.bonusAddCustom('${nk}','${who}')" style="flex:1;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12px;background:#fff">
-      <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 10px;font-size:11.5px" onclick="A.bonusAddCustom('${nk}','${who}')"><i class="ti ti-plus"></i> 加入</button>
-    </div>`}
+    <div>${prods.length?prodChips:'<span class="sub" style="font-size:11.5px">此客戶尚無系統產品</span>'}</div>
+    ${customRows?`<div style="margin-top:6px">${customRows}</div>`:''}
+    ${locked?'':(adding?addForm:`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;font-size:11.5px;margin-top:6px" onclick="A.bonusOpenAdd('${nk}','${who}')"><i class="ti ti-plus"></i> 自訂／合約項目</button>`)}
   </div>`;
 }
 function elgBonus(){
@@ -3853,16 +3892,47 @@ const A = {
     else { const p=(typeof byId==='function')?byId(pid):null; arr.push({id:pid, nm:(p&&p.name)||pid}); }
     save(); render();
   },
-  bonusAddCustom(name, who){
-    if(A._bonusLocked(bonusYM)) return;
-    const el=document.getElementById('bc_'+who+'_'+bonusKey(name));
-    const nm=el&&(el.value||'').trim();
-    if(!nm){ A.toast('請輸入品項名稱'); return; }
+  bonusOpenAdd(name, who){ bonusAddOpen=who+'@'+name; bonusAddMode='count'; bonusAddDraft={nm:'',contract:''}; render(); },
+  bonusCloseAdd(){ bonusAddOpen=''; bonusAddDraft={nm:'',contract:''}; render(); },
+  bonusSetAddMode(m){
+    // 切換前先保留已輸入的名稱/合約金額，避免被清掉
+    const at=bonusAddOpen.indexOf('@');
+    if(at>0){ const who=bonusAddOpen.slice(0,at), name=bonusAddOpen.slice(at+1), key=bonusKey(name);
+      const gv=id=>{ const el=document.getElementById(id); return el?(el.value||'').trim():''; };
+      bonusAddDraft={ nm:gv('bcnm_'+who+'_'+key), contract:gv('bccon_'+who+'_'+key) };
+    }
+    bonusAddMode=(m==='amount')?'amount':'count'; render();
+  },
+  bonusRemoveItem(name, who, id){
+    if(A._bonusLocked(bonusYM)){ A.toast('本月已鎖定，無法修改'); return; }
     const row=A._bonusRow(name);
     const arr=(who==='m')?row.m:row.s;
-    if(arr.some(x=>x.nm===nm)){ A.toast('已加入相同品項'); return; }
-    arr.push({id:'c'+Date.now(), nm, custom:true});
+    const i=arr.findIndex(x=>x.id===id); if(i>=0) arr.splice(i,1);
     save(); render();
+  },
+  bonusAddCustom(name, who){
+    if(A._bonusLocked(bonusYM)) return;
+    const key=bonusKey(name);
+    const gv=id=>{ const el=document.getElementById(id); return el?(el.value||'').trim():''; };
+    const nm=gv('bcnm_'+who+'_'+key);
+    if(!nm){ A.toast('請填項目/合約說明'); return; }
+    const contract=Math.max(0, Math.floor(+gv('bccon_'+who+'_'+key)||0));
+    const row=A._bonusRow(name);
+    const arr=(who==='m')?row.m:row.s;
+    const item={ id:'c'+Date.now(), nm, custom:true, mode:bonusAddMode };
+    if(contract>0) item.contract=contract;
+    if(bonusAddMode==='amount'){
+      const amt=Math.max(0, Math.floor(+gv('bcamt_'+who+'_'+key)||0));
+      if(amt<=0){ A.toast('請填入獎金金額'); return; }
+      item.amt=amt;
+    }else{
+      const qty=Math.max(0, Math.floor(+gv('bcqty_'+who+'_'+key)||0));
+      if(qty<=0){ A.toast('請填入案件數'); return; }
+      item.qty=qty;
+    }
+    arr.push(item);
+    bonusAddOpen=''; save(); render();
+    A.toast('已加入：'+nm+'　'+money(bonusItemPay(item,(who==='m')?BONUS_M_RATE:BONUS_S_RATE)));
   },
   bonusSubmit(){
     const t=bonusTotals(bonusYM);
