@@ -1141,6 +1141,14 @@ function bonusCustProducts(name){
   products.forEach(p=>{ if(custName(p)!==name) return; if(seen[p.id]) return; seen[p.id]=1; const nm=(p.name||'').trim(); if(!nm) return; out.push({id:p.id,nm,status:p.status}); });
   return out;
 }
+// 已在「其他已送出(鎖定)月份」被該人(收單/處理)請領過的產品 id：本月清單不再出現，避免跨月重複請獎
+function bonusClaimedIds(who){
+  const set=new Set();
+  bonusRecs.forEach(r=>{ if(!r||!r.locked||r.ym===bonusYM||!r.rows) return;
+    Object.keys(r.rows).forEach(cn=>{ const a=(r.rows[cn]||{})[who]||[]; a.forEach(x=>{ if(x&&x.id) set.add(x.id); }); });
+  });
+  return set;
+}
 function bonusItemPay(x, rate){
   if(x && x.mode==='amount') return Math.max(0, +x.amt||0);
   const q=(x && x.qty!=null) ? (+x.qty||0) : 1;   // 一般勾選品項視為 1 筆
@@ -1174,8 +1182,12 @@ function bonusPersonBlock(name, who, prods, sel, locked){
   const prodSel=sel.filter(x=>!x.custom);
   const customSel=sel.filter(x=>x.custom);
   const selIds=prodSel.map(x=>x.id);
+  // 隱藏已在其他鎖定月份請領過的品項（本月自己已選的仍保留顯示）
+  const claimedSet=bonusClaimedIds(who);
+  const availProds=prods.filter(p=>!claimedSet.has(p.id) || selIds.includes(p.id));
+  const hiddenN=prods.length-availProds.length;
   const chip=(id,nm,on)=>`<span onclick="A.bonusToggleProd('${nk}','${who}','${id}')" title="${on?'已選取，點一下取消':'點一下選取'}" style="cursor:pointer;display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:${on?'700':'500'};padding:6px 11px;border-radius:16px;margin:0 6px 6px 0;border:1.5px solid ${on?'var('+cvar+')':'var(--line)'};background:${on?'var('+cvar+')':'#fff'};color:${on?'#fff':'var(--muted)'};box-shadow:${on?'0 1px 4px rgba(0,0,0,.16)':'none'}"><i class="ti ti-${on?'checkbox':'square'}" style="font-size:15px"></i>${nm}${on?`<span style="font-size:9.5px;line-height:1;border:1px solid rgba(255,255,255,.75);border-radius:8px;padding:2px 5px;margin-left:1px">已選</span>`:''}</span>`;
-  const prodChips=prods.map(p=>chip(p.id, p.nm, selIds.includes(p.id))).join('');
+  const prodChips=availProds.map(p=>chip(p.id, p.nm, selIds.includes(p.id))).join('');
   const selNames=prodSel.map(x=>x.nm);
   // 自訂 / 合約項目：逐筆列出，可刪除
   const customRows=customSel.map(x=>{
@@ -1215,7 +1227,8 @@ function bonusPersonBlock(name, who, prods, sel, locked){
       <span style="font-size:13px;font-weight:800;color:var(${cvar})">${sub}</span>
     </div>
     <div class="sub" style="font-size:10.5px;margin-bottom:8px">點品項＝勾選給${who==='m'?'Maggie':'Sunny'}，再點一次取消</div>
-    <div>${prods.length?prodChips:'<span class="sub" style="font-size:11.5px">此客戶尚無系統產品</span>'}</div>
+    <div>${availProds.length?prodChips:`<span class="sub" style="font-size:11.5px">${prods.length?'此客戶產品皆已於先前月份請領':'此客戶尚無系統產品'}</span>`}</div>
+    ${hiddenN>0?`<div class="sub" style="font-size:10.5px;margin-top:4px"><i class="ti ti-eye-off"></i> ${hiddenN} 項已於先前月份請領，已隱藏</div>`:''}
     ${selNames.length?`<div style="font-size:11px;margin-top:4px;color:var(${cvar});background:#fff;border-radius:8px;padding:5px 8px;border:1px solid var(--line)"><i class="ti ti-check"></i> 已選 ${selNames.length} 項：${selNames.join('、')}</div>`:''}
     ${customRows?`<div style="margin-top:6px">${customRows}</div>`:''}
     ${locked?'':(adding?addForm:`<button class="btn btn--ghost btn--sm" style="width:auto;padding:0 12px;font-size:11.5px;margin-top:6px" onclick="A.bonusOpenAdd('${nk}','${who}')"><i class="ti ti-plus"></i> 自訂／合約項目</button>`)}
