@@ -570,6 +570,7 @@ const _bnow=new Date();
 let bonusYM=`${_bnow.getFullYear()}-${String(_bnow.getMonth()+1).padStart(2,'0')}`;
 let bonusQ='';
 let bonusConfirmSubmit=null;
+let bonusOpen={};
 const BONUS_M_RATE=200;         // Maggie 收單獎金：每筆收款(PIF案件) 200 元
 const BONUS_S_RATE=300;         // Sunny 處理獎金：每個完成品項 300 元
 const ELG_TABS={ '主要管理者':['home','customers','library','receive','invoice','apply','data','pif','showcase','summary','bonus'], '管理':['home','customers','library','receive','invoice','apply','data','pif','showcase','summary','bonus'] };
@@ -1120,10 +1121,10 @@ function elgScreen(){
 }
 /* ---------- 接單處理獎金 bonus ---------- */
 function bonusRec(ym){ return bonusRecs.find(r=>r.ym===ym); }
+function bonusKey(s){ return String(s||'').replace(/[^a-zA-Z0-9一-鿿]/g,'_'); }
 function bonusRowOf(ym,name){
-  const r=bonusRec(ym);
-  const d={m:false,mc:0,s:false,sc:0};
-  if(r&&r.rows&&r.rows[name]) return Object.assign(d,r.rows[name]);
+  const r=bonusRec(ym); const d={m:[],s:[]};
+  if(r&&r.rows&&r.rows[name]){ const x=r.rows[name]; d.m=Array.isArray(x.m)?x.m:[]; d.s=Array.isArray(x.s)?x.s:[]; }
   return d;
 }
 function bonusCustList(){
@@ -1132,33 +1133,66 @@ function bonusCustList(){
   out.sort((a,b)=>{ const ta=/測試/.test(a), tb=/測試/.test(b); if(ta!==tb) return ta?1:-1; return a.localeCompare(b,'zh-Hant'); });
   return out;
 }
+function bonusCustProducts(name){
+  const seen={}, out=[];
+  products.forEach(p=>{ if(custName(p)!==name) return; if(seen[p.id]) return; seen[p.id]=1; const nm=(p.name||'').trim(); if(!nm) return; out.push({id:p.id,nm,status:p.status}); });
+  return out;
+}
 function bonusTotals(ym){
   const r=bonusRec(ym); let mCases=0,mCusts=0,sItems=0,sCusts=0;
-  if(r&&r.rows){ Object.keys(r.rows).forEach(k=>{ const v=r.rows[k];
-    if(v.m){ mCusts++; mCases+=(+v.mc||0); }
-    if(v.s){ sCusts++; sItems+=(+v.sc||0); }
-  }); }
+  if(r&&r.rows){ Object.keys(r.rows).forEach(k=>{ const v=r.rows[k]||{}; const m=(v.m||[]).length, s=(v.s||[]).length;
+    if(m){ mCusts++; mCases+=m; } if(s){ sCusts++; sItems+=s; } }); }
   return { mCases, mCusts, sItems, sCusts, mPay:mCases*BONUS_M_RATE, sPay:sItems*BONUS_S_RATE };
 }
-function bonusYMLabel(ym){ const [y,m]=ym.split('-'); return `${y} 年 ${+m} 月`; }
+function bonusDetail(ym){
+  const r=bonusRec(ym); const m=[], s=[];
+  if(r&&r.rows){ Object.keys(r.rows).sort().forEach(cn=>{ const v=r.rows[cn]||{};
+    if((v.m||[]).length) m.push({cn, items:v.m.map(x=>x.nm)});
+    if((v.s||[]).length) s.push({cn, items:v.s.map(x=>x.nm)});
+  }); }
+  return {m,s};
+}
+function bonusYMLabel(ym){ const [y,mo]=ym.split('-'); return `${y} 年 ${+mo} 月`; }
+function bonusStatusLabel(st){ const M={received:'已收件',testing:'送驗中',gotreport:'已收報告',reporting:'PIF製作中',completed:'PIF完成',invoiced:'已請款',reported:'已回報',paid:'已收款',applied:'申請中'}; return M[st]||''; }
+function bonusPersonBlock(name, who, prods, sel, locked){
+  const rate=(who==='m')?BONUS_M_RATE:BONUS_S_RATE;
+  const label=(who==='m')?'收單 (Maggie)':'處理 (Sunny)';
+  const cvar=(who==='m')?'--w':'--s';
+  const bgv=(who==='m')?'--w-bg':'--s-bg';
+  const nk=name.replace(/'/g,"\\'");
+  const selIds=sel.map(x=>x.id);
+  const chip=(id,nm,on,removable)=>`<span onclick="A.bonusToggleProd('${nk}','${who}','${id}')" style="cursor:pointer;display:inline-flex;align-items:center;gap:4px;font-size:12px;padding:5px 10px;border-radius:16px;margin:0 6px 6px 0;border:1px solid ${on?'var('+cvar+')':'var(--line)'};background:${on?'var('+cvar+')':'#fff'};color:${on?'#fff':'var(--muted)'}"><i class="ti ti-${on?(removable?'x':'check'):'plus'}"></i>${nm}</span>`;
+  const prodChips=prods.map(p=>chip(p.id, p.nm, selIds.includes(p.id), false)).join('');
+  const customSel=sel.filter(x=>!prods.some(p=>p.id===x.id));
+  const customChips=customSel.map(x=>chip(x.id, x.nm, true, true)).join('');
+  const sub=sel.length?`${money(sel.length*rate)}（${sel.length} 項）`:'—';
+  const key=bonusKey(name);
+  return `<div style="background:var(${bgv});border-radius:10px;padding:10px 12px;margin-top:8px">
+    <div style="display:flex;align-items:center;margin-bottom:8px">
+      <span style="font-size:12.5px;font-weight:700;color:var(${cvar});flex:1">${label} · 每項${money(rate)}</span>
+      <span style="font-size:13px;font-weight:800;color:var(${cvar})">${sub}</span>
+    </div>
+    <div>${(prodChips||customChips)?(prodChips+customChips):'<span class="sub" style="font-size:11.5px">此客戶尚無產品，請用下方自訂新增</span>'}</div>
+    ${locked?'':`<div style="display:flex;gap:6px;margin-top:8px">
+      <input id="bc_${who}_${key}" placeholder="自訂品項名稱…" onkeydown="if(event.key==='Enter')A.bonusAddCustom('${nk}','${who}')" style="flex:1;border:1px solid var(--line);border-radius:8px;padding:6px 8px;font-size:12px;background:#fff">
+      <button class="btn btn--ghost btn--sm" style="width:auto;padding:0 10px;font-size:11.5px" onclick="A.bonusAddCustom('${nk}','${who}')"><i class="ti ti-plus"></i> 加入</button>
+    </div>`}
+  </div>`;
+}
 function elgBonus(){
   const rec=bonusRec(bonusYM);
   const locked=!!(rec&&rec.locked);
   const isMain=(elgRole==='主要管理者');
   const t=bonusTotals(bonusYM);
   const q=(bonusQ||'').trim().toLowerCase();
-  const dis=locked?'style="pointer-events:none;opacity:.55"':'';
 
   let h=``;
 
-  // 月份切換列
-  h+=`<div class="card" style="display:flex;align-items:center;gap:10px;padding:12px 14px;margin-bottom:12px">
-    <button class="hbtn" onclick="A.bonusStepMonth(-1)" style="padding:4px 10px"><i class="ti ti-chevron-left"></i></button>
-    <div style="flex:1;text-align:center">
-      <div class="nm" style="font-size:16px">${bonusYMLabel(bonusYM)}</div>
-      <div class="sub" style="font-size:11.5px">接單處理獎金 · 按月結算</div>
-    </div>
-    <button class="hbtn" onclick="A.bonusStepMonth(1)" style="padding:4px 10px"><i class="ti ti-chevron-right"></i></button>
+  // 月份（可直接選）
+  h+=`<div class="card" style="display:flex;align-items:center;gap:8px;padding:12px 14px;margin-bottom:12px">
+    <button class="hbtn" onclick="A.bonusStepMonth(-1)" style="padding:4px 9px"><i class="ti ti-chevron-left"></i></button>
+    <input type="month" value="${bonusYM}" onchange="A.bonusSetMonth(this.value)" style="flex:1;text-align:center;border:1px solid var(--line);border-radius:10px;padding:8px;font-size:15px;font-weight:800">
+    <button class="hbtn" onclick="A.bonusStepMonth(1)" style="padding:4px 9px"><i class="ti ti-chevron-right"></i></button>
   </div>`;
 
   // 鎖定狀態列
@@ -1177,41 +1211,52 @@ function elgBonus(){
     <div class="metric"><div class="mi"><i class="ti ti-coins"></i></div><div class="mv">${money(t.mPay+t.sPay)}</div><div class="ml">本月合計</div></div>
   </div>`;
   h+=`<div class="card" style="padding:10px 14px;margin-bottom:12px;font-size:11.5px;color:var(--muted);line-height:1.7">
-    <div><i class="ti ti-inbox" style="color:var(--w)"></i> <b>Maggie</b>　勾選當月收單客戶，填收款筆數(PIF案件)　每筆 <b>${money(BONUS_M_RATE)}</b>　·　本月 ${t.mCusts} 位客戶 / ${t.mCases} 筆</div>
-    <div><i class="ti ti-checks" style="color:var(--s)"></i> <b>Sunny</b>　勾選當月處理客戶，填完成品項數　每項 <b>${money(BONUS_S_RATE)}</b>　·　本月 ${t.sCusts} 位客戶 / ${t.sItems} 品項</div>
+    <div><i class="ti ti-inbox" style="color:var(--w)"></i> <b>Maggie</b>　點客戶展開，勾選收單品項　每項 <b>${money(BONUS_M_RATE)}</b>　·　本月 ${t.mCusts} 客戶 / ${t.mCases} 品項</div>
+    <div><i class="ti ti-checks" style="color:var(--s)"></i> <b>Sunny</b>　點客戶展開，勾選處理品項　每項 <b>${money(BONUS_S_RATE)}</b>　·　本月 ${t.sCusts} 客戶 / ${t.sItems} 品項</div>
   </div>`;
+
+  // 本月明細（哪幾個品項、哪幾個人）
+  const det=bonusDetail(bonusYM);
+  if(det.m.length||det.s.length){
+    h+=`<div class="card" style="padding:12px 14px;margin-bottom:12px">
+      <div class="nm" style="font-size:13px;margin-bottom:8px"><i class="ti ti-list-details"></i> 本月獎金明細</div>
+      <div style="font-size:12px;color:var(--w);font-weight:700;margin-bottom:3px">收單 (Maggie)　${money(t.mPay)}</div>
+      ${det.m.length?det.m.map(x=>`<div class="sub" style="font-size:12px;margin:2px 0 5px;line-height:1.5"><b>${x.cn}</b>（${x.items.length}）：${x.items.join('、')}</div>`).join(''):'<div class="sub" style="font-size:12px;margin-bottom:5px">—</div>'}
+      <div style="font-size:12px;color:var(--s);font-weight:700;margin:8px 0 3px">處理 (Sunny)　${money(t.sPay)}</div>
+      ${det.s.length?det.s.map(x=>`<div class="sub" style="font-size:12px;margin:2px 0 5px;line-height:1.5"><b>${x.cn}</b>（${x.items.length}）：${x.items.join('、')}</div>`).join(''):'<div class="sub" style="font-size:12px">—</div>'}
+    </div>`;
+  }
 
   // 搜尋
   h+=`<div class="srch" style="margin-bottom:10px"><i class="ti ti-search"></i><input placeholder="搜尋客戶…" value="${bonusQ.replace(/"/g,'&quot;')}" oninput="A.bonusSearch(this.value)"></div>`;
 
-  // 客戶列表
+  // 客戶列表（可展開，勾選品項）
   const list=bonusCustList().filter(n=>!q||n.toLowerCase().includes(q));
   if(!list.length){
     h+=`<div class="card faint" style="text-align:center;padding:16px">查無客戶</div>`;
   }else{
-    h+=`<div ${dis}>`+list.map(name=>{
+    h+=list.map(name=>{
       const row=bonusRowOf(bonusYM,name);
+      const prods=bonusCustProducts(name);
+      const mN=row.m.length, sN=row.s.length;
       const nk=name.replace(/'/g,"\\'");
-      const mSub=row.m?money((+row.mc||0)*BONUS_M_RATE):'—';
-      const sSub=row.s?money((+row.sc||0)*BONUS_S_RATE):'—';
-      return `<div class="card" style="padding:12px 14px;margin-bottom:8px">
-        <div class="nm" style="font-size:14px;margin-bottom:8px">${name}</div>
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <div style="flex:1;min-width:150px;display:flex;align-items:center;gap:8px;background:var(--w-bg);border-radius:10px;padding:8px 10px">
-            <span class="ck ${row.m?'on':''}" onclick="A.bonusToggle('${nk}','m')" style="cursor:pointer;flex:none"><i class="ti ti-check"></i></span>
-            <span style="font-size:12px;color:var(--w);flex:none">收單(Maggie)</span>
-            <input type="number" min="0" step="1" value="${row.m?(row.mc||0):''}" placeholder="筆" onchange="A.bonusCount('${nk}','m',this.value)" ${row.m?'':'disabled'} style="width:52px;text-align:center;border:1px solid var(--line);border-radius:8px;padding:4px;background:#fff">
-            <span style="flex:1;text-align:right;font-weight:700;font-size:13px;color:var(--w)">${mSub}</span>
-          </div>
-          <div style="flex:1;min-width:150px;display:flex;align-items:center;gap:8px;background:var(--s-bg);border-radius:10px;padding:8px 10px">
-            <span class="ck ${row.s?'on':''}" onclick="A.bonusToggle('${nk}','s')" style="cursor:pointer;flex:none"><i class="ti ti-check"></i></span>
-            <span style="font-size:12px;color:var(--s);flex:none">處理(Sunny)</span>
-            <input type="number" min="0" step="1" value="${row.s?(row.sc||0):''}" placeholder="項" onchange="A.bonusCount('${nk}','s',this.value)" ${row.s?'':'disabled'} style="width:52px;text-align:center;border:1px solid var(--line);border-radius:8px;padding:4px;background:#fff">
-            <span style="flex:1;text-align:right;font-weight:700;font-size:13px;color:var(--s)">${sSub}</span>
-          </div>
-        </div>
+      const open=!!bonusOpen[name] || mN>0 || sN>0 || !!q;
+      let card=`<div class="card" style="padding:0;overflow:hidden;margin-bottom:8px">`;
+      card+=`<div onclick="A.bonusToggleOpen('${nk}')" style="display:flex;align-items:center;gap:8px;padding:12px 14px;cursor:pointer;border-bottom:${open?'1px solid var(--line)':'0'}">
+        <span style="flex:1;min-width:0"><span class="nm" style="font-size:14px">${name}</span><span class="sub" style="font-size:11px;margin-left:6px">${prods.length} 產品</span></span>
+        ${mN?`<span class="pill" style="font-size:10.5px;background:var(--w-bg);color:var(--w)">收單 ${mN}</span>`:''}
+        ${sN?`<span class="pill" style="font-size:10.5px;background:var(--s-bg);color:var(--s)">處理 ${sN}</span>`:''}
+        <i class="ti ti-chevron-${open?'up':'down'}" style="color:var(--muted);flex:none"></i>
       </div>`;
-    }).join('')+`</div>`;
+      if(open){
+        card+=`<div style="padding:8px 12px 12px${locked?';pointer-events:none;opacity:.55':''}">`;
+        card+=bonusPersonBlock(name,'m',prods,row.m,locked);
+        card+=bonusPersonBlock(name,'s',prods,row.s,locked);
+        card+=`</div>`;
+      }
+      card+=`</div>`;
+      return card;
+    }).join('');
   }
 
   // 送出
@@ -3790,20 +3835,33 @@ const A = {
   },
   bonusSetMonth(v){ if(v&&/^\d{4}-\d{2}$/.test(v)){ bonusYM=v; bonusConfirmSubmit=null; render(); } },
   bonusSearch(v){ bonusQ=v; const el=document.querySelector('.screen'); const sy=el?el.scrollTop:0; render(); const e2=document.querySelector('.screen'); if(e2) e2.scrollTop=sy; },
-  bonusToggle(name, who){
-    if(A._bonusLocked(bonusYM)){ A.toast('本月已鎖定，無法修改'); return; }
+  bonusToggleOpen(name){ bonusOpen[name]=!bonusOpen[name]; render(); },
+  _bonusRow(name){
     const r=A._bonusEnsure(bonusYM);
-    const row=r.rows[name]||(r.rows[name]={m:false,mc:0,s:false,sc:0});
-    if(who==='m'){ row.m=!row.m; if(row.m&&(!row.mc||row.mc<1)) row.mc=1; }
-    else { row.s=!row.s; if(row.s&&(!row.sc||row.sc<1)) row.sc=1; }
+    if(!r.rows[name]) r.rows[name]={m:[],s:[]};
+    const row=r.rows[name];
+    if(!Array.isArray(row.m)) row.m=[];
+    if(!Array.isArray(row.s)) row.s=[];
+    return row;
+  },
+  bonusToggleProd(name, who, pid){
+    if(A._bonusLocked(bonusYM)){ A.toast('本月已鎖定，無法修改'); return; }
+    const row=A._bonusRow(name);
+    const arr=(who==='m')?row.m:row.s;
+    const i=arr.findIndex(x=>x.id===pid);
+    if(i>=0){ arr.splice(i,1); }
+    else { const p=(typeof byId==='function')?byId(pid):null; arr.push({id:pid, nm:(p&&p.name)||pid}); }
     save(); render();
   },
-  bonusCount(name, who, val){
-    if(A._bonusLocked(bonusYM)){ return; }
-    const n=Math.max(0, Math.floor(+val||0));
-    const r=A._bonusEnsure(bonusYM);
-    const row=r.rows[name]||(r.rows[name]={m:false,mc:0,s:false,sc:0});
-    if(who==='m') row.mc=n; else row.sc=n;
+  bonusAddCustom(name, who){
+    if(A._bonusLocked(bonusYM)) return;
+    const el=document.getElementById('bc_'+who+'_'+bonusKey(name));
+    const nm=el&&(el.value||'').trim();
+    if(!nm){ A.toast('請輸入品項名稱'); return; }
+    const row=A._bonusRow(name);
+    const arr=(who==='m')?row.m:row.s;
+    if(arr.some(x=>x.nm===nm)){ A.toast('已加入相同品項'); return; }
+    arr.push({id:'c'+Date.now(), nm, custom:true});
     save(); render();
   },
   bonusSubmit(){
