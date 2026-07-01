@@ -4971,8 +4971,10 @@ function fbSync(){
   if(!FB.on||!FB.user||!FB.ready||FB.role==='pending') return;
   try{
     const em=emailMap();
-    const cols = FB.role==='eloga' ? ['products','customers','staff','sharedPIF','showcase','publicShowcase','bonus'] : ['products'];
-    const ref={products,customers,staff,sharedPIF,showcase,publicShowcase,bonus:bonusRecs};
+    // 注意：bonus 不放進主批次。Firestore 批次為原子性，若 bonus 規則未開放會讓整個批次失敗、
+    // 連帶使 products/customers 等全部同步失敗。bonus 改由 fbSyncBonus() 獨立寫入。
+    const cols = FB.role==='eloga' ? ['products','customers','staff','sharedPIF','showcase','publicShowcase'] : ['products'];
+    const ref={products,customers,staff,sharedPIF,showcase,publicShowcase};
     const batch=FB.db.batch(); let ops=0;
     cols.forEach(name=>{
       const arr=ref[name]||[]; const last=FB.last[name]||{}; const seen={};
@@ -4989,7 +4991,24 @@ function fbSync(){
     });
     if(FB.role==='eloga'){ batch.set(FB.db.collection('meta').doc('config'),{CINFO},{merge:true}); ops++; }
     if(ops>0 && ops<=450) batch.commit().catch(e=>console.warn('sync',e));
+    // 接單獎金：獨立批次寫入，與主同步完全隔離，失敗也不影響其他資料
+    if(FB.role==='eloga') fbSyncBonus();
   }catch(e){ console.warn('fbSync',e); }
+}
+function fbSyncBonus(){
+  try{
+    if(!FB.on||!FB.db) return;
+    const last=FB.last['bonus']||{}; const seen={}; const batch=FB.db.batch(); let ops=0;
+    bonusRecs.forEach(o=>{
+      if(!o.id) o.id=o.ym||FB.db.collection('bonus').doc().id;
+      const data=stripId(o); seen[o.id]=true;
+      const j=JSON.stringify(data);
+      if(last[o.id]!==j){ batch.set(FB.db.collection('bonus').doc(o.id),data); last[o.id]=j; ops++; }
+    });
+    Object.keys(last).forEach(id=>{ if(!seen[id]){ batch.delete(FB.db.collection('bonus').doc(id)); delete last[id]; ops++; } });
+    FB.last['bonus']=last;
+    if(ops>0 && ops<=450) batch.commit().catch(e=>console.warn('bonus 同步失敗（請在 Firestore 規則開放 bonus 集合）：',e));
+  }catch(e){ console.warn('fbSyncBonus',e); }
 }
 function custConfirmScreen(){
   const custList=customers.filter(c=>c.status==='已啟用'||(c.email&&c.email.toLowerCase()===(me.email||'').toLowerCase()));
