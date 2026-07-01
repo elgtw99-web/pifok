@@ -4849,6 +4849,9 @@ function snapApply(name, arr, docs){
   // products 空（Firestore 尚未上傳）→ 保留本機種子，不清空
   if(name==='products' && docs.length===0 && arr.length>0){ FB.cloudEmpty=true; return; }
   if(name==='products' && docs.length>0){ FB.cloudEmpty=false; FB.seeded=true; }
+  // bonus（接單獎金）：雲端尚未有資料時，一律保留本機，避免空快照把本機獎金資料清空
+  // （若 Firestore 規則尚未開放 bonus 集合，寫入會失敗、雲端恆為空；此保護確保本機資料不遺失）
+  if(name==='bonus' && docs.length===0 && arr.length>0) return;
   // 有 pending sync 還沒提交 → 跳過這次 snapshot，避免覆蓋本機最新狀態
   if(FB.syncT) return;
   // 其他集合若 products 尚未上傳也先保留
